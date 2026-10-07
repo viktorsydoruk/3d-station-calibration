@@ -1,11 +1,12 @@
 """Function to estimate camera intrinsics and robot -> camera extrinsics"""
 
-__all__ = ["print_calibration", "get_calibration", "calibrate_camera", "check_distortion_monotonicity"]
+__all__ = ["print_calibration", "get_calibration", "calibrate_camera", "check_distortion_monotonicity",
+           "back_projected_point", "calculate_RMSE", "calculate_calibration_errors"]
 
 import cv2
 import numpy as np
 from scipy.optimize import least_squares
-from scipy.optimize._optimize import OptimizeResult
+from scipy.optimize import OptimizeResult
 
 from ._3dsc_support import fit_line_general_form, intersect_lines, calculate_errors
 
@@ -277,11 +278,10 @@ def residuals(params: np.ndarray,
     return np.ravel(error)
 
 
-def get_calibration(result: OptimizeResult,
+def get_calibration(params: np.ndarray,
                     image_size_xy: tuple = (2500, 2000),
                     fix_cx_cy: bool = False,
                     n_distortion_coefs: int = 5) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    params = result.x
 
     fx, fy, cx, cy, distortion, rot_vec, tra_vec = unwrap_params(
         params,
@@ -305,22 +305,34 @@ def get_calibration(result: OptimizeResult,
     return intrinsic_matrix, distortion, rot_vec, extrinsic_matrix
 
 
+def calculate_calibration_errors(result: OptimizeResult,
+                                 fix_cx_cy: bool = False,
+                                 n_distortion_coefs: int = 5) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    intrinsic_std, distortion_std, rot_vec_std, extrinsic_std = get_calibration(
+        calculate_errors(result),
+        image_size_xy=(0, 0),
+        fix_cx_cy=fix_cx_cy,
+        n_distortion_coefs=n_distortion_coefs
+    )
+    return intrinsic_std, distortion_std, rot_vec_std, extrinsic_std[:3, 3]
+
+
 def print_calibration(result: OptimizeResult,
                       image_size_xy: tuple = (2500, 2000),
                       fix_cx_cy: bool = False,
                       n_distortion_coefs: int = 5) -> None:
 
     intrinsic_matrix, distortion, rvec, extrinsic_matrix = get_calibration(
-        result,
+        result.x,
         image_size_xy=image_size_xy,
         fix_cx_cy=fix_cx_cy,
         n_distortion_coefs=n_distortion_coefs
     )
 
     print()
-    print("=" * 60)
+    print("-" * 60)
     print("CALIBRATION RESULT")
-    print("=" * 60)
+    print("-" * 60)
 
     print()
     print("Intrinsic matrix:")
@@ -361,8 +373,7 @@ def calibrate_camera(robot_positions: np.ndarray,
                      camera_distance_initial: float = 80.0,
                      image_size_xy: tuple[int, int] = (2500, 2000),
                      fix_cx_cy: bool = False,
-                     n_distortion_coefs: int = 5,
-                     debug: bool = False) -> OptimizeResult:
+                     n_distortion_coefs: int = 5) -> OptimizeResult:
     """
         Estimate camera intrinsics and extrinsics.
 
@@ -375,7 +386,6 @@ def calibrate_camera(robot_positions: np.ndarray,
     :param image_size_xy: shape of the images taken
     :param fix_cx_cy: whether to fix the principal point (cx, cy) in the intrinsic matrix to be a half of image size
     :param n_distortion_coefs: number of distortion coefficients
-    :param debug: whether debug information should be printed
     :return: optimized results from least_squares of scipy module
     """
 
@@ -429,7 +439,41 @@ def calibrate_camera(robot_positions: np.ndarray,
 
         loss="soft_l1",
         x_scale="jac",
-        verbose=1 if debug else 0,
     )
 
     return result
+
+
+def back_projected_point(robot_pos: np.ndarray,
+                         intrinsic_matrix: np.ndarray,
+                         extrinsic_matrix: np.ndarray,
+                         distortion: np.ndarray) -> np.ndarray:
+    """
+        Back projecting 3D point to 2D image
+    :param robot_pos: 3D points to project
+    :param intrinsic_matrix: intrinsic matrix
+    :param extrinsic_matrix: extrinsic matrix
+    :param distortion:
+    :return:
+    """
+    R = extrinsic_matrix[:3, :3]
+    tvec = extrinsic_matrix[:3, 3]
+    rvec = cv2.Rodrigues(R)[0].reshape(-1)
+    return cv2.projectPoints(
+        robot_pos,
+        rvec,
+        tvec,
+        intrinsic_matrix,
+        distortion
+    )[0][:, 0]
+
+
+def calculate_RMSE(result: OptimizeResult,
+                   standardized: bool = True) -> float:
+    res = result.fun
+    mse = np.mean(res**2)
+    rmse = np.sqrt(mse)
+    if standardized:
+        rmse /= len(res)
+
+    return rmse

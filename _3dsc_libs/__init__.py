@@ -6,3 +6,4 @@ from ._3dsc_support import *
 from ._3dsc_settings import *
 from ._3dsc_robot import *
 from ._3dsc_print_debug import *
+from ._3dsc_processes import *

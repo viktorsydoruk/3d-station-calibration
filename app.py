@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """3D Station calibration routine
 
     The new automatic routine to calibrate 3D stations in phenoSeeder. A white ball (preferable POM) is placed at
@@ -19,186 +20,156 @@
 """
 
 __author__ = "Viktor Sydoruk"
+__contributors__ = ["Viktor Sydoruk"]
 __copyright__ = "Copyright 2026, Forschungszentrum Jülich GmbH"
-__credits__ = ["Viktor Sydoruk", "Andreas Fischbach", "ChatGPT"]
+__credits__ = ["Viktor Sydoruk", "Andreas Fischbach"]
 __license__ = "Apache 2"
-__version__ = "2026.08"
+__version__ = "2026.10"
 __maintainer__ = "Viktor Sydoruk"
 __email__ = "v.sydoruk@fz-juelich.de"
 __status__ = "Developments"
-__date__ = "25.08.2026"
+__date__ = "01.10.2026"
 
 
 import numpy as np
 import traceback
 
-from _3dsc_libs import (load_robot_positions, search_images, get_sphere_centers_and_blur_sigmas, calibrate_camera,
-                        get_calibration, print_calibration, adjust_image_center_points, store_all_points,
-                        load_all_points, visualize_image_center_points, visualize_radii, visualize_sigmas, Settings,
-                        find_robot_home_pos_shift, get_nozzle_end_home_position, visualize_nozzle_and_home_pos_estimation,
-                        DebugInfo, check_distortion_monotonicity)
+from _3dsc_libs import (print_calibration, visualize_results, Settings, get_nozzle_end_home_position,
+                        DebugInfo, back_projected_point, calculate_errors, get_calibration_data, get_3D_and_2D_data,
+                        store_calibration, calculate_calibration_errors)
 
 
 def main(folder_to_analyze: str, **opts) -> None:
     settings = Settings(folder_to_analyze, **opts)
     print_debug = DebugInfo(settings.debug)
 
+    print_debug(f"{'':=>100}")
+    print_debug(f"{f' Analysis of {settings.main_folder} ':-^100}")
+    print_debug(f"{'':=>100}")
+
     try:
-        print_debug()
-        print_debug(f"Analysis of {settings.main_folder}")
+        # getting all the data
+        robot_positions, center_points, radii, sigmas, all_directions, image_size_xy = (
+            get_3D_and_2D_data(
+                settings,
+                print_debug
+            )
+        )
 
-        # loading stored data (already analyzed) if needed
-        if settings.load_stored_data and settings.all_center_points_file.exists():
-            robot_positions, center_points, radii, sigmas, image_sizes, all_directions = load_all_points(
-                settings.all_center_points_file,
+        step_size = 20
+        print_debug.debug = False
+        all_debug_data_to_store: list[list[str | float| np.floating | np.integer]] = [
+            ["N", "N_reduced", "fx", "dfx", "fy", "dfy", "t3", "dt3", "n params", "RMSE"]
+        ]
+        for i in range(1, len(robot_positions) // step_size, 1):
+            if i * step_size < 14:
+                continue
+
+            pos_home, center_points_adjusted, intrinsic_matrix, extrinsic_matrix, distortion, result, rmse, mask, _ = (
+                get_calibration_data(
+                    robot_positions[:i * step_size],
+                    center_points[:i * step_size],
+                    radii[:i * step_size],
+                    sigmas[:i * step_size],
+                    image_size_xy,
+                    settings,
+                    print_debug
+                )
+            )
+            err = calculate_errors(result)
+            val = result.x
+            print_debug(f"{i*step_size:>3d}. {val[-1]:0.5f} +/- {err[-1]:0.5f}",
+                        f"RMSE: {rmse:0.6f}", len(result.x), f"left: {np.count_nonzero(mask)}", print_anyway=True)
+            all_debug_data_to_store.append(
+                [len(mask), np.count_nonzero(mask), val[0], err[0], val[1], err[1], val[-1], err[-1], len(result.x), rmse]
             )
 
-        else:
-            # reading the positions of robotic arm
-            robot_positions, imagenames = load_robot_positions(settings.robot_pos_file)
-            print_debug(len(robot_positions), "robot position coordinates are collected")
-
-            # searching for all images
-            all_images_filenames = search_images(
-                settings.main_folder,
-                imagenames,
-                patterns=settings.imagenames_patterns,
-                sort_by_mtime=settings.sort_imagenames_by_mtime,
-            )
-            print_debug(len(all_images_filenames), "images are found")
-
-            center_points, sigmas, radii, image_sizes, all_directions = get_sphere_centers_and_blur_sigmas(
-                all_images_filenames,
-                bg_height_px=settings.bg_height_pxs,
-                bg_color_est_perc=settings.bg_color_est_perc,
-                n_mov_aver=settings.n_move_aver,
-                sphere_center_to_nozzle_part=settings.sphere_center_to_nozzle_part,
-                min_bg_pixels_on_edges=settings.min_bg_pixels_on_edges,
-                blur_est_border_thickness=settings.blur_est_border_thickness,
-                print_debug=print_debug,
-                debug_folder=settings.debug_folder,
-                store_debug_images=settings.store_debug_images
-            )
-
-            store_all_points(
-                settings.all_center_points_file,
+        print_debug.debug = settings.debug
+        # calibrating the camera
+        pos_home, center_points_adjusted, intrinsic_matrix, extrinsic_matrix, distortion, result, rmse, mask, n_dist_coef = (
+            get_calibration_data(
                 robot_positions,
                 center_points,
                 radii,
                 sigmas,
-                image_sizes,
-                all_directions,
+                image_size_xy,
+                settings,
+                print_debug
             )
+        )
 
-        # creating mask where the spheres were recognized
-        mask = np.logical_and(~np.isnan(sigmas), ~np.isnan(radii))
+        rel_robot_positions = robot_positions - pos_home
 
-        image_size_xy = tuple(np.flip(np.nanmax(image_sizes, axis=0)).astype(int))  # a tuple (size_x, size_y)
-        # first estimation of the home position for the robotic arm, where the seed should be delivered
-        pos_home = robot_positions.mean(axis=0)
-
-        # select suitable data
-        rel_robot_positions = robot_positions[mask] - pos_home
-        center_points = center_points[mask]
-        radii = radii[mask]
-        sigmas = sigmas[mask]
-        center_points_adjusted = np.copy(center_points)
-
-        for _ in range(settings.n_iterations):
-
-            # calibration of the camera (estimation of intrinsic, extrinsic, distortion parameters)
-            result = calibrate_camera(
-                rel_robot_positions,
-                center_points_adjusted,
-                radii,
-                sigmas,
-                focal_length_initial=2000.0,
-                camera_distance_initial=80.0,
-                image_size_xy=image_size_xy,
-                fix_cx_cy=settings.fix_cx_cy,
-                n_distortion_coefs=settings.n_distortion_coefs,
-                debug=settings.debug,
-            )
-
-            # extract the camere matrices from the fit result
-            intrinsic_matrix, distortion, rvec, extrinsic_matrix = get_calibration(
-                result,
-                image_size_xy=image_size_xy,
-                fix_cx_cy=settings.fix_cx_cy,
-                n_distortion_coefs = settings.n_distortion_coefs,
-            )
-
-            # estimation the shift of the home position based on bluring and cx, cy
-            pos_home_shift = find_robot_home_pos_shift(
-                rel_robot_positions,
-                center_points_adjusted,
+        # calculating the nozzle home position
+        nozzle_end_home_pos, sphere_diam_mm, debug_nozzle_and_home_pos = (
+            get_nozzle_end_home_position(
+                sphere_home_position=pos_home,
+                robot_positions=rel_robot_positions,
+                image_center_points=center_points_adjusted,
                 intrinsic_matrix=intrinsic_matrix,
                 extrinsic_matrix=extrinsic_matrix,
                 distortion=distortion,
                 sigmas=sigmas,
+                radii=radii,
+                all_directions=all_directions,
             )
-
-            pos_home += pos_home_shift
-            rel_robot_positions -= pos_home_shift
-
-            center_points_adjusted = adjust_image_center_points(
-                center_points,
-                radii,
-                intrinsic_matrix,
-            )
-
-            # distortion coefs should give monotonic function 1 + k1*r**2 + k2*r**4 + k3*r**6
-            if not check_distortion_monotonicity(distortion, intrinsic_matrix, image_size_xy):
-                print_debug("distortion doesn't show monotonic behaviour, and should be neglected")
-                settings.n_distortion_coefs = 0
-
-        # calculating the nozzle home position
-        nozzle_end_home_pos, sphere_diam_mm, debug_nozzle_and_home_pos = get_nozzle_end_home_position(
-            pos_home,
-            rel_robot_positions,
-            center_points_adjusted,
-            intrinsic_matrix=intrinsic_matrix,
-            extrinsic_matrix=extrinsic_matrix,
-            distortion=distortion,
-            sigmas=sigmas,
-            radii=radii,
-            all_directions=all_directions,
+        )
+        intrinsic_std, distortion_std, rot_vec_std, tra_vec_std = calculate_calibration_errors(
+            result,
+            fix_cx_cy=settings.fix_cx_cy,
+            n_distortion_coefs=n_dist_coef,
         )
 
-        print_debug(f"Sphere center home position: {pos_home}, estimated sphere diameter: {sphere_diam_mm: 0.3f} mm")
-        print_debug(f"Nozzle center home position: {nozzle_end_home_pos}")
+        store_calibration(
+            pos_home=pos_home,
+            intrinsic_matrix=intrinsic_matrix,
+            extrinsic_matrix=extrinsic_matrix,
+            distortion_coefficients=distortion,
+            intrinsic_std=intrinsic_std,
+            rot_vec_std=rot_vec_std,
+            tra_vec_std=tra_vec_std,
+            distortion_std=distortion_std,
+            image_xy=image_size_xy,
+            output_folder=settings.output_folder,
+        )
+
         if settings.debug:
+            print_debug(f"Sphere center home position: {pos_home}, estimated sphere diameter: {sphere_diam_mm: 0.3f} mm")
+            print_debug(f"Nozzle center home position: {nozzle_end_home_pos}")
+
+            closest_image_arg = int(np.argmin(np.sqrt(np.sum((robot_positions[mask]-nozzle_end_home_pos[None, :])**2, axis=1))))
+
+            print_debug(f"Closest to the center image: {closest_image_arg}")
             print_calibration(
                 result,
                 image_size_xy=image_size_xy,
                 fix_cx_cy=settings.fix_cx_cy,
-                n_distortion_coefs=settings.n_distortion_coefs
+                n_distortion_coefs=n_dist_coef
             )
-            visualize_radii(
-                rel_robot_positions,
+            back_projected_home_pos = back_projected_point(
+                nozzle_end_home_pos - pos_home,
+                intrinsic_matrix,
                 extrinsic_matrix,
-                radii=radii,
-                sigmas=sigmas,
-                debug_folder=settings.debug_folder,
-            )
+                distortion
+            )[0]
+            print_debug(back_projected_home_pos)
 
-            visualize_sigmas(
-                rel_robot_positions,
-                extrinsic_matrix,
-                sigmas=sigmas,
-                debug_folder=settings.debug_folder,
-            )
-
-            visualize_image_center_points(
-                center_points_adjusted,
-                sigmas,
+            visualize_results(
+                rel_robot_positions=rel_robot_positions[mask],
+                center_points_adjusted=center_points_adjusted[mask],
+                extrinsic_matrix=extrinsic_matrix,
+                intrinsic_matrix=intrinsic_matrix,
+                radii=radii[mask],
+                sigmas=sigmas[mask],
                 image_size_xy=image_size_xy,
-                camera_principal_point=intrinsic_matrix[:2, 2],
-                infinity_point=None,
-                n_distortion_coefs=settings.n_distortion_coefs,
+                back_projected_home_pos=back_projected_home_pos,
+                closest_image_arg=closest_image_arg,
+                n_distortion_coefs=n_dist_coef,
+                debug_nozzle_and_home_pos=debug_nozzle_and_home_pos,
+                residuals=result.fun,
+                all_debug_data_to_store = all_debug_data_to_store,
                 debug_folder=settings.debug_folder,
             )
-            visualize_nozzle_and_home_pos_estimation(debug_nozzle_and_home_pos, debug_folder=settings.debug_folder)
 
     except KeyboardInterrupt:
         print_debug(">>>> Interrupted by user <<<<")

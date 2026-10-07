@@ -103,8 +103,9 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
 
     sign = np.sign(np.mean(all_directions.astype(float)))
     # getting the nozzle end home position in camera coordinate system
-    nozzle_end_home_position = np.dot(extrinsic_matrix[:3, :3], sphere_home_position[:, None]).T[0] + [0, sign*sphere_radius, 0]
+    nozzle_end_home_position = (np.dot(extrinsic_matrix[:3, :3], sphere_home_position[:, None]).T[0]
+                                + [0, sign*sphere_radius, 0])
 
     # converting the nozzle end home position to the robotic arm coordinate system
     nozzle_end_home_position = np.dot(extrinsic_matrix[:3, :3].T, nozzle_end_home_position[:, None]).T[0]
-    return nozzle_end_home_position, n_sigma_est, debug_info
+    return nozzle_end_home_position, sphere_radius*2, debug_info

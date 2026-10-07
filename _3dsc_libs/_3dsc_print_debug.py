@@ -7,6 +7,6 @@ class DebugInfo:
     def __init__(self, debug: bool = False):
         self.debug = debug
 
-    def __call__(self, *text: Any, end: str ='\n'):
-        if self.debug:
-            print(*text, end=end)
+    def __call__(self, *text: Any, end: str ='\n', sep: str = ' ', print_anyway: bool = False) -> None:
+        if self.debug or print_anyway:
+            print(*text, end=end, sep=sep)

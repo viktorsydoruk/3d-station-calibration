@@ -22,19 +22,21 @@ def load_image(image_path: Path) -> tuple[np.ndarray, np.ndarray]:
 def get_bg_value(image_gray: np.ndarray,
                  bg_height_px: int = 300,
                  perc: float = 99.9,
-                 direction: int = 1) -> int:
+                 direction: int = 1,
+                 start_from: int = 10) -> int:
     """
         Get background intensity from image
     :param image_gray: gray-scale image
     :param bg_height_px: background height in pixels from the bottom of the image
     :param perc: percentile of background intensity
     :param direction: direction for calculations
+    :param start_from: starting arg for estimation
     :return:
     """
     bg_std = []
-    for i in range(2, bg_height_px+1, 1):
+    for i in range(start_from, bg_height_px+1, 1):
         bg_std.append(np.std(image_gray[-i:] if direction == 1 else image_gray[:i]))
-    sel_arg = np.argmin(bg_std)+2
+    sel_arg = np.argmin(bg_std) + start_from
     values = image_gray[-sel_arg:] if direction == 1 else image_gray[:sel_arg]
     return np.percentile(values, perc)
 
@@ -292,19 +294,17 @@ def debug_images_storing(filename: Path,
     x_c_pos = kwargs.get('x_c_pos', None)
     y_c_pos = kwargs.get('y_c_pos', None)
     radius = kwargs.get('radius', None)
-    print_cur_ret = kwargs.get('print_cur_ret', print)
     if x_c_pos is not None and y_c_pos is not None:
         cv2.circle(result, (round(x_c_pos), round(y_c_pos)), int(radius), (0, 255, 0), 2)
         cv2.circle(result, (round(x_c_pos), round(y_c_pos)), 3, (0, 0, 255), -1)
     cv2.imwrite(filename, result)
-    print_cur_ret()
 
 
 def filtering_data_by_radius(image_filenames: list[Path],
                              sphere_centers: np.ndarray,
                              sigmas: np.ndarray,
                              radii: np.ndarray,
-                             debug: bool = False,
+                             print_debug: DebugInfo = print,
                              debug_folder: Path | None = None) -> None:
     """
         Filtering data by radius. If estimated sphere radius is out of statistics the values are replaced with np.nan
@@ -312,7 +312,7 @@ def filtering_data_by_radius(image_filenames: list[Path],
     :param sphere_centers:
     :param sigmas:
     :param radii:
-    :param debug:
+    :param print_debug:
     :param debug_folder:
     :return:
     """
@@ -320,7 +320,7 @@ def filtering_data_by_radius(image_filenames: list[Path],
     std_radii = np.nanstd(radii)
     mean_radius = np.nanmean(radii)
     bad_mask = (np.abs(radii - mean_radius) > 2.5*std_radii) & (~np.isnan(sigmas))
-    if debug and debug_folder is not None:
+    if print_debug.debug and debug_folder is not None:
         for each_arg_bad_est in np.arange(len(radii))[bad_mask]:
             _, image_color = load_image(image_filenames[each_arg_bad_est])
             debug_images_storing(
@@ -337,6 +337,7 @@ def filtering_data_by_radius(image_filenames: list[Path],
 def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
                                        bg_height_px: int = 300,
                                        bg_color_est_perc: float = 99.9,
+                                       fixed_bg_threshold: float = 0,
                                        n_mov_aver: int = 11,
                                        sphere_center_to_nozzle_part: float = 0.3,
                                        min_bg_pixels_on_edges: int = 5,
@@ -350,6 +351,7 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
     :param image_filenames: list of the paths to images
     :param bg_height_px: estimated background height at the bottom or at the top of each image
     :param bg_color_est_perc: percentile to estimate the background color
+    :param fixed_bg_threshold: fixed background threshold (if 0 the threshold will be automatically calculated)
     :param n_mov_aver: number of moving average pixels to smooth the intermediate data
     :param sphere_center_to_nozzle_part: part of the sphere between its center and the nozzle that should be taken into account
     :param min_bg_pixels_on_edges: min number of pixels between the edge of the sphere and each edge of the image
@@ -388,11 +390,14 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
 
         # if direction is undefined the measurement should be skipped
         if direction == 0:
-            debug_images_storing(debug_imagefile, image_color, print_cur_ret=print_debug)
+            debug_images_storing(debug_imagefile, image_color)
+            print_debug(f"direction is undefined")
             continue
 
-        # getting the highest background value (allowing only a few pixels to be higher)
-        bg_thr = get_bg_value(image_gray, bg_height_px=bg_height_px, perc=bg_color_est_perc, direction=direction)
+        bg_thr = fixed_bg_threshold
+        if fixed_bg_threshold == 0:
+            # getting the highest background value (allowing only a few pixels to be higher)
+            bg_thr = get_bg_value(image_gray, bg_height_px=bg_height_px, perc=bg_color_est_perc, direction=direction)
         print_debug(f"BG_thr: {bg_thr:0.1f}, ", end="")
 
         # getting forground mask for the nozzle with a ball only (removing the other islands)
@@ -409,7 +414,8 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
 
         # if sphere is not found just continue
         if sphere_params is None:
-            debug_images_storing(debug_imagefile, image_color, print_cur_ret=print_debug)
+            debug_images_storing(debug_imagefile, image_color)
+            print_debug(f"sphere is not found of out of FOV")
             continue
 
         x_c_pos, y_c_pos, radius = sphere_params
@@ -427,8 +433,8 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
 
         # if sigma could not be calculated just continue with another image
         if sigma is None:
-            debug_images_storing(debug_imagefile, image_color, x_c_pos=x_c_pos, y_c_pos=y_c_pos, radius=radius,
-                                 print_cur_ret=print_debug)
+            debug_images_storing(debug_imagefile, image_color, x_c_pos=x_c_pos, y_c_pos=y_c_pos, radius=radius)
+            print_debug(f"border sigma cannot be estimated")
             continue
 
         print_debug(f"sphere center: ({x_c_pos:>07.2f}, {y_c_pos:>07.2f}), radius: {radius:0.2f}, border sigma: {sigma:>5.2f} "
@@ -454,7 +460,7 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
         sphere_centers,
         border_sigmas,
         radii,
-        debug=debug,
+        print_debug=print_debug,
         debug_folder=debug_folder,
     )
 

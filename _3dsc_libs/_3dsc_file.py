@@ -1,10 +1,11 @@
 """Functions to work with files"""
 
-__all__ = ["load_robot_positions", "search_images", "store_all_points", "load_all_points"]
+__all__ = ["load_robot_positions", "search_images", "store_all_points", "load_all_points", "store_calibration"]
 
 from itertools import chain
 from pathlib import Path
 import csv
+import yaml
 
 import numpy as np
 
@@ -29,6 +30,8 @@ def load_robot_positions(file: Path) -> tuple[np.ndarray, list[str]]:
     with file.open(mode="r", newline="") as f:
         reader = csv.reader(f, delimiter=";")
         for row in reader:
+            if "calibration" in row[0]:  # adaptation to the new version of the file, where info line is presented
+                continue
             robot_points = np.append(robot_points, [list(map(float, row[:3]))], axis=0)
             if len(row) > 3:
                 image_names.append(row[3])
@@ -94,4 +97,39 @@ def load_all_points(file: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.
     image_sizes = all_data[:, 7:9]
     directions = all_data[:, 9].astype(np.int8)
     return robot_positions, center_points, radii, sigmas, image_sizes, directions
+
+
+def store_calibration(pos_home: np.ndarray,
+                      intrinsic_matrix: np.ndarray,
+                      extrinsic_matrix: np.ndarray,
+                      distortion_coefficients: np.ndarray,
+                      intrinsic_std: np.ndarray,
+                      rot_vec_std: np.ndarray,
+                      tra_vec_std: np.ndarray,
+                      distortion_std: np.ndarray,
+                      image_xy: tuple[int, int],
+                      model: str = "pinhole",
+                      output_folder: Path = Path('')) -> None:
+    calibration_data = {
+        "nozzle": {
+            "home_position": pos_home.tolist(),
+        },
+        "camera": {
+            "model": model,
+            "resolution": list(image_xy),
+            "intrinsic_matrix": intrinsic_matrix.tolist(),
+            "extrinsic_matrix": extrinsic_matrix.tolist(),
+            "distortion_coefficients": distortion_coefficients.tolist(),
+            "errors": {
+                "intrinsic_std": intrinsic_std.tolist(),
+                "rot_vec_std": rot_vec_std.tolist(),
+                'tra_vec_std': tra_vec_std.tolist(),
+                "distortion_std": distortion_std.tolist(),
+            }
+        }
+     }
+
+    with output_folder.joinpath("calibration_data.yaml").open(mode="w", newline="") as f:
+        yaml.dump(calibration_data, f, sort_keys=False, default_flow_style=False)
+
 

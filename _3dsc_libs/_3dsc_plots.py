@@ -1,7 +1,9 @@
 """Functions to visualize results"""
 
 import matplotlib as mpl
+import matplotlib.tri as tri
 import numpy as np
+from fontTools.misc.plistlib import end_array
 from matplotlib import pyplot as plt
 from pathlib import Path
 
@@ -26,7 +28,8 @@ def visualize_image_center_points(center_points: np.ndarray,
                                   sigmas: np.ndarray,
                                   image_size_xy: tuple[int, int],
                                   camera_principal_point: np.ndarray,
-                                  infinity_point: np.ndarray | None,
+                                  nozzle_home_pos: np.ndarray | None,
+                                  closest_image_arg: int | None,
                                   n_distortion_coefs: int,
                                   debug_folder: Path) -> None:
     apply_own_style_to_mpl()
@@ -38,8 +41,11 @@ def visualize_image_center_points(center_points: np.ndarray,
     plt.axvline(camera_principal_point[0], c='tab:red', linestyle='--', alpha=0.5)
     plt.axhline(camera_principal_point[1], c='tab:red', linestyle='--', alpha=0.5)
 
-    if infinity_point is not None:
-        plt.scatter(*infinity_point, c='tab:red')
+    if nozzle_home_pos is not None:
+        plt.scatter(*nozzle_home_pos, c='tab:red')
+
+    if closest_image_arg is not None:
+        plt.scatter(*center_points[closest_image_arg], c='tab:red', s=10)
 
     plt.gca().xaxis.set_ticks_position('both')
     plt.gca().yaxis.set_ticks_position('both')
@@ -197,3 +203,142 @@ def visualize_sphere_radius_vs_depth(z_pos: np.ndarray,
     plt.tight_layout()
     plt.savefig(debug_folder / f'sphere_diam_rel_error_vs_depth.png')
     plt.close()
+
+def visualize_residuals(residuals: np.ndarray,
+                        center_points_adjusted: np.ndarray,
+                        debug_folder: Path,
+                        image_size_xy: tuple[int, int]) -> None:
+    apply_own_style_to_mpl()
+
+    residuals_xy = residuals.reshape(-1, 2)
+    distance = np.sqrt(np.sum(residuals_xy**2, axis=1))
+    plt.quiver(
+        *center_points_adjusted.T,
+        *residuals_xy.T, distance,
+        angles="xy", scale_units="xy", scale=0.2,
+        cmap='Reds', pivot="middle", width=0.005
+    )
+    plt.xlabel("Image X (px)")
+    plt.ylabel("Image Y (px)")
+
+    plt.xlim(0, image_size_xy[0])
+    plt.ylim(image_size_xy[1], 0)
+
+    cbar = plt.colorbar()
+    cbar.set_label("Residuals distance (px)")
+    plt.tight_layout()
+    plt.savefig(debug_folder / f'2D redidual vectors - {len(center_points_adjusted)} points.png')
+    plt.close()
+
+
+def visualize_debug_data(data: list[list[str | float | np.floating | np.integer]],
+                         debug_folder: Path) -> None:
+    apply_own_style_to_mpl()
+
+    names = data[0]
+    values = np.array(data[1:], dtype=float).T
+
+    plt.errorbar(values[0], values[2], yerr=values[3], label=names[2])
+    plt.errorbar(values[0], values[4], yerr=values[5], label=names[4])
+    plt.xlabel(f"{names[0]}")
+    plt.ylabel(f"Focal length (px)")
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(debug_folder / f'focal length vs number of points.png')
+    plt.close()
+
+    plt.errorbar(values[1], values[2], yerr=values[3], label=names[2])
+    plt.errorbar(values[1], values[4], yerr=values[5], label=names[4])
+    plt.xlabel(f"{names[1]}")
+    plt.ylabel(f"Focal length (px)")
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(debug_folder / f'focal length vs left number of points.png')
+    plt.close()
+
+    plt.errorbar(values[0], values[6], yerr=values[7], label=names[6])
+    plt.xlabel(f"{names[0]}")
+    plt.ylabel(f"{names[6]} (mm)")
+
+    plt.tight_layout()
+    plt.savefig(debug_folder / f'camera distance vs number of points.png')
+    plt.close()
+
+    plt.errorbar(values[1], values[6], yerr=values[7], label=names[6])
+    plt.xlabel(f"{names[1]}")
+    plt.ylabel(f"{names[6]} (mm)")
+
+    plt.tight_layout()
+    plt.savefig(debug_folder / f'camera distance vs left number of points.png')
+    plt.close()
+
+
+    plt.plot(values[0], values[-1], label=names[0])
+    plt.plot(values[1], values[-1], label=names[1])
+    plt.xlabel(f"{names[0]}")
+    plt.ylabel(f"{names[-1]}")
+
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(debug_folder / f'RMSE vs number of points.png')
+    plt.close()
+
+
+def visualize_results(rel_robot_positions: np.ndarray,
+                      center_points_adjusted: np.ndarray,
+                      extrinsic_matrix: np.ndarray,
+                      intrinsic_matrix: np.ndarray,
+                      radii: np.ndarray,
+                      sigmas: np.ndarray,
+                      image_size_xy: tuple[int, int],
+                      back_projected_home_pos: np.ndarray,
+                      closest_image_arg: int,
+                      n_distortion_coefs: int,
+                      debug_nozzle_and_home_pos: dict,
+                      residuals: np.ndarray,
+                      all_debug_data_to_store: list[list[str | float | np.floating | np.integer]],
+                      debug_folder: Path) -> None:
+    visualize_radii(
+        rel_robot_positions,
+        extrinsic_matrix,
+        radii=radii,
+        sigmas=sigmas,
+        debug_folder=debug_folder,
+    )
+
+    visualize_sigmas(
+        rel_robot_positions,
+        extrinsic_matrix,
+        sigmas=sigmas,
+        debug_folder=debug_folder,
+    )
+
+    visualize_image_center_points(
+        center_points_adjusted,
+        sigmas,
+        image_size_xy=image_size_xy,
+        camera_principal_point=intrinsic_matrix[:2, 2],
+        nozzle_home_pos=back_projected_home_pos,
+        closest_image_arg=closest_image_arg,
+        n_distortion_coefs=n_distortion_coefs,
+        debug_folder=debug_folder,
+    )
+
+    visualize_nozzle_and_home_pos_estimation(
+        debug_nozzle_and_home_pos,
+        debug_folder=debug_folder
+    )
+
+    visualize_residuals(
+        residuals,
+        center_points_adjusted,
+        debug_folder=debug_folder,
+        image_size_xy=image_size_xy,
+    )
+
+    visualize_debug_data(
+        all_debug_data_to_store,
+        debug_folder = debug_folder,
+    )

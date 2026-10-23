@@ -146,6 +146,49 @@ def test_session_waits_for_minimum_then_fits(
     assert len(fake_fit.calls[0]["radii"]) == 14
 
 
+def test_session_defers_auto_fit_until_radius_filter_has_enough(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path))
+
+    for index in range(13):
+        assert session.add_observation(_observation(index)) is None
+
+    assert session.can_fit is False
+
+    # The 14th observation is a radius outlier, leaving only 13 for the fit.
+    assert session.add_observation(_observation(13, radius=1000.0)) is None
+    assert session.n_observations == 14
+    assert session.can_fit is True
+    assert session.can_auto_fit is False
+    assert session.fit_count == 0
+    assert session.last_fit_error is None
+
+    # A further valid observation leaves the required 14 after filtering.
+    result = session.add_observation(_observation(14))
+
+    assert result is not None
+    assert session.fit_count == 1
+    assert len(fake_fit.calls[-1]["radii"]) == 14
+
+
+def test_session_finish_reports_too_few_after_radius_filter(
+    tmp_path: Path,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+
+    for index in range(13):
+        session.add_observation(_observation(index))
+    session.add_observation(_observation(13, radius=1000.0))
+
+    with pytest.raises(ValueError, match="after radius filtering, got 13"):
+        session.finish()
+
+    assert session.last_fit_error is not None
+    assert "after radius filtering" in session.last_fit_error
+
+
 def test_session_fit_every_n_and_final_fit(
     tmp_path: Path,
     fake_fit: SimpleNamespace,

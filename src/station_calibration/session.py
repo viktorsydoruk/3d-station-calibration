@@ -33,9 +33,10 @@ class CalibrationSession:
 
         The session is source-agnostic: folder and Ice adapters analyze images and
         feed the resulting observations here. By default one fit is performed as
-        soon as enough observations are available and again after every new valid
-        observation. Set ``fit_every_n`` to a larger number to reduce fit frequency,
-        or to ``None`` to fit only on an explicit ``fit()``/``finish()`` call.
+        soon as enough observations survive the radius filter and again after every
+        new valid observation. Set ``fit_every_n`` to a larger number to reduce fit
+        frequency, or to ``None`` to fit only on an explicit ``fit()``/``finish()``
+        call.
 
         At least ``10 + n_distortion_coefs`` observations are required by default;
         ``min_observations`` can only raise that threshold.
@@ -161,6 +162,36 @@ class CalibrationSession:
         """
         return self.n_observations >= self.min_observations
 
+    def _fit_indices(self,
+                     radii: np.ndarray | None = None,
+                     sigmas: np.ndarray | None = None) -> np.ndarray:
+        """Return observation indices that survive the current radius filter."""
+        if not self._observations:
+            return np.empty(0, dtype=int)
+        if not self.apply_radius_filter:
+            return np.arange(self.n_observations, dtype=int)
+
+        if radii is None:
+            radii = np.array(
+                [observation.radius for observation in self._observations],
+                dtype=np.float64,
+            )
+        if sigmas is None:
+            sigmas = np.array(
+                [observation.sigma for observation in self._observations],
+                dtype=np.float64,
+            )
+
+        return np.flatnonzero(~get_radius_outlier_mask(radii, sigmas))
+
+    @property
+    def can_auto_fit(self) -> bool:
+        """Whether an automatic fit has enough observations after radius filtering."""
+        return (
+            self.can_fit
+            and len(self._fit_indices()) >= self.min_observations
+        )
+
     @property
     def new_observations_since_fit(self) -> int:
         return self._new_since_fit
@@ -263,8 +294,8 @@ class CalibrationSession:
         if fit is None:
             fit = (
                 self.fit_every_n is not None
-                and self.can_fit
                 and self._new_since_fit >= self.fit_every_n
+                and self.can_auto_fit
             )
         if fit:
             return self.fit()
@@ -331,11 +362,7 @@ class CalibrationSession:
                 dtype=np.float64,
             )
 
-            if self.apply_radius_filter:
-                radius_outliers = get_radius_outlier_mask(radii, sigmas)
-                fit_observation_indices = np.flatnonzero(~radius_outliers)
-            else:
-                fit_observation_indices = np.arange(self.n_observations, dtype=int)
+            fit_observation_indices = self._fit_indices(radii, sigmas)
             if len(fit_observation_indices) < self.min_observations:
                 raise ValueError(
                     f"At least {self.min_observations} observations are required "

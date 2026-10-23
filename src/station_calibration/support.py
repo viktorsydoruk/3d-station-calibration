@@ -61,12 +61,41 @@ def intersect_lines(a1, b1, c1, a2, b2, c2):
 
 
 def calculate_errors(result: OptimizeResult) -> np.ndarray:
-    res = result.fun
-    m, n = result.jac.shape
-    sigma2 =  np.sum(res**2) / (m - n)
+    """Estimate one-sigma parameter uncertainties from the fit Jacobian.
 
-    J: np.ndarray  =  result.jac
-    JTJ_inv  =  np.linalg.inv(J.T @ J)
-    cov = JTJ_inv * sigma2
+    The covariance is computed from the pseudoinverse of the Jacobian, so
+    rank-deficient normal equations return finite values instead of raising
+    ``LinAlgError``. When the fit has no residual degrees of freedom, or the
+    residuals/Jacobian are not finite, the uncertainties are undefined and
+    ``nan`` is returned.
+    """
+    residuals = np.asarray(result.fun, dtype=np.float64).reshape(-1)
+    jacobian = np.asarray(result.jac, dtype=np.float64)
 
-    return np.sqrt(np.diag(cov))
+    if jacobian.ndim != 2 or jacobian.shape[0] != residuals.size:
+        raise ValueError(
+            "result.jac must be a 2D array with one row per residual"
+        )
+
+    n_residuals, n_params = jacobian.shape
+    if n_params == 0:
+        return np.empty(0, dtype=np.float64)
+    if n_residuals <= n_params:
+        return np.full(n_params, np.nan, dtype=np.float64)
+    if not np.all(np.isfinite(residuals)) or not np.all(np.isfinite(jacobian)):
+        return np.full(n_params, np.nan, dtype=np.float64)
+
+    sigma2 = float(np.dot(residuals, residuals) / (n_residuals - n_params))
+    if not np.isfinite(sigma2) or sigma2 < 0.0:
+        return np.full(n_params, np.nan, dtype=np.float64)
+
+    try:
+        jacobian_pinv = np.linalg.pinv(jacobian)
+    except np.linalg.LinAlgError:
+        return np.full(n_params, np.nan, dtype=np.float64)
+
+    covariance = sigma2 * (jacobian_pinv @ jacobian_pinv.T)
+    variances = np.diag(covariance)
+    # Round-off can make a numerically zero variance slightly negative.
+    variances = np.where(variances >= 0.0, variances, np.nan)
+    return np.sqrt(variances)

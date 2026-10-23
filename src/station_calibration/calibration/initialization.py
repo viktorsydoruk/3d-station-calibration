@@ -15,6 +15,30 @@ import numpy as np
 from ..support import fit_line_general_form, intersect_lines
 
 
+def _orthonormalize_rotation(matrix: np.ndarray) -> np.ndarray:
+    """Return the closest proper rotation matrix to ``matrix``.
+
+    The correlation matrix used as an initial estimate is not guaranteed to be
+    orthogonal. A polar decomposition via SVD gives the closest orthogonal
+    matrix; the determinant correction removes reflections.
+    """
+    matrix = np.asarray(matrix, dtype=np.float64)
+    if matrix.shape != (3, 3) or not np.all(np.isfinite(matrix)):
+        return np.eye(3, dtype=np.float64)
+
+    try:
+        u, _, vt = np.linalg.svd(matrix)
+    except np.linalg.LinAlgError:
+        return np.eye(3, dtype=np.float64)
+
+    rotation = u @ vt
+    if np.linalg.det(rotation) < 0.0:
+        u = u.copy()
+        u[:, -1] *= -1.0
+        rotation = u @ vt
+    return rotation
+
+
 def estimate_r_initial(robot_positions: np.ndarray,
                        image_center_points: np.ndarray,
                        radii: np.ndarray,
@@ -54,12 +78,36 @@ def estimate_r_initial(robot_positions: np.ndarray,
     :param sigmas: bluring sigmas of spheres edges
     :return: 3x3 rotation matrix
     """
-    camera_points = np.asarray([*image_center_points.T, -(radii-2*sigmas)]).T
+    robot_positions = np.asarray(robot_positions, dtype=np.float64)
+    image_center_points = np.asarray(image_center_points, dtype=np.float64)
+    radii = np.asarray(radii, dtype=np.float64).reshape(-1)
+    sigmas = np.asarray(sigmas, dtype=np.float64).reshape(-1)
 
-    # just use correlation coef as r_initial
+    n_points = len(robot_positions)
+    if (
+        n_points < 3
+        or robot_positions.shape != (n_points, 3)
+        or image_center_points.shape != (n_points, 2)
+        or radii.shape != (n_points,)
+        or sigmas.shape != (n_points,)
+    ):
+        return np.eye(3, dtype=np.float64)
+
+    camera_points = np.column_stack(
+        (image_center_points, -(radii - 2.0 * sigmas))
+    )
+    if (
+        not np.all(np.isfinite(camera_points))
+        or not np.all(np.isfinite(robot_positions))
+        or np.any(np.ptp(camera_points, axis=0) == 0.0)
+        or np.any(np.ptp(robot_positions, axis=0) == 0.0)
+    ):
+        return np.eye(3, dtype=np.float64)
+
+    # Just use the correlation coefficients as the initial estimate, then
+    # project them onto the nearest proper rotation.
     r_initial = np.corrcoef(camera_points.T, robot_positions.T)[:3, 3:]
-
-    return r_initial
+    return _orthonormalize_rotation(r_initial)
 
 
 def extract_z_lines(robot_positions: np.ndarray,
@@ -126,7 +174,7 @@ def make_initial_parameters(focal_length: float = 2000.0,
     params = np.append(params, (0,) * n_distortion_coefs)
 
     # initial rotation
-    rvecs_initial, _ = cv2.Rodrigues(r_initial)
+    rvecs_initial, _ = cv2.Rodrigues(_orthonormalize_rotation(r_initial))
     params = np.append(params, rvecs_initial.ravel())
 
     # initial translation

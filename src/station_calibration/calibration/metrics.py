@@ -19,25 +19,81 @@ from ..support import calculate_errors
 from .model import get_calibration, params_names
 
 
+def _radial_distortion_coefficients(distortion: np.ndarray) -> np.ndarray:
+    """Return k1, k2, k3, k4, k5, k6 from an OpenCV distortion vector."""
+    coefficients = np.asarray(distortion, dtype=np.float64).reshape(-1)
+    if coefficients.size < 8:
+        coefficients = np.pad(coefficients, (0, 8 - coefficients.size))
+    return coefficients[[0, 1, 4, 5, 6, 7]]
+
+
 def check_distortion_monotonicity(distortion: np.ndarray,
                                   intrinsic_matrix: np.ndarray,
                                   image_size_xy: tuple = (2500, 2000),
                                   ) -> bool:
-    """
-        Checking the monotonic behaviour of distortion function 1 + k1*r**2 + k2*r**4 + k3*r**6
-    :param distortion: distortion vector
+    """Check that the radial distortion scale is positive and monotonic.
+
+    OpenCV stores the radial coefficients as ``k1, k2, k3, k4, k5, k6`` at
+    indices 0, 1, 4, 5, 6, and 7. The radial scale is
+
+    ``1 + k1*r**2 + k2*r**4 + ... + k6*r**12``.
+
+    It must remain positive and have a consistent derivative sign over the
+    image domain. Tangential and tilt terms do not enter the radial scale.
+
+    :param distortion: OpenCV distortion vector
     :param intrinsic_matrix: intrinsic matrix
     :param image_size_xy: image size (x, y)
-    :return: boolean value
+    :return: ``True`` when the radial model is usable over the image
     """
-    # defining the max related radius and related radius values
-    r_max = np.sqrt((image_size_xy[0] / 2) ** 2 + (image_size_xy[1] / 2) ** 2) / intrinsic_matrix[0, 0]
-    r_val = np.linspace(0, r_max, 101)
+    distortion = np.asarray(distortion, dtype=np.float64).reshape(-1)
+    intrinsic_matrix = np.asarray(intrinsic_matrix, dtype=np.float64)
 
-    # calculating
-    func_val = 1 + distortion[0] * r_val ** 2 + distortion[1] * r_val ** 4 + distortion[4] * r_val ** 6
-    dfunc_val = np.diff(func_val)
-    return np.all(dfunc_val >= 0) or np.all(dfunc_val <= 0)
+    if distortion.size == 0:
+        return True
+    if not np.all(np.isfinite(distortion)):
+        return False
+    if intrinsic_matrix.shape != (3, 3) or not np.all(np.isfinite(intrinsic_matrix)):
+        return False
+
+    focal_length = abs(float(intrinsic_matrix[0, 0]))
+    width, height = image_size_xy
+    if focal_length == 0.0 or width <= 0 or height <= 0:
+        return False
+
+    r_max = float(np.hypot(width / 2.0, height / 2.0) / focal_length)
+    if not np.isfinite(r_max) or r_max <= 0.0:
+        return False
+
+    k1, k2, k3, k4, k5, k6 = _radial_distortion_coefficients(distortion)
+    r_val = np.linspace(0.0, r_max, 1001)
+    r2 = r_val ** 2
+
+    scale = (
+        1.0
+        + k1 * r2
+        + k2 * r2 ** 2
+        + k3 * r2 ** 3
+        + k4 * r2 ** 4
+        + k5 * r2 ** 5
+        + k6 * r2 ** 6
+    )
+    if not np.all(np.isfinite(scale)) or np.any(scale <= 0.0):
+        return False
+
+    derivative = (
+        2.0 * k1 * r_val
+        + 4.0 * k2 * r_val ** 3
+        + 6.0 * k3 * r_val ** 5
+        + 8.0 * k4 * r_val ** 7
+        + 10.0 * k5 * r_val ** 9
+        + 12.0 * k6 * r_val ** 11
+    )
+    tolerance = max(1e-12, 1e-10 * float(np.max(np.abs(derivative))))
+    return bool(
+        np.all(derivative >= -tolerance)
+        or np.all(derivative <= tolerance)
+    )
 
 
 def calculate_calibration_errors(result: OptimizeResult,
@@ -126,10 +182,30 @@ def back_projected_point(robot_pos: np.ndarray,
 
 def calculate_RMSE(result: OptimizeResult,
                    standardized: bool = True) -> float:
-    res = result.fun
-    mse = np.mean(res**2)
-    rmse = np.sqrt(mse)
-    if standardized:
-        rmse /= len(res)
+    """Return the root-mean-square reprojection error.
 
-    return rmse
+    With ``standardized=False`` the usual RMSE over all residual components is
+    returned. With ``standardized=True`` the sum of squared residuals is divided
+    by the residual degrees of freedom (``m - n``), giving the residual standard
+    error. The standardized value is ``nan`` when no degrees of freedom remain.
+    """
+    residuals = np.asarray(result.fun, dtype=np.float64).reshape(-1)
+    if residuals.size == 0:
+        return float("nan")
+    if not np.all(np.isfinite(residuals)):
+        return float("nan")
+
+    sum_squares = float(np.dot(residuals, residuals))
+    if not standardized:
+        return float(np.sqrt(sum_squares / residuals.size))
+
+    jacobian = np.asarray(result.jac, dtype=np.float64)
+    if jacobian.ndim != 2 or jacobian.shape[0] != residuals.size:
+        raise ValueError(
+            "result.jac must be a 2D array with one row per residual"
+        )
+
+    degrees_of_freedom = residuals.size - jacobian.shape[1]
+    if degrees_of_freedom <= 0:
+        return float("nan")
+    return float(np.sqrt(sum_squares / degrees_of_freedom))

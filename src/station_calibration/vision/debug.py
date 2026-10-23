@@ -19,10 +19,22 @@ def debug_images_storing(filename: Path,
     x_c_pos = kwargs.get('x_c_pos', None)
     y_c_pos = kwargs.get('y_c_pos', None)
     radius = kwargs.get('radius', None)
-    if x_c_pos is not None and y_c_pos is not None:
-        cv2.circle(result, (round(x_c_pos), round(y_c_pos)), int(radius), (0, 255, 0), 2)
-        cv2.circle(result, (round(x_c_pos), round(y_c_pos)), 3, (0, 0, 255), -1)
-    cv2.imwrite(filename, result)
+    target = Path(filename)
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if (
+        x_c_pos is not None
+        and y_c_pos is not None
+        and radius is not None
+        and np.isfinite(x_c_pos)
+        and np.isfinite(y_c_pos)
+        and np.isfinite(radius)
+        and radius >= 0
+    ):
+        center = (int(round(float(x_c_pos))), int(round(float(y_c_pos))))
+        cv2.circle(result, center, int(round(float(radius))), (0, 255, 0), 2)
+        cv2.circle(result, center, 3, (0, 0, 255), -1)
+    cv2.imwrite(str(target), result)
 
 
 def _store_debug_image(debug_imagefile: Path | None,

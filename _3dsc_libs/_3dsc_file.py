@@ -99,7 +99,7 @@ def load_all_points(file: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.
     return robot_positions, center_points, radii, sigmas, image_sizes, directions
 
 
-def store_calibration(pos_home: np.ndarray,
+def store_calibration(nozzle_home_position: np.ndarray,
                       intrinsic_matrix: np.ndarray,
                       extrinsic_matrix: np.ndarray,
                       distortion_coefficients: np.ndarray,
@@ -112,7 +112,7 @@ def store_calibration(pos_home: np.ndarray,
                       output_folder: Path = Path('')) -> None:
     calibration_data = {
         "nozzle": {
-            "home_position": pos_home.tolist(),
+            "home_position": nozzle_home_position.tolist(),
         },
         "camera": {
             "model": model,

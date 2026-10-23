@@ -20,11 +20,11 @@
 """
 
 __author__ = "Viktor Sydoruk"
-__contributors__ = ["Viktor Sydoruk"]
+__contributors__ = ["Viktor Sydoruk", "Blablador"]
 __copyright__ = "Copyright 2026, Forschungszentrum Jülich GmbH"
-__credits__ = ["Viktor Sydoruk", "Andreas Fischbach"]
+__credits__ = ["Viktor Sydoruk", "Andreas Fischbach", "Blablador"]
 __license__ = "Apache 2"
-__version__ = "2026.10"
+__version__ = "2026.10.23.0"
 __maintainer__ = "Viktor Sydoruk"
 __email__ = "v.sydoruk@fz-juelich.de"
 __status__ = "Developments"
@@ -121,7 +121,7 @@ def main(folder_to_analyze: str, **opts) -> None:
         )
 
         store_calibration(
-            pos_home=pos_home,
+            nozzle_home_position=nozzle_end_home_pos,
             intrinsic_matrix=intrinsic_matrix,
             extrinsic_matrix=extrinsic_matrix,
             distortion_coefficients=distortion,
@@ -173,6 +173,7 @@ def main(folder_to_analyze: str, **opts) -> None:
 
     except KeyboardInterrupt:
         print_debug(">>>> Interrupted by user <<<<")
-        exit()
+        raise
     except Exception:
         traceback.print_exc()
+        raise

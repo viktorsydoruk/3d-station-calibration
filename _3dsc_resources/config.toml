@@ -47,9 +47,13 @@ sphere_center_to_nozzle_part = 0.7
 min_bg_pixels_on_edges = 5
 # border thickness of rings on edge of sphere to average to estimate bluring sigma
 blur_est_border_thickness = 2
-# whether to fix principal point of the camera
 
 [analysis.fit]
+# whether to fix principal point of the camera
 fix_cx_cy = true
 # number of distortion coefficients to be taken into account (can be 0, 4, 5, 8, 12, or 14)
 n_distortion_coefs = 4
+# initial focal length in pixels used for the first calibration fit
+focal_length_initial = 2000.0
+# initial camera distance in mm used for the first calibration fit
+camera_distance_initial = 80.0

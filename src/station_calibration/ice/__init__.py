@@ -1,10 +1,25 @@
 # SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
 # SPDX-License-Identifier: Apache-2.0
 
-"""Ice interface adapter, server, and client.
+"""Optional ZeroC Ice transport for the calibration service.
 
-This package intentionally contains transport-level code only. Calibration logic
-belongs to :mod:`station_calibration.session` and
-:mod:`station_calibration.processes`; the Ice adapter translates contract types
-to and from the domain models.
+Importing this package itself does not require Ice. The generated stubs and the
+``zeroc-ice`` runtime are loaded only when a server or client class is requested.
 """
+
+__all__ = [
+    "CalibrationIceClient",
+    "CalibrationIceServant",
+]
+
+
+def __getattr__(name: str):
+    if name == "CalibrationIceServant":
+        from .adapter import CalibrationIceServant
+
+        return CalibrationIceServant
+    if name == "CalibrationIceClient":
+        from .client import CalibrationIceClient
+
+        return CalibrationIceClient
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

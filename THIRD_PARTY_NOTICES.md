@@ -33,6 +33,9 @@ The practical consequences are:
   python -m pip install -e ".[ice]"
   ```
 - Do not vendor Ice into the Apache-2.0 wheel.
+- The optional Python stubs in `src/station_calibration/ice/generated/` are
+  produced by ZeroC's `slice2py`; those generated files retain ZeroC's
+  copyright header and are covered by the Ice license terms.
 - Distributing a bundle, executable, or container that contains Ice still
   triggers GPLv2 obligations for Ice and for the combined distribution. Include
   the GPLv2 text and the corresponding source/notice information for Ice, and

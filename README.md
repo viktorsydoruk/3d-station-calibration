@@ -95,7 +95,7 @@ src/station_calibration/
 ├─ sources/
 │  ├─ base.py             source/dataset protocols
 │  └─ folder.py           folder source adapter
-├─ ice/                   Ice adapter/server/client placeholder
+├─ ice/                   optional Ice adapter, server, client, generated stubs
 └─ resources/
    └─ config.toml         default configuration
 ```
@@ -128,14 +128,31 @@ not count toward the 500-observation stop target.
 
 The old `_3dsc_libs` package is retained as a deprecation shim. It re-exports the
 new `station_calibration` API; new code should import `station_calibration`
-directly. The Ice contract is not implemented yet because the shared
-`CommonPhenoseeder.ice` and `PhytoCommon.ice` files are still required.
+directly.
+
+The optional Ice frontend lives in `station_calibration.ice`. Because the shared
+`CommonPhenoseeder.ice` and `PhytoCommon.ice` files are not part of this
+checkout, `ice/CommonPhenoseeder.ice` and `ice/PhytoCommon.ice` provide local
+compatibility definitions. They are enough for a self-contained server/client
+pair and for testing. For interoperability with the machine that owns the
+production contracts, replace those two files and regenerate the stubs.
 
 Ice is an optional dependency:
 
 ```powershell
 python -m pip install -e ".[ice]"
 ```
+
+Start the server with the calibration folder:
+
+```powershell
+3dsc-ice-server "P:\3Dcalibration\3D_20260824_2,3mm"
+```
+
+The existing `init` operation can receive a TOML configuration file or a
+calibration folder. The folder is a server deployment setting because it is not
+part of the shared wire contract. See `ice/README.md` for generation details and
+the local type-layout assumptions.
 
 ## License
 
@@ -153,4 +170,5 @@ python -m pytest -q
 ```
 
 The suite covers settings, stop policy, the fitting pipeline, the stored-point
-regression fixture, single-image analysis, the session, and the folder source.
+regression fixture, single-image analysis, the session, the folder source, and
+the optional Ice adapter/client when ZeroC Ice is installed.

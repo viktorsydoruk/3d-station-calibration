@@ -18,4 +18,4 @@ if __name__ == '__main__':
     # main(r"P:\3Dcalibration\3D_small20260914random_2")
     # main(r"P:\3Dcalibration\3D_small20260914random_3")
     main(r"P:\3Dcalibration\3D_small_20260929_POM")
-    main(r"P:\3Dcalibration\3D_small_20260929_ceramic")
+    # main(r"P:\3Dcalibration\3D_small_20260929_ceramic")

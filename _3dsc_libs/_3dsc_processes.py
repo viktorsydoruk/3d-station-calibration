@@ -3,8 +3,7 @@
 import numpy as np
 from scipy.optimize import OptimizeResult
 from _3dsc_libs import (Settings, DebugInfo, calibrate_camera, get_calibration, find_robot_home_pos_shift,
-                        adjust_image_center_points, check_distortion_monotonicity, calculate_RMSE, load_all_points,
-                        load_robot_positions, search_images, get_sphere_centers_and_blur_sigmas, store_all_points)
+                        adjust_image_center_points, check_distortion_monotonicity, calculate_RMSE)
 
 
 def _fit_camera(rel_robot_positions: np.ndarray,
@@ -224,67 +223,24 @@ def get_calibration_data(robot_positions: np.ndarray,
 def get_3D_and_2D_data(settings: Settings,
                        print_debug: DebugInfo = DebugInfo()) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, tuple[int, int]]:
     """
+        Compatibility wrapper around the folder source adapter.
 
-    :param settings:
-    :param print_debug:
-    :return:
+        New code should use :func:`create_folder_session` so the fit is performed by
+        :class:`CalibrationSession`; this function remains for callers that only need
+        the filtered arrays.
     """
-    # loading stored data (already analyzed) if needed
-    if settings.load_stored_data and settings.all_center_points_file.exists():
-        robot_positions, center_points, radii, sigmas, image_sizes, all_directions = load_all_points(
-            settings.all_center_points_file,
-        )
+    from ._3dsc_folder import FolderCalibrationSource, observations_to_arrays
 
-    else:
-        # reading the positions of robotic arm
-        robot_positions, imagenames = load_robot_positions(settings.robot_pos_file)
-        print_debug(len(robot_positions), "robot position coordinates are collected")
-
-        # searching for all images
-        all_images_filenames = search_images(
-            settings.main_folder,
-            imagenames,
-            patterns=settings.image_names_patterns,
-            sort_by_mtime=settings.sort_imagenames_by_mtime,
-        )
-        print_debug(len(all_images_filenames), "images are found")
-
-        # getting sphere centers and edge blur sigmas
-        center_points, sigmas, radii, image_sizes, all_directions = get_sphere_centers_and_blur_sigmas(
-            all_images_filenames,
-            bg_height_px=settings.bg_height_pxs,
-            bg_color_est_perc=settings.bg_color_est_perc,
-            fixed_bg_threshold=settings.fixed_bg_threshold,
-            n_mov_aver=settings.n_move_aver,
-            sphere_center_to_nozzle_part=settings.sphere_center_to_nozzle_part,
-            min_bg_pixels_on_edges=settings.min_bg_pixels_on_edges,
-            blur_est_border_thickness=settings.blur_est_border_thickness,
-            print_debug=print_debug,
-            debug_folder=settings.debug_folder,
-            store_debug_images=settings.store_debug_images
-        )
-
-        # storing all points
-        store_all_points(
-            settings.all_center_points_file,
-            robot_positions,
-            center_points,
-            radii,
-            sigmas,
-            image_sizes,
-            all_directions,
-        )
-
-    # creating mask where the spheres were recognized
-    mask = np.logical_and(~np.isnan(sigmas), ~np.isnan(radii))
-
-    image_size_xy = np.flip(np.nanmax(image_sizes, axis=0)).astype(int).tolist()  # a tuple (size_x, size_y)
-
-    center_points = center_points[mask]
-    radii = radii[mask]
-    sigmas = sigmas[mask]
-    robot_positions = robot_positions[mask]
-    all_directions = all_directions[mask]
-
-    return robot_positions, center_points, radii, sigmas, all_directions, image_size_xy
+    dataset = FolderCalibrationSource(settings, print_debug).load()
+    robot_positions, center_points, radii, sigmas, all_directions = (
+        observations_to_arrays(dataset.fit_observations)
+    )
+    return (
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        all_directions,
+        dataset.image_size_xy,
+    )
 

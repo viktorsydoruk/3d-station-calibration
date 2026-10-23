@@ -16,6 +16,8 @@ from typing import Any
 from typing import TypedDict
 from typing import Unpack
 
+from ._3dsc_stop import DEFAULT_TARGET_OBSERVATIONS
+
 
 _MISSING = object()
 
@@ -52,6 +54,8 @@ class PossibleOptions(TypedDict, total=False):
     camera_distance_initial: float
     n_iterations: int
     allowed_outliers: float
+    target_observations: int
+    max_observations: int | None
 
 
 class Settings:
@@ -89,6 +93,8 @@ class Settings:
 
     n_iterations: int
     allowed_outliers: float
+    target_observations: int
+    max_observations: int | None
 
     def __init__(self,
                  folder_to_analyze: str | Path,
@@ -123,6 +129,7 @@ class Settings:
         self._init_background()
         self._init_sphere_projection()
         self._init_fit()
+        self._init_stop()
 
     # -----------------------------------------------------------------
     # Initialization helpers
@@ -301,6 +308,34 @@ class Settings:
             raise ValueError(
                 "camera_distance_initial must be positive, got "
                 f"{self.camera_distance_initial}"
+            )
+
+    def _init_stop(self) -> None:
+        analysis = self._section("analysis")
+        stop = analysis.get("stop", {})
+        if not isinstance(stop, dict):
+            raise TypeError(
+                "Config section '[analysis.stop]' "
+                f"in {self.config_file_path} is not a table"
+            )
+
+        self.target_observations = int(
+            self._get(stop, "target_observations", DEFAULT_TARGET_OBSERVATIONS)
+        )
+        max_observations = self._get(stop, "max_observations", None)
+        self.max_observations = (
+            None if max_observations is None else int(max_observations)
+        )
+
+        if self.target_observations < 1:
+            raise ValueError(
+                "target_observations must be positive, got "
+                f"{self.target_observations}"
+            )
+        if self.max_observations is not None and self.max_observations < 1:
+            raise ValueError(
+                "max_observations must be positive or unset, got "
+                f"{self.max_observations}"
             )
 
     # -----------------------------------------------------------------

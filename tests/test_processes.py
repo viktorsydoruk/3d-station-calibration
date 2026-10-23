@@ -11,7 +11,14 @@ import yaml
 from scipy.optimize import OptimizeResult
 
 import _3dsc_libs._3dsc_processes as processes
-from _3dsc_libs import DebugInfo, Settings, get_calibration_data, load_all_points, store_calibration
+from _3dsc_libs import (
+    CalibrationObservation,
+    DebugInfo,
+    Settings,
+    get_calibration_data,
+    load_all_points,
+    store_calibration,
+)
 
 
 DATA_FILE = Path(__file__).parent / "data" / "CalibrationAllPoints.dat"
@@ -263,36 +270,76 @@ def test_main_stores_nozzle_end_home_position(
 
     robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
     directions = np.ones(len(robot_positions))
+    observations = tuple(
+        CalibrationObservation(
+            robot_position=robot_positions[index],
+            image_center=center_points[index],
+            radius=float(radii[index]),
+            sigma=float(sigmas[index]),
+            direction=int(directions[index]),
+            image_shape=(image_size_xy[1], image_size_xy[0]),
+            source=f"image-{index}",
+        )
+        for index in range(len(robot_positions))
+    )
     pos_home = np.array([1.0, 2.0, 3.0])
     nozzle_home_position = np.array([10.0, 20.0, 30.0])
-    result = OptimizeResult(x=np.zeros(8), fun=np.zeros(4))
+    optimize_result = OptimizeResult(x=np.zeros(8), fun=np.zeros(4))
+    calibration_result = SimpleNamespace(
+        pos_home=pos_home,
+        center_points_adjusted=center_points,
+        intrinsic_matrix=np.eye(3),
+        extrinsic_matrix=np.eye(4),
+        distortion=np.zeros(14),
+        optimize_result=optimize_result,
+        rmse=0.0,
+        fit_mask=np.ones(len(robot_positions), dtype=bool),
+        n_distortion_coefs=0,
+        image_size_xy=image_size_xy,
+        observation_count=len(robot_positions),
+        n_used=len(robot_positions),
+    )
     captured = {}
 
-    def fake_get_3d_and_2d_data(settings, print_debug):
-        return (
-            robot_positions,
-            center_points,
-            radii,
-            sigmas,
-            directions,
-            image_size_xy,
-        )
+    class FakeSource:
+        def __init__(self, settings, print_debug):
+            self.settings = settings
+            self.print_debug = print_debug
 
-    def fake_get_calibration_data(*args, **kwargs):
-        return (
-            pos_home,
-            center_points,
-            np.eye(3),
-            np.eye(4),
-            np.zeros(14),
-            result,
-            0.0,
-            np.ones(len(robot_positions), dtype=bool),
-            0,
-        )
+        def load(self):
+            return SimpleNamespace(
+                observations=observations,
+                rejections=(),
+                apply_radius_filter=False,
+            )
+
+    class FakeSession:
+        def __init__(self, settings, print_debug, *, fit_every_n=None,
+                     apply_radius_filter=True):
+            self.fit_observations = observations
+            self.added_observations = 0
+            captured["session"] = self
+            captured["fit_every_n"] = fit_every_n
+            captured["apply_radius_filter"] = apply_radius_filter
+
+        def add_rejection(self, rejection):
+            pass
+
+        def add_observation(self, observation):
+            self.added_observations += 1
+            if self.added_observations == 20:
+                captured["partial_fits"] = 1
+                return calibration_result
+            return None
+
+        def finish(self):
+            return calibration_result
 
     def fake_get_nozzle_end_home_position(**kwargs):
         return nozzle_home_position, 24.0, {}
+
+    def fake_calculate_errors(result):
+        return np.zeros(len(result.x))
 
     def fake_calculate_calibration_errors(*args, **kwargs):
         return np.zeros((3, 3)), np.zeros(14), np.zeros(3), np.zeros(3)
@@ -300,8 +347,9 @@ def test_main_stores_nozzle_end_home_position(
     def fake_store_calibration(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(app_module, "get_3D_and_2D_data", fake_get_3d_and_2d_data)
-    monkeypatch.setattr(app_module, "get_calibration_data", fake_get_calibration_data)
+    monkeypatch.setattr(app_module, "FolderCalibrationSource", FakeSource)
+    monkeypatch.setattr(app_module, "CalibrationSession", FakeSession)
+    monkeypatch.setattr(app_module, "calculate_errors", fake_calculate_errors)
     monkeypatch.setattr(
         app_module, "get_nozzle_end_home_position", fake_get_nozzle_end_home_position
     )
@@ -314,6 +362,10 @@ def test_main_stores_nozzle_end_home_position(
 
     app_module.main(tmp_path, debug=False)
 
+    assert captured["session"].added_observations == len(observations)
+    assert captured["fit_every_n"] == 20
+    assert captured["apply_radius_filter"] is False
+    assert captured["partial_fits"] == 1
     np.testing.assert_allclose(
         captured["nozzle_home_position"], nozzle_home_position
     )
@@ -326,10 +378,14 @@ def test_main_reraises_pipeline_errors(
 ) -> None:
     import app as app_module
 
-    def fail(*args, **kwargs):
-        raise RuntimeError("boom")
+    class FailSource:
+        def __init__(self, settings, print_debug):
+            pass
 
-    monkeypatch.setattr(app_module, "get_3D_and_2D_data", fail)
+        def load(self):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(app_module, "FolderCalibrationSource", FailSource)
 
     with pytest.raises(RuntimeError, match="boom"):
         app_module.main(tmp_path, debug=False)

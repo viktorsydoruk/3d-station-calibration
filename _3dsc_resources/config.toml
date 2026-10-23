@@ -57,3 +57,9 @@ n_distortion_coefs = 4
 focal_length_initial = 2000.0
 # initial camera distance in mm used for the first calibration fit
 camera_distance_initial = 80.0
+
+[analysis.stop]
+# stop accepting new data once this many valid observations are collected
+target_observations = 500
+# optional hard cap (leave unset to disable)
+# max_observations = 600

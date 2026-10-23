@@ -149,6 +149,8 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.n_distortion_coefs == 4
     assert settings.focal_length_initial == 1800.0
     assert settings.camera_distance_initial == 95.0
+    assert settings.target_observations == 500
+    assert settings.max_observations is None
 
     # The parsed config is exposed as well.
     assert settings.config["analysis"]["n_iterations"] == 3
@@ -166,6 +168,40 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
 
     assert settings.config_file_path == Settings.DEFAULT_CONFIG_FILE
     assert settings.config_file_path.is_absolute()
+    assert settings.target_observations == 500
+
+
+def test_loads_stop_settings_and_overrides(context: ConfigContext) -> None:
+    context.config["analysis.stop"] = {
+        "target_observations": 321,
+        "max_observations": 450,
+    }
+    context.write()
+
+    settings = context.make()
+    assert settings.target_observations == 321
+    assert settings.max_observations == 450
+
+    overridden = context.make(target_observations=200, max_observations=250)
+    assert overridden.target_observations == 200
+    assert overridden.max_observations == 250
+
+
+def test_invalid_stop_settings_raise(context: ConfigContext) -> None:
+    context.config["analysis.stop"] = {"target_observations": 0}
+    context.write()
+
+    with pytest.raises(ValueError, match="target_observations"):
+        context.make()
+
+    context.config["analysis.stop"] = {
+        "target_observations": 500,
+        "max_observations": 0,
+    }
+    context.write()
+
+    with pytest.raises(ValueError, match="max_observations"):
+        context.make()
 
 
 def test_config_file_accepts_string_and_path(context: ConfigContext) -> None:

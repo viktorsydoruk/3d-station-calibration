@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "3dstationcalibration"
-version = "0.1.0"
+version = "2026.10.25"
 description = "Camera and robot calibration for phenoSeeder 3D stations"
 readme = "README.md"
 requires-python = ">=3.13"

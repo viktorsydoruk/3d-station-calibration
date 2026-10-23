@@ -12,7 +12,12 @@ from .models import CalibrationObservation, CalibrationResult, ObservationReject
 from .session import CalibrationSession
 from .settings import Settings
 from .stop import StopReason
-from .vision import ImageAnalysisResult, analyze_image_bytes
+from .vision import (
+    ImageAnalysisResult,
+    analyze_image,
+    analyze_image_bytes,
+    split_image,
+)
 
 
 class CalibrationService:
@@ -86,21 +91,10 @@ class CalibrationService:
         """
         image_index = self._image_index
         self._image_index += 1
-        debug_imagefile = self.settings.debug_folder / f"ice_{image_index:04d}.png"
 
         analysis = analyze_image_bytes(
             image_bytes,
-            bg_height_px=self.settings.bg_height_pxs,
-            bg_color_est_perc=self.settings.bg_color_est_perc,
-            fixed_bg_threshold=self.settings.fixed_bg_threshold,
-            n_mov_aver=self.settings.n_move_aver,
-            sphere_center_to_nozzle_part=self.settings.sphere_center_to_nozzle_part,
-            min_bg_pixels_on_edges=self.settings.min_bg_pixels_on_edges,
-            blur_est_border_thickness=self.settings.blur_est_border_thickness,
-            print_debug=self.print_debug,
-            image_index=image_index,
-            debug_imagefile=debug_imagefile,
-            store_debug_images=self.settings.store_debug_images,
+            **self._analysis_kwargs(image_index),
         )
         return self.add_analysis(
             analysis,
@@ -108,6 +102,51 @@ class CalibrationService:
             source=source,
             fit=fit,
         )
+
+    def add_image_array(self,
+                        image: np.ndarray,
+                        robot_position: np.ndarray,
+                        *,
+                        source: str | None = None,
+                        fit: bool | None = None) -> CalibrationResult | None:
+        """
+            Analyze one raw NumPy image and add it to the calibration session.
+
+            Two-dimensional arrays are interpreted as raw Bayer frames, matching
+            the folder workflow. Three-channel arrays are interpreted as BGR.
+            The robot position must already be expressed in the same coordinate
+            system as the observations produced by the folder workflow.
+        """
+        image_index = self._image_index
+        self._image_index += 1
+        image_gray, image_color = split_image(image)
+
+        analysis = analyze_image(
+            image_gray,
+            image_color,
+            **self._analysis_kwargs(image_index),
+        )
+        return self.add_analysis(
+            analysis,
+            robot_position,
+            source=source,
+            fit=fit,
+        )
+
+    def _analysis_kwargs(self, image_index: int) -> dict:
+        return {
+            "bg_height_px": self.settings.bg_height_pxs,
+            "bg_color_est_perc": self.settings.bg_color_est_perc,
+            "fixed_bg_threshold": self.settings.fixed_bg_threshold,
+            "n_mov_aver": self.settings.n_move_aver,
+            "sphere_center_to_nozzle_part": self.settings.sphere_center_to_nozzle_part,
+            "min_bg_pixels_on_edges": self.settings.min_bg_pixels_on_edges,
+            "blur_est_border_thickness": self.settings.blur_est_border_thickness,
+            "print_debug": self.print_debug,
+            "image_index": image_index,
+            "debug_imagefile": self.settings.debug_folder / f"ice_{image_index:04d}.png",
+            "store_debug_images": self.settings.store_debug_images,
+        }
 
     @property
     def is_ready(self) -> bool:

@@ -68,7 +68,7 @@ src/station_calibration/
 ├─ settings.py            TOML-backed settings
 ├─ models.py              observations, rejections, fit results
 ├─ session.py             source-agnostic incremental calibration session
-├─ service.py             image-bytes -> analysis -> session application service
+├─ service.py             image-bytes/raw arrays -> analysis -> session service
 ├─ stop.py                readiness/stop policy
 ├─ vision/
 │  ├─ models.py           image observation value objects
@@ -110,14 +110,16 @@ from station_calibration import CalibrationService, Settings
 
 service = CalibrationService(Settings(analysis_folder))
 service.add_image_bytes(image_bytes, robot_position)
+# or, for a frontend that already provides a NumPy image:
+service.add_image_array(image_array, robot_position)
 
 if service.is_ready:
     result = service.finish()
 ```
 
-`add_image_bytes` performs the same single-image analysis as folder mode and
-feeds the result into the shared session. Rejected images are recorded but do
-not count toward the 500-observation stop target.
+`add_image_bytes` and `add_image_array` perform the same single-image analysis as
+folder mode and feed the result into the shared session. Rejected images are
+recorded but do not count toward the 500-observation stop target.
 
 ## Ice frontend (optional)
 

@@ -6,6 +6,7 @@
 __all__ = [
     "load_image",
     "decode_image",
+    "split_image",
 ]
 
 from pathlib import Path
@@ -14,7 +15,7 @@ import cv2
 import numpy as np
 
 
-def _split_image(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def split_image(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
         Convert a raw Bayer or color image into gray- and color-scale variants.
 
@@ -45,7 +46,7 @@ def load_image(image_path: Path) -> tuple[np.ndarray, np.ndarray]:
     image = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
     if image is None:
         raise ValueError(f"Could not read image file: {image_path}")
-    return _split_image(image)
+    return split_image(image)
 
 
 def decode_image(image_bytes: bytes) -> tuple[np.ndarray, np.ndarray]:
@@ -59,4 +60,4 @@ def decode_image(image_bytes: bytes) -> tuple[np.ndarray, np.ndarray]:
     )
     if image is None:
         raise ValueError("Could not decode image bytes")
-    return _split_image(image)
+    return split_image(image)

@@ -41,7 +41,9 @@ __all__ = [
     "ImageAnalysisResult",
     "load_image",
     "decode_image",
+    "split_image",
     "analyze_image",
+    "analyze_image_array",
     "analyze_image_bytes",
     "analyze_images",
     "get_sphere_centers_and_blur_sigmas",
@@ -114,6 +116,7 @@ from .vision import (
     SphereObservation,
     adjust_image_center_points,
     analyze_image,
+    analyze_image_array,
     analyze_image_bytes,
     analyze_images,
     decode_image,
@@ -121,6 +124,7 @@ from .vision import (
     get_radius_outlier_mask,
     get_sphere_centers_and_blur_sigmas,
     load_image,
+    split_image,
 )
 from .processes import get_3D_and_2D_data, get_calibration_data
 from .robot import find_robot_home_pos_shift, get_nozzle_end_home_position

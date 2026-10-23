@@ -8,7 +8,9 @@ __all__ = [
     "ImageAnalysisResult",
     "load_image",
     "decode_image",
+    "split_image",
     "analyze_image",
+    "analyze_image_array",
     "analyze_image_bytes",
     "analyze_images",
     "get_sphere_centers_and_blur_sigmas",
@@ -19,6 +21,7 @@ __all__ = [
 
 from .analysis import (
     analyze_image,
+    analyze_image_array,
     analyze_image_bytes,
     analyze_images,
     filtering_data_by_radius,
@@ -26,5 +29,5 @@ from .analysis import (
     get_sphere_centers_and_blur_sigmas,
 )
 from .geometry import adjust_image_center_points
-from .io import decode_image, load_image
+from .io import decode_image, load_image, split_image
 from .models import ImageAnalysisResult, SphereObservation

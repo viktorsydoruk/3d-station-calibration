@@ -15,9 +15,11 @@ import station_calibration.vision.analysis as image_module
 from station_calibration import DebugInfo
 from station_calibration.vision import (
     analyze_image,
+    analyze_image_array,
     analyze_image_bytes,
     decode_image,
     get_sphere_centers_and_blur_sigmas,
+    split_image,
 )
 
 
@@ -101,6 +103,40 @@ def test_analyze_image_bytes_extracts_synthetic_sphere() -> None:
     assert result.observation is not None
     assert result.observation.x == pytest.approx(SYNTHETIC_CENTER[0], abs=2.0)
     assert result.observation.y == pytest.approx(SYNTHETIC_CENTER[1], abs=2.0)
+
+
+def test_split_image_accepts_bgr_array() -> None:
+    _, color_image = _synthetic_image()
+
+    image_gray, image_color = split_image(color_image)
+
+    assert image_gray.shape == color_image.shape[:2]
+    assert image_color.shape == color_image.shape
+    np.testing.assert_array_equal(image_color, color_image)
+
+
+def test_split_image_interprets_2d_array_as_bayer() -> None:
+    bayer = np.random.default_rng(0).integers(
+        0, 255, size=(16, 24), dtype=np.uint8
+    )
+
+    image_gray, image_color = split_image(bayer)
+
+    assert image_gray.shape == (16, 24)
+    assert image_color.shape == (16, 24, 3)
+
+
+def test_analyze_image_array_extracts_synthetic_sphere() -> None:
+    _, color_image = _synthetic_image()
+
+    result = analyze_image_array(color_image, **_analysis_kwargs())
+
+    assert result.reason is None
+    assert result.direction == 1
+    assert result.observation is not None
+    assert result.observation.x == pytest.approx(SYNTHETIC_CENTER[0], abs=2.0)
+    assert result.observation.y == pytest.approx(SYNTHETIC_CENTER[1], abs=2.0)
+    assert result.observation.radius == pytest.approx(SYNTHETIC_RADIUS, abs=5.0)
 
 
 def test_analyze_image_reports_undefined_direction() -> None:

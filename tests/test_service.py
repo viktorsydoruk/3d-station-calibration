@@ -63,6 +63,81 @@ def test_service_analyzes_image_bytes_and_feeds_session(
     assert captured["kwargs"]["print_debug"] is service.print_debug
 
 
+def test_service_analyzes_image_array_and_feeds_session(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    captured = {}
+    image = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    def fake_split(image_array):
+        captured["image"] = image_array
+        return image_array, None
+
+    def fake_analyze(image_gray, image_color, **kwargs):
+        captured["image_gray"] = image_gray
+        captured["image_color"] = image_color
+        captured["kwargs"] = kwargs
+        return ImageAnalysisResult(
+            observation=SphereObservation(600.0, 650.0, 12.0, 1.5),
+            direction=1,
+            image_shape=(4, 4),
+        )
+
+    monkeypatch.setattr(service_module, "split_image", fake_split)
+    monkeypatch.setattr(service_module, "analyze_image", fake_analyze)
+
+    service = CalibrationService(settings, fit_every_n=None)
+    result = service.add_image_array(
+        image,
+        np.array([1.0, 2.0, 3.0]),
+        source="camera-1",
+    )
+
+    assert result is None
+    assert service.session.n_observations == 1
+    observation = service.session.observations[0]
+    assert observation.robot_position.tolist() == [1.0, 2.0, 3.0]
+    assert observation.source == "camera-1"
+
+    np.testing.assert_array_equal(captured["image"], image)
+    assert captured["image_color"] is None
+    assert captured["kwargs"]["image_index"] == 0
+    assert captured["kwargs"]["debug_imagefile"] == settings.debug_folder / "ice_0000.png"
+    assert captured["kwargs"]["print_debug"] is service.print_debug
+
+
+def test_service_tracks_rejected_image_arrays(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+
+    def fake_split(image_array):
+        return image_array, None
+
+    def fake_analyze(image_gray, image_color, **kwargs):
+        return ImageAnalysisResult(
+            observation=None,
+            direction=0,
+            image_shape=(4, 4),
+            reason="direction is undefined",
+        )
+
+    monkeypatch.setattr(service_module, "split_image", fake_split)
+    monkeypatch.setattr(service_module, "analyze_image", fake_analyze)
+
+    service = CalibrationService(settings, fit_every_n=None)
+    service.add_image_array(np.zeros((4, 4, 3), np.uint8), np.zeros(3), source="camera-1")
+    service.add_image_array(np.zeros((4, 4, 3), np.uint8), np.zeros(3), source="camera-1")
+
+    assert service.session.n_observations == 0
+    assert service.session.n_rejections == 2
+    assert service.session.rejections[0].reason == "direction is undefined"
+    assert service.session.rejections[1].source == "camera-1"
+
+
 def test_service_tracks_rejected_images(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

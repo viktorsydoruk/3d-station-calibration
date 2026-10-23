@@ -5,6 +5,7 @@
 
 __all__ = [
     "analyze_image",
+    "analyze_image_array",
     "analyze_image_bytes",
     "get_radius_outlier_mask",
     "filtering_data_by_radius",
@@ -26,7 +27,7 @@ from .detection import (
     get_blur_sigma,
     get_forground_mask,
 )
-from .io import decode_image, load_image
+from .io import decode_image, load_image, split_image
 from .models import ImageAnalysisResult, SphereObservation
 
 
@@ -147,6 +148,17 @@ def analyze_image(image_gray: np.ndarray,
         direction,
         image_shape,
     )
+
+
+def analyze_image_array(image: np.ndarray, **kwargs) -> ImageAnalysisResult:
+    """Analyze a raw NumPy image array.
+
+    Two-dimensional arrays are interpreted as raw Bayer frames, matching the
+    calibration camera. Three- and four-channel arrays are interpreted as BGR
+    and BGRA respectively.
+    """
+    image_gray, image_color = split_image(image)
+    return analyze_image(image_gray, image_color, **kwargs)
 
 
 def analyze_image_bytes(image_bytes: bytes, **kwargs) -> ImageAnalysisResult:

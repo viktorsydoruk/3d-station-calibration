@@ -6,14 +6,14 @@
 import numpy as np
 from scipy.optimize import OptimizeResult
 
-from .camera import (
+from .calibration import (
     calculate_RMSE,
     calibrate_camera,
     check_distortion_monotonicity,
     get_calibration,
 )
 from .debug import DebugInfo
-from .image import adjust_image_center_points
+from .vision import adjust_image_center_points
 from .robot import find_robot_home_pos_shift
 from .settings import Settings
 

@@ -5,8 +5,10 @@
 
 The package is arranged around a source-agnostic calibration session. Folder and
 Ice frontends analyze images, produce observations, and feed them into the same
-session. The numerical pipeline remains in :mod:`station_calibration.processes`,
-:mod:`station_calibration.camera`, and related modules.
+session. Image analysis lives in :mod:`station_calibration.vision`, the camera
+model and fit in :mod:`station_calibration.calibration`, and input/output in
+:mod:`station_calibration.storage`. The iterative pipeline remains in
+:mod:`station_calibration.processes`.
 
 The public API is re-exported here explicitly so callers do not depend on the
 internal module layout.
@@ -85,7 +87,7 @@ __all__ = [
     "visualize_results",
 ]
 
-from .camera import (
+from .calibration import (
     back_projected_point,
     calculate_RMSE,
     calculate_calibration_errors,
@@ -95,14 +97,19 @@ from .camera import (
     print_calibration,
 )
 from .debug import DebugInfo
-from .file import (
+from .models import (
+    CalibrationObservation,
+    CalibrationResult,
+    ObservationRejection,
+)
+from .storage import (
     load_all_points,
     load_robot_positions,
     search_images,
     store_all_points,
     store_calibration,
 )
-from .image import (
+from .vision import (
     ImageAnalysisResult,
     SphereObservation,
     adjust_image_center_points,
@@ -114,11 +121,6 @@ from .image import (
     get_radius_outlier_mask,
     get_sphere_centers_and_blur_sigmas,
     load_image,
-)
-from .models import (
-    CalibrationObservation,
-    CalibrationResult,
-    ObservationRejection,
 )
 from .processes import get_3D_and_2D_data, get_calibration_data
 from .robot import find_robot_home_pos_shift, get_nozzle_end_home_position

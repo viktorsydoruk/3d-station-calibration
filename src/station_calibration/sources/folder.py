@@ -18,15 +18,15 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..debug import DebugInfo
-from ..file import load_all_points, load_robot_positions, search_images, store_all_points
-from ..image import (
+from ..models import CalibrationObservation, ObservationRejection
+from ..session import CalibrationSession
+from ..settings import Settings
+from ..storage import load_all_points, load_robot_positions, search_images, store_all_points
+from ..vision import (
     analyze_images,
     filtering_data_by_radius,
     get_radius_outlier_mask,
 )
-from ..models import CalibrationObservation, ObservationRejection
-from ..session import CalibrationSession
-from ..settings import Settings
 from .base import ObservationDataset
 
 

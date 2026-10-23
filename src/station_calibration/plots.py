@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def apply_own_style_to_mpl(font_size: float = 8) -> None:
-    """Applying a specific style for plotting TODO put here all the styles that should be modified"""
+    """Apply the shared Matplotlib style used by calibration plots."""
     mpl.rcParams['font.size'] = font_size
     mpl.rcParams['text.color'] = '#68686C'
     mpl.rcParams['legend.fontsize'] = font_size

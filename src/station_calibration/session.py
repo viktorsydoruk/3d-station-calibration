@@ -16,7 +16,6 @@ __all__ = [
 import numpy as np
 
 from .debug import DebugInfo
-from .image import ImageAnalysisResult, get_radius_outlier_mask
 from .models import (
     CalibrationObservation,
     CalibrationResult,
@@ -25,6 +24,7 @@ from .models import (
 from .processes import get_calibration_data
 from .settings import Settings
 from .stop import StopPolicy, StopReason, StopStatus
+from .vision import ImageAnalysisResult, get_radius_outlier_mask
 
 
 class CalibrationSession:

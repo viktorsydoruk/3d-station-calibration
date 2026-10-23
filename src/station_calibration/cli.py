@@ -14,13 +14,12 @@ import traceback
 
 import numpy as np
 
-from .camera import (
+from .calibration import (
     back_projected_point,
     calculate_calibration_errors,
     print_calibration,
 )
 from .debug import DebugInfo
-from .file import store_calibration
 from .plots import visualize_results
 from .robot import get_nozzle_end_home_position
 from .session import CalibrationSession
@@ -29,6 +28,7 @@ from .sources.folder import (
     FolderCalibrationSource,
     observations_to_arrays,
 )
+from .storage import store_calibration
 from .support import calculate_errors
 
 

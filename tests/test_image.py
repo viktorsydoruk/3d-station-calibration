@@ -11,9 +11,9 @@ import cv2
 import numpy as np
 import pytest
 
-import station_calibration.image as image_module
+import station_calibration.vision.analysis as image_module
 from station_calibration import DebugInfo
-from station_calibration.image import (
+from station_calibration.vision import (
     analyze_image,
     analyze_image_bytes,
     decode_image,

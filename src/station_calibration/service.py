@@ -8,11 +8,11 @@ __all__ = ["CalibrationService"]
 import numpy as np
 
 from .debug import DebugInfo
-from .image import ImageAnalysisResult, analyze_image_bytes
 from .models import CalibrationObservation, CalibrationResult, ObservationRejection
 from .session import CalibrationSession
 from .settings import Settings
 from .stop import StopReason
+from .vision import ImageAnalysisResult, analyze_image_bytes
 
 
 class CalibrationService:

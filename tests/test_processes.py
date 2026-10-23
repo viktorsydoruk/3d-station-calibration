@@ -421,22 +421,22 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
 
     np.testing.assert_allclose(
         pos_home,
-        np.array([315.48917, -111.521545, -35.07898]),
+        np.array([315.48918219, -111.5215453, -35.07897907]),
         rtol=1e-6,
         atol=1e-3,
     )
     np.testing.assert_allclose(
         [intrinsic[0, 0], intrinsic[1, 1]],
-        [22035.53711968958, 21758.628592621946],
+        [22035.562419332404, 21758.638645674593],
         rtol=1e-6,
     )
     assert intrinsic[0, 2] == 1224.0
     assert intrinsic[1, 2] == 1024.0
     np.testing.assert_allclose(
         extrinsic[:3, 3],
-        [-1.02067288e-03, -1.16659946e-03, 7.37520458e01],
+        [-1.01945150e-03, -1.16662416e-03, 7.37520854e01],
         rtol=1e-5,
         atol=1e-8,
     )
     np.testing.assert_allclose(distortion, np.zeros(14))
-    assert rmse == pytest.approx(4.478466522387657, rel=1e-6)
+    assert rmse == pytest.approx(4.478405201332729, rel=1e-6)

@@ -72,12 +72,25 @@ src/station_calibration/
 ├─ session.py             source-agnostic incremental calibration session
 ├─ service.py             image-bytes -> analysis -> session application service
 ├─ stop.py                readiness/stop policy
-├─ image.py               single-image and batch sphere analysis
-├─ camera.py              camera model and numerical fit helpers
+├─ vision/
+│  ├─ models.py           image observation value objects
+│  ├─ io.py               image loading/decoding
+│  ├─ detection.py        sphere detection and blur estimation
+│  ├─ debug.py            debug-image rendering
+│  ├─ analysis.py         single-image and batch analysis
+│  └─ geometry.py         image-point geometry helpers
+├─ calibration/
+│  ├─ initialization.py   initial rotation and parameter packing
+│  ├─ model.py            camera model, projection, and unwrapping
+│  ├─ fit.py              least-squares camera fit
+│  └─ metrics.py          diagnostics, uncertainty, and reporting
+├─ storage/
+│  ├─ inputs.py           robot CSV and image discovery
+│  ├─ points.py           point-cache serialization
+│  └─ results.py          calibration-result YAML
 ├─ processes.py           iterative calibration pipeline
 ├─ robot.py               robot geometry and nozzle home estimation
 ├─ support.py             line geometry and parameter uncertainty
-├─ file.py                robot CSV, point cache, and YAML storage
 ├─ plots.py               optional debug/reporting plots
 ├─ sources/
 │  ├─ base.py             source/dataset protocols
@@ -86,6 +99,9 @@ src/station_calibration/
 └─ resources/
    └─ config.toml         default configuration
 ```
+
+The original top-level modules `image.py`, `camera.py`, and `file.py` remain as
+deprecated compatibility shims that re-export the new subpackages.
 
 The core rule is that `CalibrationSession` does not depend on the folder layout
 or on Ice. A frontend analyzes an image, creates a `CalibrationObservation` (or

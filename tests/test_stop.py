@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from _3dsc_libs import StopPolicy, StopReason
+from station_calibration import StopPolicy, StopReason
 
 
 def test_default_policy_targets_500_valid_observations() -> None:

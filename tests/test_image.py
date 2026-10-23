@@ -8,9 +8,9 @@ import cv2
 import numpy as np
 import pytest
 
-import _3dsc_libs._3dsc_image as image_module
-from _3dsc_libs import DebugInfo
-from _3dsc_libs._3dsc_image import (
+import station_calibration.image as image_module
+from station_calibration import DebugInfo
+from station_calibration.image import (
     analyze_image,
     analyze_image_bytes,
     decode_image,

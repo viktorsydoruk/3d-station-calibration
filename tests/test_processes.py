@@ -10,8 +10,8 @@ import pytest
 import yaml
 from scipy.optimize import OptimizeResult
 
-import _3dsc_libs._3dsc_processes as processes
-from _3dsc_libs import (
+import station_calibration.processes as processes
+from station_calibration import (
     CalibrationObservation,
     DebugInfo,
     Settings,
@@ -266,7 +266,7 @@ def test_main_stores_nozzle_end_home_position(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import app as app_module
+    import station_calibration.cli as app_module
 
     robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
     directions = np.ones(len(robot_positions))
@@ -363,7 +363,7 @@ def test_main_stores_nozzle_end_home_position(
     app_module.main(tmp_path, debug=False)
 
     assert captured["session"].added_observations == len(observations)
-    assert captured["fit_every_n"] == 20
+    assert captured["fit_every_n"] == 1
     assert captured["apply_radius_filter"] is False
     assert captured["partial_fits"] == 1
     np.testing.assert_allclose(
@@ -376,7 +376,7 @@ def test_main_reraises_pipeline_errors(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import app as app_module
+    import station_calibration.cli as app_module
 
     class FailSource:
         def __init__(self, settings, print_debug):

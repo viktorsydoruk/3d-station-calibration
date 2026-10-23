@@ -9,8 +9,8 @@ import numpy as np
 import pytest
 from scipy.optimize import OptimizeResult
 
-import _3dsc_libs._3dsc_session as session_module
-from _3dsc_libs import (
+import station_calibration.session as session_module
+from station_calibration import (
     CalibrationObservation,
     CalibrationSession,
     ImageAnalysisResult,

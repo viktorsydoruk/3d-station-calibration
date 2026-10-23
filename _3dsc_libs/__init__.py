@@ -1,12 +1,15 @@
-from ._3dsc_file import *
-from ._3dsc_image import *
-from ._3dsc_camera import *
-from ._3dsc_plots import *
-from ._3dsc_support import *
-from ._3dsc_settings import *
-from ._3dsc_robot import *
-from ._3dsc_print_debug import *
-from ._3dsc_processes import *
-from ._3dsc_stop import *
-from ._3dsc_session import *
-from ._3dsc_folder import *
+"""Deprecated compatibility package.
+
+All implementation now lives in :mod:`station_calibration`. Import from that
+package in new code. This package remains as a thin re-export shim so existing
+scripts and tests continue to work during the migration.
+"""
+
+import sys
+from pathlib import Path
+
+_SRC = Path(__file__).resolve().parent.parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+
+from station_calibration import *  # noqa: E402,F401,F403

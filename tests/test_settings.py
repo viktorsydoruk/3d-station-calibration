@@ -1,4 +1,4 @@
-"""Unit tests for _3dsc_libs._3dsc_settings.Settings."""
+"""Unit tests for station_calibration.settings.Settings."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from _3dsc_libs._3dsc_settings import Settings
+from station_calibration.settings import Settings
 
 
 # Minimal but complete config used by most tests. Values intentionally differ
@@ -159,7 +159,7 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
 def test_default_config_file_is_absolute_and_exists() -> None:
     assert Settings.DEFAULT_CONFIG_FILE.is_absolute()
     assert Settings.DEFAULT_CONFIG_FILE.is_file()
-    assert Settings.DEFAULT_CONFIG_FILE.parent.name == "_3dsc_resources"
+    assert Settings.DEFAULT_CONFIG_FILE.parent.name == "resources"
     assert Settings.DEFAULT_CONFIG_FILE.name == "config.toml"
 
 

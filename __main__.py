@@ -1,21 +1,13 @@
-""" Here is the main source where the app is started
+"""Compatibility entry point for ``python -m`` from the project root."""
 
-    created 31.08.2026
-"""
+import sys
+from pathlib import Path
 
-from app import main
+_SRC = Path(__file__).resolve().parent / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
-if __name__ == '__main__':
-    # main(r"P:/3Dcalibration/3D_20260821")
-    # main(r"P:/3Dcalibration/3D_20260821_2")
-    # main(r"P:/3Dcalibration/3D_20260821_2mm")
-    # main(r"P:/3Dcalibration/3D_20260824_2,3mm")
-    # main(r"P:/3Dcalibration/3D_20260831")
-    # main(r"P:/3Dcalibration/3D_oldbigseeds")
-    # main(r"P:/3Dcalibration/3D_oldbigseeds_2")
-    # main(r"P:/3Dcalibration/3D_oldsmallseeds")
-    # main(r"P:/3Dcalibration/3D_oldsmallseeds_2")
-    # main(r"P:\3Dcalibration\3D_small20260914random_2")
-    # main(r"P:\3Dcalibration\3D_small20260914random_3")
-    main(r"P:\3Dcalibration\3D_small_20260929_POM")
-    # main(r"P:\3Dcalibration\3D_small_20260929_ceramic")
+from station_calibration.cli import run_cli  # noqa: E402
+
+if __name__ == "__main__":
+    run_cli()

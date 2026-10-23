@@ -5,7 +5,10 @@
 from __future__ import annotations
 import IcePy
 
+from CommonPhenoseeder.vecOfDoubles import _CommonPhenoseeder_vecOfDoubles_t
+
 from dataclasses import dataclass
+from dataclasses import field
 
 
 @dataclass
@@ -15,20 +18,12 @@ class intrinsicParams:
     -----
         The Slice compiler generated this dataclass from Slice struct ``::Phyto::Common::intrinsicParams``.
     """
-    fx: float = 0.0
-    fy: float = 0.0
-    cx: float = 0.0
-    cy: float = 0.0
+    matrix: list[float] = field(default_factory=list)
 
 _Phyto_Common_intrinsicParams_t = IcePy.defineStruct(
     "::Phyto::Common::intrinsicParams",
     intrinsicParams,
     (),
-    (
-        ("fx", (), IcePy._t_double),
-        ("fy", (), IcePy._t_double),
-        ("cx", (), IcePy._t_double),
-        ("cy", (), IcePy._t_double)
-    ))
+    (("matrix", (), _CommonPhenoseeder_vecOfDoubles_t),))
 
 __all__ = ["intrinsicParams", "_Phyto_Common_intrinsicParams_t"]

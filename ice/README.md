@@ -30,10 +30,7 @@ Phyto::Common::imageData
     int channels
 
 Phyto::Common::intrinsicParams
-    double fx
-    double fy
-    double cx
-    double cy
+    CommonPhenoseeder::vecOfDoubles matrix   (row-major 3x3)
 
 Phyto::Common::extrinsicParams
     CommonPhenoseeder::vecOfDoubles rotation   (row-major 3x3)
@@ -77,7 +74,8 @@ The existing `init` operation accepts:
 
 ## Return conventions
 
-- `getIntrinsic`: `fx`, `fy`, `cx`, `cy`; the error sequence uses the same order.
+- `getIntrinsic`: full 3x3 intrinsic matrix; the error sequence contains nine
+  row-major one-sigma values, with zero for structurally fixed entries.
 - `getExtrinsic`: row-major 3x3 rotation followed by the translation; the error
   sequence is `r1, r2, r3, t1, t2, t3`.
 - `getDistortion`: only the active `n_distortion_coefs` values; the error

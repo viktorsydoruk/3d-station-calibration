@@ -178,8 +178,8 @@ def run_cli(argv: list[str] | None = None) -> None:
         extrinsic, extrinsic_error = client.get_extrinsic()
         distortion, distortion_error = client.get_distortion()
         nozzle = client.get_optimal_nozzle_position()
-        print(f"intrinsic: fx={intrinsic.fx} fy={intrinsic.fy} "
-              f"cx={intrinsic.cx} cy={intrinsic.cy}")
+        intrinsic_matrix = np.asarray(intrinsic.matrix, dtype=np.float64).reshape(3, 3)
+        print(f"intrinsic:\n{intrinsic_matrix}")
         print(f"intrinsic error: {intrinsic_error}")
         print(f"rotation: {extrinsic.rotation}")
         print(f"translation: {extrinsic.translation}")

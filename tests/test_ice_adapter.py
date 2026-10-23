@@ -106,9 +106,13 @@ def _make_servant(tmp_path, monkeypatch) -> tuple[CalibrationIceServant, FakeSer
         lambda **kwargs: (np.array([7.0, 8.0, 9.0]), 2.0, {}),
     )
 
+    def _factory(settings):
+        settings.fix_cx_cy = False
+        return service
+
     servant = CalibrationIceServant(
         tmp_path,
-        service_factory=lambda settings: service,
+        service_factory=_factory,
     )
     return servant, service
 
@@ -117,11 +121,12 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     servant, service = _make_servant(tmp_path, monkeypatch)
 
     intrinsic, intrinsic_error = servant.getIntrinsic()
-    assert intrinsic.fx == pytest.approx(100.0)
-    assert intrinsic.fy == pytest.approx(200.0)
-    assert intrinsic.cx == pytest.approx(10.0)
-    assert intrinsic.cy == pytest.approx(20.0)
-    assert intrinsic_error == pytest.approx([1.0, 3.0, 2.0, 4.0])
+    assert intrinsic.matrix == pytest.approx(
+        [100.0, 0.0, 10.0, 0.0, 200.0, 20.0, 0.0, 0.0, 1.0]
+    )
+    assert intrinsic_error == pytest.approx(
+        [1.0, 0.0, 2.0, 0.0, 3.0, 4.0, 0.0, 0.0, 0.0]
+    )
 
     extrinsic, extrinsic_error = servant.getExtrinsic()
     assert extrinsic.rotation == pytest.approx(np.eye(3).reshape(-1).tolist())
@@ -178,8 +183,14 @@ def test_ice_round_trip(tmp_path, monkeypatch) -> None:
             client.init(None)
             assert client.is_ready() is True
             intrinsic, intrinsic_error = client.get_intrinsic()
-            assert intrinsic.fx == pytest.approx(100.0)
-            assert intrinsic_error == pytest.approx([1.0, 3.0, 2.0, 4.0])
+            intrinsic_matrix = np.asarray(intrinsic.matrix, dtype=np.float64).reshape(3, 3)
+            assert intrinsic_matrix[0, 0] == pytest.approx(100.0)
+            assert intrinsic_matrix[1, 1] == pytest.approx(200.0)
+            assert intrinsic_matrix[0, 2] == pytest.approx(10.0)
+            assert intrinsic_matrix[1, 2] == pytest.approx(20.0)
+            assert intrinsic_error == pytest.approx(
+                [1.0, 0.0, 2.0, 0.0, 3.0, 4.0, 0.0, 0.0, 0.0]
+            )
 
             client.add_image(b"remote-image", (1.0, 2.0, 3.0))
             assert service.images[-1][0] == b"remote-image"

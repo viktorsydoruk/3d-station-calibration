@@ -27,10 +27,8 @@ module Phyto
 
         struct intrinsicParams
         {
-            double fx;
-            double fy;
-            double cx;
-            double cy;
+            // Row-major 3x3 intrinsic matrix.
+            CommonPhenoseeder::vecOfDoubles matrix;
         };
 
         struct extrinsicParams

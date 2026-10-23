@@ -112,25 +112,15 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             return bool(self._require_service().is_ready)
 
     def getIntrinsic(self, current: Any = None) -> tuple[intrinsicParams, list[float]]:
-        """Return fx, fy, cx, cy and their one-sigma uncertainties."""
+        """Return the 3x3 intrinsic matrix and row-major one-sigma uncertainties."""
         with self._lock:
             result = self._current_result()
-            intrinsic_std, _, _, _ = self._calibration_errors(result)
-            intrinsic = result.intrinsic_matrix
-            error = [
-                float(intrinsic_std[0, 0]),
-                float(intrinsic_std[1, 1]),
-                float(intrinsic_std[0, 2]),
-                float(intrinsic_std[1, 2]),
-            ]
+            intrinsic = np.asarray(result.intrinsic_matrix, dtype=np.float64).reshape(3, 3)
             return (
                 intrinsicParams(
-                    fx=float(intrinsic[0, 0]),
-                    fy=float(intrinsic[1, 1]),
-                    cx=float(intrinsic[0, 2]),
-                    cy=float(intrinsic[1, 2]),
+                    matrix=[float(value) for value in intrinsic.reshape(-1)]
                 ),
-                error,
+                self._intrinsic_error_sequence(result),
             )
 
     def getExtrinsic(self,
@@ -264,6 +254,17 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             fix_cx_cy=settings.fix_cx_cy,
             n_distortion_coefs=result.n_distortion_coefs,
         )
+
+    def _intrinsic_error_sequence(self, result: CalibrationResult) -> list[float]:
+        """Return one-sigma uncertainties for the 3x3 intrinsic matrix, row-major."""
+        intrinsic_std, _, _, _ = self._calibration_errors(result)
+        error = np.zeros((3, 3), dtype=np.float64)
+        error[0, 0] = intrinsic_std[0, 0]
+        error[1, 1] = intrinsic_std[1, 1]
+        if not self._require_settings().fix_cx_cy:
+            error[0, 2] = intrinsic_std[0, 2]
+            error[1, 2] = intrinsic_std[1, 2]
+        return [float(value) for value in error.reshape(-1)]
 
     def _estimate_nozzle_position(
         self,

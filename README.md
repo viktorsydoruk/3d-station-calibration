@@ -31,8 +31,6 @@ The equivalent module entry point is:
 python -m station_calibration "P:\3Dcalibration\3D_example"
 ```
 
-`app.py` and `python __main__.py` remain available as compatibility entry points.
-
 Useful options:
 
 ```text
@@ -100,9 +98,6 @@ src/station_calibration/
    └─ config.toml         default configuration
 ```
 
-The original top-level modules `image.py`, `camera.py`, and `file.py` remain as
-deprecated compatibility shims that re-export the new subpackages.
-
 The core rule is that `CalibrationSession` does not depend on the folder layout
 or on Ice. A frontend analyzes an image, creates a `CalibrationObservation` (or
 an `ImageAnalysisResult` plus robot position), and feeds it to the session. The
@@ -124,13 +119,9 @@ if service.is_ready:
 feeds the result into the shared session. Rejected images are recorded but do
 not count toward the 500-observation stop target.
 
-## Compatibility
+## Ice frontend (optional)
 
-The old `_3dsc_libs` package is retained as a deprecation shim. It re-exports the
-new `station_calibration` API; new code should import `station_calibration`
-directly.
-
-The optional Ice frontend lives in `station_calibration.ice`. Because the shared
+The Ice frontend lives in `station_calibration.ice`. Because the shared
 `CommonPhenoseeder.ice` and `PhytoCommon.ice` files are not part of this
 checkout, `ice/CommonPhenoseeder.ice` and `ice/PhytoCommon.ice` provide local
 compatibility definitions. They are enough for a self-contained server/client

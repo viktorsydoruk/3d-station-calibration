@@ -21,6 +21,7 @@ from station_calibration.vision import (
     get_sphere_centers_and_blur_sigmas,
     split_image,
 )
+from station_calibration.vision.detection import get_bg_value
 
 
 SYNTHETIC_CENTER = (600.0, 650.0)
@@ -137,6 +138,77 @@ def test_analyze_image_array_extracts_synthetic_sphere() -> None:
     assert result.observation.x == pytest.approx(SYNTHETIC_CENTER[0], abs=2.0)
     assert result.observation.y == pytest.approx(SYNTHETIC_CENTER[1], abs=2.0)
     assert result.observation.radius == pytest.approx(SYNTHETIC_RADIUS, abs=5.0)
+
+
+def _reference_get_bg_value(
+    image: np.ndarray,
+    bg_height_px: int,
+    direction: int,
+    perc: float = 99.9,
+    start_from: int = 10,
+) -> float:
+    bg_std = [
+        np.std(image[-i:] if direction == 1 else image[:i])
+        for i in range(start_from, bg_height_px + 1)
+    ]
+    sel_arg = int(np.argmin(bg_std) + start_from)
+    values = image[-sel_arg:] if direction == 1 else image[:sel_arg]
+    return float(np.percentile(values, perc))
+
+
+@pytest.mark.parametrize("direction", [1, -1])
+@pytest.mark.parametrize("bg_height_px", [10, 25, 80])
+def test_get_bg_value_matches_reference(
+    direction: int,
+    bg_height_px: int,
+) -> None:
+    rng = np.random.default_rng(0)
+    image = rng.integers(0, 255, size=(50, 40), dtype=np.uint8)
+    start_from = 5
+
+    expected = _reference_get_bg_value(
+        image,
+        bg_height_px=bg_height_px,
+        direction=direction,
+        start_from=start_from,
+    )
+    actual = get_bg_value(
+        image,
+        bg_height_px=bg_height_px,
+        direction=direction,
+        start_from=start_from,
+    )
+
+    assert actual == pytest.approx(expected, rel=1e-10, abs=1e-8)
+
+
+def test_get_bg_value_handles_background_larger_than_image() -> None:
+    rng = np.random.default_rng(1)
+    image = rng.integers(0, 255, size=(5, 4), dtype=np.uint8)
+
+    expected = _reference_get_bg_value(
+        image,
+        bg_height_px=20,
+        direction=1,
+        start_from=10,
+    )
+    actual = get_bg_value(
+        image,
+        bg_height_px=20,
+        direction=1,
+        start_from=10,
+    )
+
+    assert actual == pytest.approx(expected, rel=1e-10, abs=1e-8)
+
+
+def test_get_bg_value_rejects_invalid_arguments() -> None:
+    image = np.zeros((10, 10), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="bg_height_px"):
+        get_bg_value(image, bg_height_px=4, direction=1, start_from=5)
+    with pytest.raises(ValueError, match="direction"):
+        get_bg_value(image, bg_height_px=10, direction=0, start_from=5)
 
 
 def test_analyze_image_reports_undefined_direction() -> None:

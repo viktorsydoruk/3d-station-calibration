@@ -24,6 +24,7 @@ class FakeService:
         self.last_result = _fake_result()
         self.ready = True
         self.images: list[tuple[bytes, np.ndarray, str | None]] = []
+        self.error_calls: list[int] = []
         self.session = SimpleNamespace(fit_observations=[object()])
 
     @property
@@ -73,10 +74,9 @@ def _fake_result():
 def _make_servant(tmp_path, monkeypatch) -> tuple[CalibrationIceServant, FakeService]:
     service = FakeService()
 
-    monkeypatch.setattr(
-        adapter_module,
-        "calculate_calibration_errors",
-        lambda *args, **kwargs: (
+    def fake_calculate_errors(*args, **kwargs):
+        service.error_calls.append(1)
+        return (
             np.array(
                 [
                     [1.0, 0.0, 2.0],
@@ -87,7 +87,12 @@ def _make_servant(tmp_path, monkeypatch) -> tuple[CalibrationIceServant, FakeSer
             np.arange(14, dtype=np.float64) * 0.1,
             np.array([0.1, 0.2, 0.3]),
             np.array([0.4, 0.5, 0.6]),
-        ),
+        )
+
+    monkeypatch.setattr(
+        adapter_module,
+        "calculate_calibration_errors",
+        fake_calculate_errors,
     )
     monkeypatch.setattr(
         adapter_module,
@@ -136,6 +141,7 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     distortion, distortion_error = servant.getDistortion()
     assert distortion == pytest.approx([0.0, 1.0, 2.0, 3.0])
     assert distortion_error == pytest.approx([0.0, 0.1, 0.2, 0.3])
+    assert len(service.error_calls) == 1
 
     nozzle = servant.getOptimalNozzlePosition()
     assert (nozzle.x, nozzle.y, nozzle.z) == pytest.approx((7.0, 8.0, 9.0))

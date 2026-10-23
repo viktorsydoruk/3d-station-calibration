@@ -71,6 +71,8 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         self._settings: Settings | None = None
         self._nozzle_cache_key: tuple[int, int, int] | None = None
         self._nozzle_cache: np.ndarray | None = None
+        self._error_cache_result: Any | None = None
+        self._error_cache_value: tuple[np.ndarray, ...] | None = None
         self._initialize(None)
 
     # ------------------------------------------------------------------
@@ -219,6 +221,8 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         self._service = service
         self._nozzle_cache_key = None
         self._nozzle_cache = None
+        self._error_cache_result = None
+        self._error_cache_value = None
 
     def _require_service(self) -> Any:
         if self._service is None:
@@ -248,12 +252,18 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         self,
         result: CalibrationResult,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        if self._error_cache_result is result and self._error_cache_value is not None:
+            return self._error_cache_value
+
         settings = self._require_settings()
-        return calculate_calibration_errors(
+        value = calculate_calibration_errors(
             result.optimize_result,
             fix_cx_cy=settings.fix_cx_cy,
             n_distortion_coefs=result.n_distortion_coefs,
         )
+        self._error_cache_result = result
+        self._error_cache_value = value
+        return value
 
     def _intrinsic_error_sequence(self, result: CalibrationResult) -> list[float]:
         """Return one-sigma uncertainties for the 3x3 intrinsic matrix, row-major."""

@@ -25,7 +25,7 @@ def get_bg_value(image_gray: np.ndarray,
                  bg_height_px: int = 300,
                  perc: float = 99.9,
                  direction: int = 1,
-                 start_from: int = 10) -> int:
+                 start_from: int = 10) -> float:
     """
         Get background intensity from image
     :param image_gray: gray-scale image
@@ -35,12 +35,57 @@ def get_bg_value(image_gray: np.ndarray,
     :param start_from: starting arg for estimation
     :return:
     """
-    bg_std = []
-    for i in range(start_from, bg_height_px+1, 1):
-        bg_std.append(np.std(image_gray[-i:] if direction == 1 else image_gray[:i]))
-    sel_arg = np.argmin(bg_std) + start_from
-    values = image_gray[-sel_arg:] if direction == 1 else image_gray[:sel_arg]
-    return np.percentile(values, perc)
+    image_gray = np.asarray(image_gray)
+    if image_gray.ndim != 2 or image_gray.shape[1] == 0:
+        raise ValueError("image_gray must be a non-empty 2D array")
+    if direction == 1:
+        band = image_gray[::-1, :]
+    elif direction == -1:
+        band = image_gray
+    else:
+        raise ValueError("direction must be either 1 or -1")
+    if start_from < 1:
+        raise ValueError("start_from must be positive")
+    if bg_height_px < start_from:
+        raise ValueError("bg_height_px must be at least start_from")
+
+    n_rows, width = band.shape
+    max_rows = min(int(bg_height_px), n_rows)
+    if max_rows <= 0:
+        raise ValueError("image_gray must contain at least one row")
+
+    band = band[:max_rows]
+    row_sums = band.sum(axis=1, dtype=np.float64)
+    row_sum_squares = np.einsum(
+        "ij,ij->i", band, band, dtype=np.float64, optimize=True
+    )
+    prefix_sums = np.cumsum(row_sums, dtype=np.float64)
+    prefix_sum_squares = np.cumsum(row_sum_squares, dtype=np.float64)
+    counts = np.arange(1, max_rows + 1, dtype=np.float64) * width
+    means = prefix_sums / counts
+    variances = prefix_sum_squares / counts - means * means
+    prefix_stds = np.sqrt(np.maximum(variances, 0.0))
+
+    if max_rows < start_from:
+        sel_arg = int(start_from)
+    else:
+        if int(bg_height_px) <= max_rows:
+            candidate_stds = prefix_stds[start_from - 1:int(bg_height_px)]
+        else:
+            candidate_stds = np.concatenate(
+                (
+                    prefix_stds[start_from - 1:max_rows],
+                    np.full(
+                        int(bg_height_px) - max_rows,
+                        prefix_stds[-1],
+                        dtype=np.float64,
+                    ),
+                )
+            )
+        sel_arg = int(np.argmin(candidate_stds) + start_from)
+
+    values = band[: min(sel_arg, max_rows)]
+    return np.percentile(values.reshape(-1), perc)
 
 
 def estimate_direction(image_gray: np.ndarray,
@@ -174,13 +219,40 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
         x_0 = sphere_hor_coords[0, 0]
         x_e = sphere_hor_coords[-1, 0]
 
+        band_rows = y_e - y_0
+        if band_rows <= 0:
+            return None
+
         all_coords = np.argwhere(forground_mask[y_0:y_e+1, x_0:x_e+1])
-        all_sel_x = np.empty(0)
-        all_sel_y = np.empty(0)
-        for i in range(y_e - y_0):
-            sel_coords = all_coords[all_coords[:, 0] == i]
-            all_sel_y = np.append(all_sel_y, (y_0 + i, y_0 + i))
-            all_sel_x = np.append(all_sel_x, (sel_coords[0, 1] + x_0, sel_coords[-1, 1] + x_0))
+        if all_coords.size == 0:
+            return None
+
+        # The original loop processes rows 0..band_rows-1 and ignores the last
+        # row of the slice, so keep that behavior.
+        row_ids = all_coords[:, 0]
+        col_ids = all_coords[:, 1]
+        valid = row_ids < band_rows
+        if not np.any(valid):
+            return None
+        row_ids = row_ids[valid]
+        col_ids = col_ids[valid]
+
+        row_counts = np.bincount(row_ids, minlength=band_rows)
+        if np.any(row_counts == 0):
+            return None
+
+        left = np.full(band_rows, np.iinfo(col_ids.dtype).max, dtype=col_ids.dtype)
+        right = np.full(band_rows, np.iinfo(col_ids.dtype).min, dtype=col_ids.dtype)
+        np.minimum.at(left, row_ids, col_ids)
+        np.maximum.at(right, row_ids, col_ids)
+
+        row_offset = np.arange(band_rows, dtype=np.float64)
+        all_sel_x = np.empty(2 * band_rows, dtype=np.float64)
+        all_sel_y = np.empty(2 * band_rows, dtype=np.float64)
+        all_sel_x[0::2] = left.astype(np.float64) + x_0
+        all_sel_x[1::2] = right.astype(np.float64) + x_0
+        all_sel_y[0::2] = y_0 + row_offset
+        all_sel_y[1::2] = y_0 + row_offset
 
         return fit_circle(all_sel_x, all_sel_y)
     except:

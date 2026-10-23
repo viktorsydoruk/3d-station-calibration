@@ -99,13 +99,29 @@ def check_distortion_monotonicity(distortion: np.ndarray,
 def calculate_calibration_errors(result: OptimizeResult,
                                  fix_cx_cy: bool = False,
                                  n_distortion_coefs: int = 5) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    intrinsic_std, distortion_std, rot_vec_std, extrinsic_std = get_calibration(
-        calculate_errors(result),
-        image_size_xy=(0, 0),
-        fix_cx_cy=fix_cx_cy,
-        n_distortion_coefs=n_distortion_coefs
-    )
-    return intrinsic_std, distortion_std, rot_vec_std, extrinsic_std[:3, 3]
+    errors = np.asarray(calculate_errors(result), dtype=np.float64).reshape(-1)
+
+    intrinsic_std = np.zeros((3, 3), dtype=np.float64)
+    intrinsic_std[2, 2] = 1.0
+    intrinsic_std[0, 0] = errors[0]
+    intrinsic_std[1, 1] = errors[1]
+
+    offset = 2
+    if not fix_cx_cy:
+        intrinsic_std[0, 2] = errors[2]
+        intrinsic_std[1, 2] = errors[3]
+        offset = 4
+
+    n_distortion_coefs = int(n_distortion_coefs)
+    distortion_std = np.zeros(14, dtype=np.float64)
+    distortion_std[:n_distortion_coefs] = errors[offset:offset + n_distortion_coefs]
+    offset += n_distortion_coefs
+
+    rot_vec_std = errors[offset:offset + 3].copy()
+    offset += 3
+    tra_vec_std = errors[offset:offset + 3].copy()
+
+    return intrinsic_std, distortion_std, rot_vec_std, tra_vec_std
 
 
 def print_calibration(result: OptimizeResult,

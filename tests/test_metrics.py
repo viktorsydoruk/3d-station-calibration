@@ -12,9 +12,11 @@ from scipy.optimize import OptimizeResult
 
 from station_calibration import (
     calculate_RMSE,
+    calculate_calibration_errors,
     calculate_errors,
     check_distortion_monotonicity,
 )
+import station_calibration.calibration.metrics as metrics_module
 from station_calibration.calibration.initialization import (
     estimate_r_initial,
     make_initial_parameters,
@@ -85,6 +87,54 @@ def test_calculate_errors_returns_nan_without_degrees_of_freedom() -> None:
 def test_calculate_errors_rejects_mismatched_jacobian() -> None:
     with pytest.raises(ValueError, match="one row per residual"):
         calculate_errors(_result([1.0, 2.0], np.eye(3)))
+
+
+def test_calculate_calibration_errors_maps_free_principal_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    errors = np.arange(15, dtype=np.float64)
+    monkeypatch.setattr(metrics_module, "calculate_errors", lambda result: errors)
+
+    intrinsic_std, distortion_std, rot_vec_std, tra_vec_std = (
+        calculate_calibration_errors(
+            None,  # type: ignore[arg-type]
+            fix_cx_cy=False,
+            n_distortion_coefs=5,
+        )
+    )
+
+    np.testing.assert_allclose(
+        intrinsic_std,
+        [[0.0, 0.0, 2.0], [0.0, 1.0, 3.0], [0.0, 0.0, 1.0]],
+    )
+    np.testing.assert_allclose(distortion_std[:5], [4.0, 5.0, 6.0, 7.0, 8.0])
+    np.testing.assert_allclose(distortion_std[5:], 0.0)
+    np.testing.assert_allclose(rot_vec_std, [9.0, 10.0, 11.0])
+    np.testing.assert_allclose(tra_vec_std, [12.0, 13.0, 14.0])
+
+
+def test_calculate_calibration_errors_maps_fixed_principal_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    errors = np.arange(12, dtype=np.float64)
+    monkeypatch.setattr(metrics_module, "calculate_errors", lambda result: errors)
+
+    intrinsic_std, distortion_std, rot_vec_std, tra_vec_std = (
+        calculate_calibration_errors(
+            None,  # type: ignore[arg-type]
+            fix_cx_cy=True,
+            n_distortion_coefs=4,
+        )
+    )
+
+    np.testing.assert_allclose(
+        intrinsic_std,
+        [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+    )
+    np.testing.assert_allclose(distortion_std[:4], [2.0, 3.0, 4.0, 5.0])
+    np.testing.assert_allclose(distortion_std[4:], 0.0)
+    np.testing.assert_allclose(rot_vec_std, [6.0, 7.0, 8.0])
+    np.testing.assert_allclose(tra_vec_std, [9.0, 10.0, 11.0])
 
 
 def test_calculate_RMSE_plain_and_standardized() -> None:

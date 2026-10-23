@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Compatibility entry point for the folder calibration workflow.
 
 New code should import :func:`station_calibration.cli.main` directly.

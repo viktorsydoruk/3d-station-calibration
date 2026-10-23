@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Project-root compatibility marker.
 
 The actual library lives in ``src/station_calibration``. This file only keeps

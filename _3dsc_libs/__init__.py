@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Deprecated compatibility package.
 
 All implementation now lives in :mod:`station_calibration`. Import from that

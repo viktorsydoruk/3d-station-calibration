@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Folder-based source adapter for the shared calibration session."""
 
 from __future__ import annotations

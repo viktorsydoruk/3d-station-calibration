@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Tests for single-image analysis and the batch wrapper."""
 
 from __future__ import annotations

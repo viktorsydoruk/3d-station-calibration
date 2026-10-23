@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """ Here is the settings class for 3D station calibration software
 
     This class consists all the parameters needed to properly run all parts of calibration routine.

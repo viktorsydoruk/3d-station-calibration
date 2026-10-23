@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """3D station calibration library.
 
 The package is arranged around a source-agnostic calibration session. Folder and

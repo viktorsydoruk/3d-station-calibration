@@ -1,35 +1,12 @@
 #!/usr/bin/env python3
-"""3D Station calibration routine
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+"""Folder calibration workflow and command-line entry point.
 
-    The new automatic routine to calibrate 3D stations in phenoSeeder. A white ball (preferable POM) is placed at
-    different positions in front of the camera. Using the images intrinsic and extrinsic matrices can be calculated.
-
-    Copyright 2026 Forschungszentrum Jülich GmbH
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
-
-        https://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
+The workflow analyzes a folder of sphere images, feeds the observations into the
+shared calibration session, and writes the calibration result below the analysis
+folder. The heavy lifting lives in the session and numerical pipeline modules.
 """
-
-__author__ = "Viktor Sydoruk"
-__contributors__ = ["Viktor Sydoruk", "Blablador"]
-__copyright__ = "Copyright 2026, Forschungszentrum Jülich GmbH"
-__credits__ = ["Viktor Sydoruk", "Andreas Fischbach", "Blablador"]
-__license__ = "Apache 2"
-__version__ = "2026.10.23.1"
-__maintainer__ = "Viktor Sydoruk"
-__email__ = "v.sydoruk@fz-juelich.de"
-__status__ = "Developments"
-__date__ = "01.10.2026"
-
 
 import argparse
 from pathlib import Path

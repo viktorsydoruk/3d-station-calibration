@@ -8,15 +8,28 @@ version = "0.1.0"
 description = "Camera and robot calibration for phenoSeeder 3D stations"
 readme = "README.md"
 requires-python = ">=3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Viktor Sydoruk", email = "v.sydoruk@fz-juelich.de" },
+]
+maintainers = [
+    { name = "Viktor Sydoruk", email = "v.sydoruk@fz-juelich.de" },
+]
 dependencies = [
-    "ipykernel>=7.3.0",
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
     "opencv-python>=5.0.0.93",
     "pyyaml>=6.0.3",
     "scipy>=1.18.1",
-    "scipy-stubs~=1.18.1",
+]
+
+[project.optional-dependencies]
+ice = [
     "zeroc-ice>=3.8.3",
+]
+notebooks = [
+    "ipykernel>=7.3.0",
 ]
 
 [project.scripts]
@@ -25,6 +38,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "scipy-stubs~=1.18.1",
 ]
 
 [tool.pytest.ini_options]
@@ -39,5 +53,7 @@ include = [
     "src/station_calibration",
     "tests",
     "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "pyproject.toml",
 ]

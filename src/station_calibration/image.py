@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Functions to work with images"""
 
 __all__ = ["load_image", "decode_image", "analyze_image", "analyze_image_bytes",

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Ice interface adapter, server, and client.
 
 This package intentionally contains transport-level code only. Calibration logic

@@ -115,6 +115,21 @@ new `station_calibration` API; new code should import `station_calibration`
 directly. The Ice contract is not implemented yet because the shared
 `CommonPhenoseeder.ice` and `PhytoCommon.ice` files are still required.
 
+Ice is an optional dependency:
+
+```powershell
+python -m pip install -e ".[ice]"
+```
+
+## License
+
+This project is licensed under the Apache License 2.0. See `LICENSE`.
+
+The runtime dependencies are permissive, except for ZeroC Ice, which is
+GPL-2.0-only with a ZeroC exception permitting combination with Apache-2.0
+software. Ice is kept in an optional extra and should not be vendored into the
+Apache-2.0 package. See `THIRD_PARTY_NOTICES.md` for details.
+
 ## Tests
 
 ```powershell

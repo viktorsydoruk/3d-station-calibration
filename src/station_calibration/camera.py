@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
 """Function to estimate camera intrinsics and robot -> camera extrinsics"""
 
 __all__ = ["print_calibration", "get_calibration", "calibrate_camera", "check_distortion_monotonicity",

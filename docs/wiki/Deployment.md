@@ -125,6 +125,18 @@ from a user profile or a mapped network drive.
 New-Item -ItemType Directory -Force C:\3DSC | Out-Null
 # Copy or clone the project into C:\3DSC\app
 ```
+To clone using git, first install git.
+```powershell
+winget install --id Git.Git -e
+```
+Clone from the main
+```powershell
+git clone <repository_url> C:\3DSC\app
+```
+or selected branch
+```powershell
+git clone --branch <branch_name> <repository_url> C:\3DSC\app
+```
 
 ### 3. Create the virtual environment and install
 

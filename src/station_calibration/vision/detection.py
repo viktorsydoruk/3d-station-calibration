@@ -126,6 +126,9 @@ def get_forground_mask(image_gray: np.ndarray,
     )
 
     cnts, _ = cv2.findContours(forground_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    if not cnts:
+        return np.zeros_like(image_gray, dtype=bool)
+
     cnt = max(cnts, key=cv2.contourArea)
 
     forground_mask[:] = 0
@@ -180,6 +183,8 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
     """
     if direction not in [1, -1]:
         raise ValueError('direction must be either 1 or -1')
+    if not np.any(forground_mask):
+        return None
 
     try:
         # count the forground pixels in rows
@@ -255,7 +260,7 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
         all_sel_y[1::2] = y_0 + row_offset
 
         return fit_circle(all_sel_x, all_sel_y)
-    except:
+    except Exception:  # noqa: BLE001 - degenerate masks mean no detection
         return None
 
 
@@ -356,7 +361,7 @@ def get_blur_sigma(image_gray: np.ndarray,
 
         # Gaussian fit
         _, _, sigma = gaussian_fit(x, dif)
-    except:
+    except Exception:  # noqa: BLE001 - a failed fit means no usable sigma
         return None
 
     return np.abs(sigma)

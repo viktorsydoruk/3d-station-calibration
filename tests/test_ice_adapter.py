@@ -14,6 +14,7 @@ import pytest
 Ice = pytest.importorskip("Ice")
 
 import station_calibration.ice.adapter as adapter_module  # noqa: E402
+import station_calibration.service as service_module  # noqa: E402
 from station_calibration.ice.adapter import CalibrationIceServant  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
 from station_calibration.ice.images import (  # noqa: E402
@@ -180,6 +181,38 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     np.testing.assert_array_equal(image, frame)
     np.testing.assert_allclose(robot_position, [4.0, 5.0, 6.0])
     assert source == "ice"
+
+
+def test_adapter_add_data_turns_analysis_failure_into_rejection(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(service_module, "split_image", lambda image: (image, None))
+
+    def fail_analysis(image_gray, image_color, **kwargs):
+        raise RuntimeError("bad frame")
+
+    monkeypatch.setattr(service_module, "analyze_image", fail_analysis)
+
+    servant = CalibrationIceServant(tmp_path)
+    frame = np.zeros((2, 3), dtype=np.uint8)
+
+    servant.addData(
+        Point(x=1.0, y=2.0, z=3.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+
+    service = servant._require_service()
+    assert service.session.n_observations == 0
+    assert service.session.n_rejections == 1
+    assert "image analysis failed" in service.session.rejections[0].reason
 
 
 def test_adapter_init_accepts_folder(tmp_path, monkeypatch) -> None:

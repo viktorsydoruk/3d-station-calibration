@@ -5,6 +5,8 @@
 
 __all__ = ["CalibrationService"]
 
+from collections.abc import Callable
+
 import numpy as np
 
 from .debug import DebugInfo
@@ -92,12 +94,11 @@ class CalibrationService:
         image_index = self._image_index
         self._image_index += 1
 
-        analysis = analyze_image_bytes(
-            image_bytes,
-            **self._analysis_kwargs(image_index),
-        )
-        return self.add_analysis(
-            analysis,
+        return self._analyze_and_add(
+            lambda: analyze_image_bytes(
+                image_bytes,
+                **self._analysis_kwargs(image_index),
+            ),
             robot_position,
             source=source,
             fit=fit,
@@ -119,13 +120,39 @@ class CalibrationService:
         """
         image_index = self._image_index
         self._image_index += 1
-        image_gray, image_color = split_image(image)
 
-        analysis = analyze_image(
-            image_gray,
-            image_color,
-            **self._analysis_kwargs(image_index),
+        def analyze() -> ImageAnalysisResult:
+            image_gray, image_color = split_image(image)
+            return analyze_image(
+                image_gray,
+                image_color,
+                **self._analysis_kwargs(image_index),
+            )
+
+        return self._analyze_and_add(
+            analyze,
+            robot_position,
+            source=source,
+            fit=fit,
         )
+
+    def _analyze_and_add(self,
+                         analyze: Callable[[], ImageAnalysisResult],
+                         robot_position: np.ndarray,
+                         *,
+                         source: str | None,
+                         fit: bool | None) -> CalibrationResult | None:
+        """Analyze one frame, converting analysis failures into rejections."""
+        try:
+            analysis = analyze()
+        except Exception as exc:  # noqa: BLE001 - bad frames must not abort the RPC
+            reason = f"image analysis failed: {type(exc).__name__}: {exc}"
+            self.print_debug(reason)
+            self.add_rejection(
+                ObservationRejection(reason=reason, source=source)
+            )
+            return None
+
         return self.add_analysis(
             analysis,
             robot_position,

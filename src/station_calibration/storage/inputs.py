@@ -8,10 +8,10 @@ __all__ = [
     "search_images",
 ]
 
+import csv
 from itertools import chain
 from pathlib import Path
 
-import csv
 import numpy as np
 
 
@@ -25,23 +25,41 @@ def load_robot_positions(file: Path) -> tuple[np.ndarray, list[str]]:
     if not file.exists():
         raise FileNotFoundError(f"File {file} does not exist")
 
-    # robot_points = np.loadtxt(
-    #     file,
-    #     delimiter=";",
-    #     dtype=float
-    # )
-    robot_points = np.empty((0, 3), dtype=float)
-    image_names = []
+    robot_points: list[list[float]] = []
+    image_names: list[str] = []
     with file.open(mode="r", newline="") as f:
         reader = csv.reader(f, delimiter=";")
-        for row in reader:
-            if "calibration" in row[0]:  # adaptation to the new version of the file, where info line is presented
+        for line_number, row in enumerate(reader, start=1):
+            if not row or not any(value.strip() for value in row):
                 continue
-            robot_points = np.append(robot_points, [list(map(float, row[:3]))], axis=0)
-            if len(row) > 3:
-                image_names.append(row[3])
 
-    return robot_points, image_names
+            first_value = row[0].strip()
+            if "calibration" in first_value.lower():
+                # Older files start with an informational calibration line.
+                continue
+
+            if len(row) < 3:
+                raise ValueError(
+                    f"Invalid robot position at line {line_number}: "
+                    f"expected at least 3 fields, got {len(row)}"
+                )
+
+            try:
+                x, y, z = (float(value.strip()) for value in row[:3])
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid robot position at line {line_number}: "
+                    "the first three fields must be numeric"
+                ) from exc
+
+            robot_points.append([x, y, z])
+            if len(row) > 3:
+                image_names.append(row[3].strip())
+
+    if not robot_points:
+        return np.empty((0, 3), dtype=float), image_names
+
+    return np.asarray(robot_points, dtype=float), image_names
 
 
 def search_images(image_folder: Path,

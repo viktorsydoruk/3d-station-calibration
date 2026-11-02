@@ -8,8 +8,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
-from station_calibration.storage import load_all_points, store_all_points
+from station_calibration.storage import (
+    load_all_points,
+    load_robot_positions,
+    store_all_points,
+)
 
 
 def test_point_cache_round_trip_preserves_float64(tmp_path: Path) -> None:
@@ -55,3 +60,32 @@ def test_point_cache_round_trip_preserves_float64(tmp_path: Path) -> None:
     np.testing.assert_array_equal(loaded[3], sigmas)
     np.testing.assert_array_equal(loaded[4], image_sizes)
     np.testing.assert_array_equal(loaded[5], directions)
+
+
+def test_load_robot_positions_skips_blank_and_comment_lines(tmp_path: Path) -> None:
+    position_file = tmp_path / "positions.csv"
+    position_file.write_text(
+        "Calibration info\n"
+        "\n"
+        "1.0;2.0;3.0;image_0001.tif\n"
+        "   \n"
+        "4.5;5.5;6.5;image_0002.tif\n"
+        "7;8;9;image_0003.tif\n",
+        encoding="utf-8",
+    )
+
+    positions, image_names = load_robot_positions(position_file)
+
+    np.testing.assert_allclose(
+        positions,
+        [[1.0, 2.0, 3.0], [4.5, 5.5, 6.5], [7.0, 8.0, 9.0]],
+    )
+    assert image_names == ["image_0001.tif", "image_0002.tif", "image_0003.tif"]
+
+
+def test_load_robot_positions_reports_malformed_row(tmp_path: Path) -> None:
+    position_file = tmp_path / "positions.csv"
+    position_file.write_text("1.0;2.0\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="line 1"):
+        load_robot_positions(position_file)

@@ -164,6 +164,36 @@ def test_service_tracks_rejected_images(
     assert service.session.rejections[1].source == "camera-1"
 
 
+def test_service_turns_analysis_exception_into_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+
+    monkeypatch.setattr(service_module, "split_image", lambda image: (image, None))
+
+    def fake_analyze(image_gray, image_color, **kwargs):
+        raise RuntimeError("bad frame")
+
+    monkeypatch.setattr(service_module, "analyze_image", fake_analyze)
+
+    service = CalibrationService(settings, fit_every_n=None)
+    result = service.add_image_array(
+        np.zeros((4, 4), dtype=np.uint8),
+        np.zeros(3),
+        source="camera-1",
+    )
+
+    assert result is None
+    assert service.session.n_observations == 0
+    assert service.session.n_rejections == 1
+    rejection = service.session.rejections[0]
+    assert "image analysis failed" in rejection.reason
+    assert "RuntimeError" in rejection.reason
+    assert "bad frame" in rejection.reason
+    assert rejection.source == "camera-1"
+
+
 def test_service_delegates_readiness_and_stop_request(tmp_path: Path) -> None:
     service = CalibrationService(_settings(tmp_path), fit_every_n=None)
 

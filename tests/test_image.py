@@ -21,8 +21,7 @@ from station_calibration.vision import (
     get_sphere_centers_and_blur_sigmas,
     split_image,
 )
-from station_calibration.vision.detection import get_bg_value
-
+from station_calibration.vision.detection import get_bg_value, get_forground_mask
 
 SYNTHETIC_CENTER = (600.0, 650.0)
 SYNTHETIC_RADIUS = 170.0
@@ -224,6 +223,34 @@ def test_analyze_image_reports_undefined_direction() -> None:
     assert result.observation is None
     assert result.direction == 0
     assert result.reason == "direction is undefined"
+
+
+def test_get_forground_mask_returns_empty_mask_when_no_contour() -> None:
+    mask = get_forground_mask(
+        np.zeros((20, 20), dtype=np.uint8),
+        bg_thr=0,
+    )
+
+    assert mask.shape == (20, 20)
+    assert mask.dtype == np.bool_
+    assert not np.any(mask)
+
+
+def test_analyze_image_reports_missing_sphere_when_mask_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(image_module, "estimate_direction", lambda *args, **kwargs: 1)
+
+    result = analyze_image(
+        np.zeros((300, 400), dtype=np.uint8),
+        bg_height_px=100,
+        fixed_bg_threshold=300,
+        print_debug=DebugInfo(False),
+    )
+
+    assert result.observation is None
+    assert result.direction == 1
+    assert result.reason == "sphere is not found or out of FOV"
 
 
 def test_analyze_image_reports_missing_sphere(

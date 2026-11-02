@@ -14,7 +14,7 @@ __all__ = ["main"]
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED_DIR = ROOT / "src" / "station_calibration" / "ice" / "generated"
-CONTRACT = ROOT / "_3dsc_resources" / "CalibrationPhenoseederIcing.ice"
+CONTRACT = ROOT / "ice" / "CalibrationPhenoseederIcing.ice"
 SHARED_INCLUDES = (
     ROOT / "ice" / "CommonPhenoseeder.ice",
     ROOT / "ice" / "PhytoCommon.ice",

@@ -1,22 +1,17 @@
 # Ice interface
 
-The wire contract remains at:
+All production Slice contracts live in this folder:
 
 ```text
-_3dsc_resources/CalibrationPhenoseederIcing.ice
-```
-
-It includes the shared production definitions that now live in this folder:
-
-```text
-CommonPhenoseeder.ice     shared CommonPhenoseeder module
-PhytoCommon.ice           Phyto::Common camera and image types
-PhytoError.ice            placeholder for the include used by PhytoCommon.ice
+CalibrationPhenoseederIcing.ice  calibration wire contract
+CommonPhenoseeder.ice            shared CommonPhenoseeder module
+PhytoCommon.ice                  Phyto::Common camera and image types
+PhytoError.ice                   placeholder for the include used by PhytoCommon.ice
 ```
 
 The `*_test.ice` files are the previous local compatibility shims, kept only as
-a reference for the old wire layout. `ice/generate_stubs.py` uses the production
-files without the `_test` suffix.
+a reference for the old wire layout. `scripts/generate_ice_stubs.py` uses the
+production files without the `_test` suffix.
 
 `PhytoCommon.ice` includes `PhytoError.ice`. The calibration contract does not
 reference any Phyto error type, so `ice/PhytoError.ice` contains an empty
@@ -69,7 +64,7 @@ src/station_calibration/ice/generated/
 Regenerate them after changing any `.ice` file:
 
 ```powershell
-.\.venv\Scripts\python.exe ice\generate_stubs.py
+.\.venv\Scripts\python.exe scripts\generate_ice_stubs.py
 ```
 
 The script removes the generated `Phenoseeder`, `Phyto`, and

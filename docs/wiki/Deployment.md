@@ -22,6 +22,9 @@ the production client.
   a private network, allow only known client addresses in the firewall, or use an
   SSH tunnel. Do not expose it to the Internet.
 
+The file inventory and install order for both platforms are summarized in
+`deploy/README.md`.
+
 ## Capacity and platform notes
 
 | Platform | Recommendation |

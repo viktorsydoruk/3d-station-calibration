@@ -67,17 +67,35 @@ ZeroC Ice is **not** bundled; it remains an optional extra.
 
 ```text
 src/station_calibration
+scripts/generate_ice_stubs.py
 tests
-scripts
-ice
+ice                  # production contracts; legacy *_test.ice files are excluded
 deploy
 docs
-_3dsc_resources/CalibrationPhenoseederIcing.ice
 README.md
+CHANGELOG.md
 LICENSE
 THIRD_PARTY_NOTICES.md
 pyproject.toml
 ```
+
+The Ice stub generator is shipped in the sdist so an unpacked source archive can
+regenerate stubs from the bundled contracts. The release and CI helpers in
+`scripts/` are not shipped; the release helper needs a Git checkout, which an
+unpacked sdist does not provide.
+
+## Continuous integration
+
+`.gitlab-ci.yml` runs on every push:
+
+- **test** — `uv sync --frozen`, `uv lock --check`, and `pytest`;
+- **build** — `uv build`, then install the wheel into the test environment and
+  check `3dsc --version` and `3dsc-ice-server --version`;
+- **check** — `bash -n deploy/linux/3dsc-update`, compile the maintainer
+  scripts, and parse both Windows PowerShell scripts with
+  `scripts/check-powershell.ps1`.
+
+The build job publishes `dist/` as an artifact for one week.
 
 ## Versioning
 

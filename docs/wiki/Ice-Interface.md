@@ -13,7 +13,7 @@ the same calibration engine through a `CalibrationPhenoseederIcing` servant.
 ## Contract
 
 ```text
-_3dsc_resources/CalibrationPhenoseederIcing.ice
+ice/CalibrationPhenoseederIcing.ice
 ```
 
 Operations:
@@ -73,7 +73,7 @@ src/station_calibration/ice/generated/
 Regenerate after any `.ice` change:
 
 ```powershell
-.\.venv\Scripts\python.exe ice\generate_stubs.py
+.\.venv\Scripts\python.exe scripts\generate_ice_stubs.py
 ```
 
 The script finds `slice2py` next to the interpreter or on `PATH`, removes the
@@ -188,10 +188,10 @@ production. Full Windows service and Raspberry Pi systemd instructions are in
 
 ## Contract maintenance
 
-1. Update `ice/CommonPhenoseeder.ice`, `ice/PhytoCommon.ice`, or the contract in
-   `_3dsc_resources/`.
+1. Update `ice/CalibrationPhenoseederIcing.ice`, `ice/CommonPhenoseeder.ice`, or
+   `ice/PhytoCommon.ice`.
 2. Update `station_calibration.ice.images` and the adapter/client when the
    `imageData` or camera-parameter fields change.
-3. Regenerate the stubs with `ice/generate_stubs.py`.
+3. Regenerate the stubs with `scripts/generate_ice_stubs.py`.
 4. Update `tests/test_ice_adapter.py` and run a real cross-machine exchange.
 5. Rebuild the wheel/sdist and verify the packaged stubs.

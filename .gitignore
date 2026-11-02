@@ -6,6 +6,7 @@ __pycache__/
 venv/
 build/
 dist/
+.uv-cache/
 
 # Test and type-check caches
 .pytest_cache/

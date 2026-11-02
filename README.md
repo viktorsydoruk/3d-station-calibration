@@ -29,7 +29,8 @@ edit by hand. Check it with:
 ```
 
 Create releases with `python scripts/release.py`; see
-[Testing and Build](docs/wiki/Testing-and-Build.md#create-a-release).
+[Testing and Build](docs/wiki/Testing-and-Build.md#create-a-release). Release
+notes are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Run the folder workflow
 
@@ -135,12 +136,13 @@ recorded but do not count toward the 500-observation stop target.
 
 ## Ice frontend (optional)
 
-The Ice frontend lives in `station_calibration.ice`. The shared production
-definitions are in `ice/CommonPhenoseeder.ice` and `ice/PhytoCommon.ice`; the
-older `*_test.ice` files are retained only as a reference for the previous wire
+The Ice frontend lives in `station_calibration.ice`. The production Slice
+contracts are in `ice/`, including `CalibrationPhenoseederIcing.ice` and the
+shared `CommonPhenoseeder.ice` and `PhytoCommon.ice` definitions; the older
+`*_test.ice` files are retained only as a reference for the previous wire
 layout. `addData` transports raw camera frames in `Phyto::Common::imageData`,
 and the client decodes image files locally before sending them. Regenerate the
-stubs with `ice/generate_stubs.py` after changing any `.ice` file.
+stubs with `scripts/generate_ice_stubs.py` after changing any `.ice` file.
 
 Ice is an optional dependency:
 

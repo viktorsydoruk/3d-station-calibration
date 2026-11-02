@@ -16,6 +16,23 @@ authors = [
 maintainers = [
     { name = "Viktor Sydoruk", email = "v.sydoruk@fz-juelich.de" },
 ]
+keywords = [
+    "calibration",
+    "camera-calibration",
+    "computer-vision",
+    "phenoseeder",
+    "robot",
+    "zeroc-ice",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
 dependencies = [
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
@@ -36,6 +53,13 @@ notebooks = [
 3dsc = "station_calibration.cli:run_cli"
 3dsc-ice-server = "station_calibration.ice.server:run_cli"
 3dsc-ice-client = "station_calibration.ice.client:run_cli"
+
+[project.urls]
+Homepage = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration"
+Repository = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration"
+Documentation = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/blob/main/docs/wiki/Home.md"
+Changelog = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/blob/main/CHANGELOG.md"
+Issues = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/issues"
 
 [dependency-groups]
 dev = [
@@ -61,14 +85,22 @@ packages = ["src/station_calibration"]
 [tool.hatch.build.targets.sdist]
 include = [
     "src/station_calibration",
+    "scripts/generate_ice_stubs.py",
     "tests",
-    "scripts",
     "ice",
     "deploy",
     "docs",
-    "_3dsc_resources/CalibrationPhenoseederIcing.ice",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "pyproject.toml",
+]
+exclude = [
+    # Maintainer-only release and CI helpers. The Ice stub generator is kept so
+    # an unpacked sdist can regenerate stubs from the bundled contracts.
+    "scripts/release.py",
+    "scripts/check-powershell.ps1",
+    # Historical compatibility shims retained in the repository for reference.
+    "ice/*_test.ice",
 ]

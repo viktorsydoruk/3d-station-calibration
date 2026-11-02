@@ -14,7 +14,15 @@ The public API is re-exported here explicitly so callers do not depend on the
 internal module layout.
 """
 
+from importlib.metadata import PackageNotFoundError, version as _distribution_version
+
+try:
+    __version__ = _distribution_version("3dstationcalibration")
+except PackageNotFoundError:  # pragma: no cover - source tree without an install
+    __version__ = "0+unknown"
+
 __all__ = [
+    "__version__",
     # Settings and lifecycle
     "Settings",
     "PossibleOptions",

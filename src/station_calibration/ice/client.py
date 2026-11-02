@@ -11,6 +11,8 @@ from typing import Iterable
 
 import numpy as np
 
+from .. import __version__
+
 from ._generated import ensure_generated_on_path
 
 ensure_generated_on_path()
@@ -142,6 +144,11 @@ def run_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="3dsc-ice-client",
         description="Send one image to a running calibration Ice server.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "--proxy",

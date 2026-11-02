@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "3dstationcalibration"
-version = "2026.11.02.0"
+dynamic = ["version"]
 description = "Camera and robot calibration for phenoSeeder 3D stations"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -47,6 +47,14 @@ dev = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.version.raw-options]
+version_scheme = "calver-by-date"
+local_scheme = "no-local-version"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/station_calibration"]
 
@@ -54,6 +62,7 @@ packages = ["src/station_calibration"]
 include = [
     "src/station_calibration",
     "tests",
+    "scripts",
     "ice",
     "deploy",
     "docs",

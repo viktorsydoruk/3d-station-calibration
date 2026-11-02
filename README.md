@@ -21,6 +21,16 @@ or, with uv:
 uv sync
 ```
 
+The package version is generated from Git tags, so there is no version string to
+edit by hand. Check it with:
+
+```powershell
+3dsc --version
+```
+
+Create releases with `python scripts/release.py`; see
+[Testing and Build](docs/wiki/Testing-and-Build.md#create-a-release).
+
 ## Run the folder workflow
 
 ```powershell
@@ -149,7 +159,7 @@ calibration folder. The folder is a server deployment setting because it is not
 part of the shared wire contract. See `ice/README.md` for generation details and
 the wire type layout, and
 [`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for Windows/Raspberry Pi
-installation and service autostart.
+installation, service autostart, and automatic updates.
 
 Linux note: PyPI does not publish a Linux `zeroc-ice` wheel for 3.8.3. On
 Debian/Ubuntu (including Raspberry Pi OS), install `python3-zeroc-ice` from the

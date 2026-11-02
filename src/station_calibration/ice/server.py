@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .. import __version__
+
 __all__ = ["DEFAULT_ENDPOINT", "DEFAULT_IDENTITY", "run_cli", "run_server"]
 
 DEFAULT_ENDPOINT = "tcp -h 127.0.0.1 -p 10000"
@@ -47,6 +49,7 @@ def run_server(folder: str | Path,
             Ice.stringToIdentity(identity),
         )
         adapter.activate()
+        print(f"Version: {__version__}", flush=True)
         print(f"Ice calibration server listening on {endpoint}", flush=True)
         print(f"Proxy: {proxy.ice_toString()}", flush=True)
         communicator.waitForShutdown()
@@ -61,6 +64,11 @@ def run_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="3dsc-ice-server",
         description="Serve the calibration session over ZeroC Ice.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "folder",

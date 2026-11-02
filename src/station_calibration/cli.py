@@ -14,6 +14,7 @@ import traceback
 
 import numpy as np
 
+from . import __version__
 from .calibration import (
     back_projected_point,
     calculate_calibration_errors,
@@ -181,6 +182,11 @@ def run_cli(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="3dsc",
         description="Calibrate a 3D phenoSeeder station from a folder of images.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument("folder", type=Path, help="folder containing the calibration images")
     parser.add_argument(

@@ -82,3 +82,14 @@ uv build
 
 `uv lock --check` verifies that `uv.lock` matches `pyproject.toml`; `uv build`
 produces the wheel and the source distribution in `dist/`.
+
+The package version is generated from Git tags by `hatch-vcs`, so no version
+string needs to be edited. Verify the installed version with:
+
+```powershell
+python -c "import station_calibration; print(station_calibration.__version__)"
+3dsc-ice-server --version
+```
+
+Manual and automatic service updates are covered in
+[Deployment and Autostart](Deployment).

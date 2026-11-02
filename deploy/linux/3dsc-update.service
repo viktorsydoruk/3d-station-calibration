@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+#
+# Oneshot service that updates the Ice server to the newest release tag.
+# It is normally started by 3dsc-update.timer.
+
+[Unit]
+Description=Update the 3D Station Calibration Ice Server
+Documentation=file:///opt/3dsc/app/docs/wiki/Deployment.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=/opt/3dsc/app
+EnvironmentFile=-/etc/3dsc/update.env
+ExecStart=/bin/bash ${APP_DIR}/deploy/linux/3dsc-update
+User=root
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=20min
+TimeoutStopSec=10min

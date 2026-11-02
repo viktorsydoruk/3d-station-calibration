@@ -21,6 +21,7 @@ and an optional ZeroC Ice server/client.
 | --- | --- |
 | Python | 3.13 or newer |
 | Package | `3dstationcalibration` |
+| Version | Generated from Git tags by `hatch-vcs` |
 | Core import | `station_calibration` |
 | Default config | `src/station_calibration/resources/config.toml` |
 | Folder command | `3dsc <folder>` |
@@ -57,7 +58,7 @@ See [Folder Workflow](Folder-Workflow) for the input layout and
 | Page | Contents |
 | --- | --- |
 | [Installation](Installation) | Requirements, optional extras, entry points |
-| [Deployment and Autostart](Deployment) | Windows service, Raspberry Pi systemd, firewall, security |
+| [Deployment and Autostart](Deployment) | Windows service, Raspberry Pi systemd, automatic updates, firewall, security |
 | [Folder Workflow](Folder-Workflow) | Input layout, commands, cache reuse |
 | [Configuration](Configuration) | Every TOML key, defaults, overrides |
 | [Architecture](Architecture) | Package layout and shared-engine data flow |

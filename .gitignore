@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.uv-cache/
+
+# Test and type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Runtime output
+output/
+debug/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local OS files
+.DS_Store
+Thumbs.db
+/_3dsc_jupyter/

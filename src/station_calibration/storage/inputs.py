@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
+"""Robot-position and image-file discovery."""
+
+__all__ = [
+    "load_robot_positions",
+    "search_images",
+]
+
+import csv
+from itertools import chain
+from pathlib import Path
+
+import numpy as np
+
+
+def load_robot_positions(file: Path) -> tuple[np.ndarray, list[str]]:
+    """
+        Load robot positions from a file
+
+    :param file: path to file
+    :return: numpy array of robot positions (Nx3)
+    """
+    if not file.exists():
+        raise FileNotFoundError(f"File {file} does not exist")
+
+    robot_points: list[list[float]] = []
+    image_names: list[str] = []
+    with file.open(mode="r", newline="") as f:
+        reader = csv.reader(f, delimiter=";")
+        for line_number, row in enumerate(reader, start=1):
+            if not row or not any(value.strip() for value in row):
+                continue
+
+            first_value = row[0].strip()
+            if "calibration" in first_value.lower():
+                # Older files start with an informational calibration line.
+                continue
+
+            if len(row) < 3:
+                raise ValueError(
+                    f"Invalid robot position at line {line_number}: "
+                    f"expected at least 3 fields, got {len(row)}"
+                )
+
+            try:
+                x, y, z = (float(value.strip()) for value in row[:3])
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid robot position at line {line_number}: "
+                    "the first three fields must be numeric"
+                ) from exc
+
+            robot_points.append([x, y, z])
+            if len(row) > 3:
+                image_names.append(row[3].strip())
+
+    if not robot_points:
+        return np.empty((0, 3), dtype=float), image_names
+
+    return np.asarray(robot_points, dtype=float), image_names
+
+
+def search_images(image_folder: Path,
+                  image_names: list[str],
+                  patterns: tuple[str, ...] = ("*.tif", "*.tiff"),
+                  sort_by_mtime: bool = True) -> list[Path]:
+    """
+        Search all image files matching patterns
+    :param image_folder: folder containing image files
+    :param image_names: names of image files if stored in the file with position of the robotic arm
+    :param patterns: patterns to search for
+    :param sort_by_mtime: whether to sort by modified time should be done
+    :return: list of image files paths
+    """
+    if len(image_names) == 0:
+        filename_generators = [image_folder.glob(pattern) for pattern in patterns]
+        all_filenames = list(chain.from_iterable(filename_generators))
+
+        if sort_by_mtime:
+            all_filenames_sorted = sorted(
+                all_filenames,
+                key=lambda x: x.stat().st_mtime
+            )
+            return all_filenames_sorted
+    else:
+        all_filenames = [image_folder / image_name for image_name in image_names]
+
+    return all_filenames

@@ -1,93 +1,188 @@
 # 3D station calibration
 
+Camera calibration for phenoSeeder 3D stations. A white sphere is moved through
+the working volume; the images and matching robot positions are used to estimate
+the camera intrinsics, distortion, the robot-to-camera transform, and the nozzle
+home position.
 
+Full documentation: [`docs/wiki/Home.md`](docs/wiki/Home.md).
 
-## Getting started
+## Install
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+The project uses a `src` layout. Install it in editable mode for development:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration.git
-git branch -M main
-git push -uf origin main
+```powershell
+python -m pip install -e .
 ```
 
-## Integrate with your tools
+or, with uv:
 
-* [Set up project integrations](https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/settings/integrations)
+```powershell
+uv sync
+```
 
-## Collaborate with your team
+The package version is generated from Git tags, so there is no version string to
+edit by hand. Check it with:
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```powershell
+3dsc --version
+```
 
-## Test and Deploy
+Create releases with `python scripts/release.py`; see
+[Testing and Build](docs/wiki/Testing-and-Build.md#create-a-release). Release
+notes are in [`CHANGELOG.md`](CHANGELOG.md).
 
-Use the built-in continuous integration in GitLab.
+## Run the folder workflow
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+```powershell
+3dsc "P:\3Dcalibration\3D_example"
+```
 
-***
+The equivalent module entry point is:
 
-# Editing this README
+```powershell
+python -m station_calibration "P:\3Dcalibration\3D_example"
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+Useful options:
 
-## Suggestions for a good README
+```text
+--config PATH                 TOML configuration file
+--debug                       print detailed progress
+--store-debug-images          write analysis/debug images
+--load-stored-data / --no-load-stored-data
+--target-observations N
+--max-observations N
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+The default configuration ships with the package at
+`src/station_calibration/resources/config.toml`. Command-line options override
+individual values from that file.
 
-## Name
-Choose a self-explaining name for your project.
+## Output
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+The folder workflow writes its results below the analysis folder:
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+```text
+<analysis folder>/output/CalibrationAllPoints.dat
+<analysis folder>/output/calibration_data.yaml
+<analysis folder>/debug/
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+`CalibrationAllPoints.dat` is the reusable per-image point cache. If it exists
+and `load_stored_data` is enabled, the folder workflow can skip image analysis
+and fit the cached observations directly.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+## Architecture
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```text
+src/station_calibration/
+├─ cli.py                 folder workflow entry point
+├─ settings.py            TOML-backed settings
+├─ models.py              observations, rejections, fit results
+├─ session.py             source-agnostic incremental calibration session
+├─ service.py             image-bytes/raw arrays -> analysis -> session service
+├─ stop.py                readiness/stop policy
+├─ vision/
+│  ├─ models.py           image observation value objects
+│  ├─ io.py               image loading/decoding
+│  ├─ detection.py        sphere detection and blur estimation
+│  ├─ debug.py            debug-image rendering
+│  ├─ analysis.py         single-image and batch analysis
+│  └─ geometry.py         image-point geometry helpers
+├─ calibration/
+│  ├─ initialization.py   initial rotation and parameter packing
+│  ├─ model.py            camera model, projection, and unwrapping
+│  ├─ fit.py              least-squares camera fit
+│  └─ metrics.py          diagnostics, uncertainty, and reporting
+├─ storage/
+│  ├─ inputs.py           robot CSV and image discovery
+│  ├─ points.py           point-cache serialization
+│  └─ results.py          calibration-result YAML
+├─ processes.py           iterative calibration pipeline
+├─ robot.py               robot geometry and nozzle home estimation
+├─ support.py             line geometry and parameter uncertainty
+├─ plots.py               optional debug/reporting plots
+├─ sources/
+│  ├─ base.py             source/dataset protocols
+│  └─ folder.py           folder source adapter
+├─ ice/                   optional Ice adapter, server, client, generated stubs
+└─ resources/
+   └─ config.toml         default configuration
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+The core rule is that `CalibrationSession` does not depend on the folder layout
+or on Ice. A frontend analyzes an image, creates a `CalibrationObservation` (or
+an `ImageAnalysisResult` plus robot position), and feeds it to the session. The
+session owns fit policy, optional radius filtering, and readiness.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+For an incremental frontend, use `CalibrationService`:
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```python
+from station_calibration import CalibrationService, Settings
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+service = CalibrationService(Settings(analysis_folder))
+service.add_image_bytes(image_bytes, robot_position)
+# or, for a frontend that already provides a NumPy image:
+service.add_image_array(image_array, robot_position)
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+if service.is_ready:
+    result = service.finish()
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+`add_image_bytes` and `add_image_array` perform the same single-image analysis as
+folder mode and feed the result into the shared session. Rejected images are
+recorded but do not count toward the 500-observation stop target.
+
+## Ice frontend (optional)
+
+The Ice frontend lives in `station_calibration.ice`. The production Slice
+contracts are in `ice/`, including `CalibrationPhenoseederIcing.ice` and the
+shared `CommonPhenoseeder.ice` and `PhytoCommon.ice` definitions; the older
+`*_test.ice` files are retained only as a reference for the previous wire
+layout. `addData` transports raw camera frames in `Phyto::Common::imageData`,
+and the client decodes image files locally before sending them. Regenerate the
+stubs with `scripts/generate_ice_stubs.py` after changing any `.ice` file.
+
+Ice is an optional dependency:
+
+```powershell
+python -m pip install -e ".[ice]"
+```
+
+Start the server with the calibration folder:
+
+```powershell
+3dsc-ice-server "P:\3Dcalibration\3D_20260824_2,3mm"
+```
+
+The existing `init` operation can receive a TOML configuration file or a
+calibration folder. The folder is a server deployment setting because it is not
+part of the shared wire contract. See `ice/README.md` for generation details and
+the wire type layout, and
+[`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for Windows/Raspberry Pi
+installation, service autostart, and automatic updates.
+
+Linux note: PyPI does not publish a Linux `zeroc-ice` wheel for 3.8.3. On
+Debian/Ubuntu (including Raspberry Pi OS), install `python3-zeroc-ice` from the
+official ZeroC APT repository and create the venv with
+`--system-site-packages`; do not use the `[ice]` extra there.
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+This project is licensed under the Apache License 2.0. See `LICENSE`.
+
+The runtime dependencies are permissive, except for ZeroC Ice, which is
+GPL-2.0-only with a ZeroC exception permitting combination with Apache-2.0
+software. Ice is kept in an optional extra and should not be vendored into the
+Apache-2.0 package. See `THIRD_PARTY_NOTICES.md` for details.
+
+## Tests
+
+```powershell
+python -m pytest -q
+```
+
+The suite covers settings, stop policy, the fitting pipeline, the stored-point
+regression fixture, single-image analysis, the session, the folder source, and
+the optional Ice adapter/client when ZeroC Ice is installed.

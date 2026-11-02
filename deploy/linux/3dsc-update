@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+#
+# Update the 3D Station Calibration Ice server to the newest release tag.
+#
+# The updater:
+#   - refuses to run when the Git working tree is dirty,
+#   - fetches tags and selects the newest tag matching TAG_PATTERN,
+#   - stops the systemd service,
+#   - checks out that tag and reinstalls the package,
+#   - starts the service and checks the TCP endpoint,
+#   - rolls back to the previous tag/commit when the update fails.
+#
+# Run it manually with:
+#   sudo bash /opt/3dsc/app/deploy/linux/3dsc-update --dry-run
+#
+# Configuration is read from these environment variables:
+#   APP_DIR, VENV_DIR, SERVICE_NAME, RUN_USER, REMOTE, TAG_PATTERN,
+#   ALLOW_LIGHTWEIGHT_TAGS, REQUIRE_SIGNED_TAG,
+#   HEALTH_HOST, HEALTH_PORT, HEALTH_TIMEOUT_SECONDS, LOCK_FILE
+
+set -Eeuo pipefail
+
+APP_DIR="${APP_DIR:-/opt/3dsc/app}"
+VENV_DIR="${VENV_DIR:-/opt/3dsc/.venv}"
+SERVICE_NAME="${SERVICE_NAME:-3dsc-ice-server}"
+RUN_USER="${RUN_USER:-3dsc}"
+REMOTE="${REMOTE:-origin}"
+TAG_PATTERN="${TAG_PATTERN:-v[0-9]*}"
+ALLOW_LIGHTWEIGHT_TAGS="${ALLOW_LIGHTWEIGHT_TAGS:-0}"
+REQUIRE_SIGNED_TAG="${REQUIRE_SIGNED_TAG:-0}"
+HEALTH_HOST="${HEALTH_HOST:-127.0.0.1}"
+HEALTH_PORT="${HEALTH_PORT:-10000}"
+HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-60}"
+LOCK_FILE="${LOCK_FILE:-/run/3dsc-update.lock}"
+
+DRY_RUN=0
+if [ "${1:-}" = "--dry-run" ]; then
+    DRY_RUN=1
+elif [ -n "${1:-}" ]; then
+    echo "Usage: $0 [--dry-run]" >&2
+    exit 2
+fi
+
+
+log() {
+    printf '%s %s\n' "$(date -Iseconds)" "$*"
+}
+
+
+die() {
+    log "ERROR: $*" >&2
+    exit 1
+}
+
+
+if [ "$(id -u)" -ne 0 ]; then
+    die "run this updater as root (for example with sudo)"
+fi
+
+# git checkout replaces this file in the working tree. Run from a private copy
+# under /run so bash never reads a script that is being rewritten.
+if [ "${3DSC_UPDATE_REEXEC:-0}" != "1" ]; then
+    reexec_script="$(mktemp /run/3dsc-update.XXXXXX)" ||
+        die "could not create a temporary updater copy"
+    if ! cp -- "$0" "$reexec_script"; then
+        rm -f "$reexec_script"
+        die "could not copy the updater to $reexec_script"
+    fi
+    if ! chmod 700 "$reexec_script"; then
+        rm -f "$reexec_script"
+        die "could not make $reexec_script executable"
+    fi
+    export 3DSC_UPDATE_REEXEC=1
+    exec /bin/bash "$reexec_script" "$@"
+fi
+trap 'rm -f "$0"' EXIT
+
+[ -d "$APP_DIR/.git" ] || die "Git checkout not found: $APP_DIR"
+[ -x "$VENV_DIR/bin/python" ] || die "venv Python not found: $VENV_DIR/bin/python"
+[ -x "$VENV_DIR/bin/3dsc-ice-server" ] || die "server entry point not found in $VENV_DIR"
+command -v git >/dev/null 2>&1 || die "git is not installed"
+command -v systemctl >/dev/null 2>&1 || die "systemctl is not available"
+command -v flock >/dev/null 2>&1 || die "flock is not installed (util-linux)"
+systemctl cat "$SERVICE_NAME" >/dev/null 2>&1 ||
+    die "systemd service not found: $SERVICE_NAME"
+
+if command -v runuser >/dev/null 2>&1; then
+    RUN_AS=(runuser -u "$RUN_USER" --)
+else
+    RUN_AS=(sudo -u "$RUN_USER" --)
+fi
+
+git_run() {
+    "${RUN_AS[@]}" env GIT_TERMINAL_PROMPT=0 git -C "$APP_DIR" "$@"
+}
+
+python_run() {
+    "${RUN_AS[@]}" "$VENV_DIR/bin/python" "$@"
+}
+
+
+release_key() {
+    # Accept both the current vYYYY.MM.DD.N form and legacy vYYYY.MM.DD tags.
+    # A missing revision counts as 0, so the two spellings compare as equal.
+    local tag="$1" date revision
+    if [[ "$tag" =~ ^v([0-9]{4}\.[0-9]{2}\.[0-9]{2})(\.([0-9]+))?$ ]]; then
+        date="${BASH_REMATCH[1]}"
+        revision="${BASH_REMATCH[3]:-0}"
+        printf '%s.%06d' "$date" "$((10#$revision))"
+        return 0
+    fi
+    return 1
+}
+
+
+wait_for_service() {
+    local deadline=$((SECONDS + 30))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if systemctl is-active --quiet "$SERVICE_NAME"; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+
+wait_for_port() {
+    local deadline=$((SECONDS + HEALTH_TIMEOUT_SECONDS))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if "$VENV_DIR/bin/python" -c \
+            'import socket, sys; s = socket.create_connection((sys.argv[1], int(sys.argv[2])), 2); s.close()' \
+            "$HEALTH_HOST" "$HEALTH_PORT" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+
+rollback_needed=0
+previous=""
+
+rollback() {
+    local status="${1:-$?}"
+    trap - ERR TERM INT
+    set +e
+
+    if [ "$rollback_needed" -ne 1 ]; then
+        log "Update aborted with exit code $status"
+        exit "$status"
+    fi
+
+    log "Update failed with exit code $status; rolling back to $previous"
+    systemctl stop "$SERVICE_NAME" >/dev/null 2>&1
+    git_run -c advice.detachedHead=false checkout "$previous"
+    python_run -m pip install --upgrade --force-reinstall --no-deps "$APP_DIR"
+    systemctl start "$SERVICE_NAME"
+
+    if wait_for_service && wait_for_port; then
+        log "Rollback complete; the service is healthy"
+    else
+        log "Rollback finished, but the health check failed"
+    fi
+
+    exit "$status"
+}
+
+trap 'rollback $?' ERR
+trap 'rollback 143' TERM
+trap 'rollback 130' INT
+
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    log "Another update is already running; exiting"
+    exit 0
+fi
+
+if [ -n "$(git_run status --porcelain)" ]; then
+    die "Git working tree is not clean; commit, stash, or remove local changes first"
+fi
+
+log "Fetching tags from $REMOTE"
+git_run fetch --tags --prune --prune-tags "$REMOTE"
+
+# Keep only calendar-version tags. This prevents an unrelated v-prefixed tag
+# (for example a vendor tag) from being installed as a release.
+latest=""
+latest_key=""
+latest_explicit=0
+while IFS= read -r tag; do
+    [ -n "$tag" ] || continue
+    key="$(release_key "$tag")" || continue
+    explicit=0
+    [[ "$tag" =~ ^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]] && explicit=1
+    # Prefer an explicit vYYYY.MM.DD.N tag when a legacy vYYYY.MM.DD tag
+    # carries the same date and revision.
+    if [ -z "$latest_key" ] || [[ "$key" > "$latest_key" ]] ||
+        { [[ "$key" == "$latest_key" ]] && [ "$explicit" -eq 1 ] && [ "$latest_explicit" -eq 0 ]; }; then
+        latest="$tag"
+        latest_key="$key"
+        latest_explicit="$explicit"
+    fi
+done < <(git_run tag --list "$TAG_PATTERN")
+[ -n "$latest" ] ||
+    die "no calendar-version release tags (vYYYY.MM.DD[.N]) match '$TAG_PATTERN' on remote '$REMOTE'"
+
+object_type="$(git_run cat-file -t "$latest")"
+if [ "$object_type" != "tag" ]; then
+    if [ "$ALLOW_LIGHTWEIGHT_TAGS" != "1" ]; then
+        die "tag '$latest' is lightweight; release tags must be annotated (use scripts/release.py or 'git tag -a')"
+    fi
+    log "WARNING: tag '$latest' is lightweight; continuing because ALLOW_LIGHTWEIGHT_TAGS=1"
+fi
+
+if [ "$REQUIRE_SIGNED_TAG" = "1" ]; then
+    git_run tag -v "$latest" >/dev/null 2>&1 ||
+        die "tag '$latest' does not have a valid signature trusted by $RUN_USER"
+    log "Verified the signature of $latest"
+fi
+
+previous="$(git_run describe --tags --exact-match HEAD 2>/dev/null || true)"
+if [ -z "$previous" ]; then
+    previous="$(git_run rev-parse HEAD)"
+fi
+
+current_version="$("$VENV_DIR/bin/3dsc-ice-server" --version 2>/dev/null || echo unknown)"
+log "Current: $current_version ($previous); latest tag: $latest"
+
+# Compare commits: a legacy vYYYY.MM.DD tag and vYYYY.MM.DD.0 may name the
+# same release, so the tag spelling alone is not a reliable up-to-date check.
+head_commit="$(git_run rev-parse HEAD)"
+latest_commit="$(git_run rev-parse "$latest^{commit}")"
+if [ "$head_commit" = "$latest_commit" ]; then
+    log "Already up to date"
+    exit 0
+fi
+
+if [ "$DRY_RUN" -eq 1 ]; then
+    log "Dry run: would update $previous -> $latest"
+    exit 0
+fi
+
+log "Stopping $SERVICE_NAME"
+systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+rollback_needed=1
+
+log "Checking out $latest"
+git_run -c advice.detachedHead=false checkout "$latest"
+
+log "Reinstalling the package"
+python_run -m pip install --upgrade "$APP_DIR"
+
+new_version="$("$VENV_DIR/bin/3dsc-ice-server" --version)"
+if [ "$new_version" = "$current_version" ]; then
+    log "Version did not change; forcing a reinstall"
+    python_run -m pip install --upgrade --force-reinstall --no-deps "$APP_DIR"
+    new_version="$("$VENV_DIR/bin/3dsc-ice-server" --version)"
+fi
+log "Installed: $new_version"
+
+log "Starting $SERVICE_NAME"
+systemctl start "$SERVICE_NAME"
+wait_for_service
+wait_for_port
+
+rollback_needed=0
+trap - ERR TERM INT
+log "Update complete: $previous -> $latest"

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+#
+# Daily check for a new 3DSC release tag. The actual update is performed by
+# 3dsc-update.service. Change OnCalendar for a different maintenance window.
+
+[Unit]
+Description=Daily update check for the 3D Station Calibration Ice Server
+Documentation=file:///opt/3dsc/app/docs/wiki/Deployment.md
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=15m
+AccuracySec=1m
+Unit=3dsc-update.service
+
+[Install]
+WantedBy=timers.target

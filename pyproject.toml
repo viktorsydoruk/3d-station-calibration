@@ -1,13 +1,106 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
 [project]
 name = "3dstationcalibration"
-version = "0.1.0"
+dynamic = ["version"]
+description = "Camera and robot calibration for phenoSeeder 3D stations"
+readme = "README.md"
 requires-python = ">=3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [
+    { name = "Viktor Sydoruk", email = "v.sydoruk@fz-juelich.de" },
+]
+maintainers = [
+    { name = "Viktor Sydoruk", email = "v.sydoruk@fz-juelich.de" },
+]
+keywords = [
+    "calibration",
+    "camera-calibration",
+    "computer-vision",
+    "phenoseeder",
+    "robot",
+    "zeroc-ice",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
 dependencies = [
-    "ipykernel>=7.3.0",
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
     "opencv-python>=5.0.0.93",
     "pyyaml>=6.0.3",
     "scipy>=1.18.1",
+]
+
+[project.optional-dependencies]
+ice = [
+    "zeroc-ice>=3.8.3",
+]
+notebooks = [
+    "ipykernel>=7.3.0",
+]
+
+[project.scripts]
+3dsc = "station_calibration.cli:run_cli"
+3dsc-ice-server = "station_calibration.ice.server:run_cli"
+3dsc-ice-client = "station_calibration.ice.client:run_cli"
+
+[project.urls]
+Homepage = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration"
+Repository = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration"
+Documentation = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/blob/main/docs/wiki/Home.md"
+Changelog = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/blob/main/CHANGELOG.md"
+Issues = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
     "scipy-stubs~=1.18.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.0"
+
+[tool.hatch.version.raw-options]
+version_scheme = "calver-by-date"
+local_scheme = "no-local-version"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/station_calibration"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/station_calibration",
+    "scripts/generate_ice_stubs.py",
+    "tests",
+    "ice",
+    "deploy",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "pyproject.toml",
+]
+exclude = [
+    # Maintainer-only release and CI helpers. The Ice stub generator is kept so
+    # an unpacked sdist can regenerate stubs from the bundled contracts.
+    "scripts/release.py",
+    "scripts/check-powershell.ps1",
+    # Historical compatibility shims retained in the repository for reference.
+    "ice/*_test.ice",
 ]

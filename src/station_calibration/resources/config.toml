@@ -1,0 +1,65 @@
+# configuration to the 3D station calibration
+[general]
+# whether to show debug information
+debug = true
+# whether to store debug images
+store_debug_images = false
+# whether to load the data of previous analysis of images
+load_stored_data = true
+
+[general.files]
+# name of the file where the positions of robotic arm are stored
+robot_pos_filename = "Calibration3DPositions.csv"
+# folder name to store some output results (relative to main folder)
+output_folder = "output"
+# folder name to store debug information (relative to main folder)
+debug_folder = "debug"
+# name of the file where to store the found properties of spheres on the images
+all_center_points_filename = "CalibrationAllPoints.dat"
+# patterns of image files
+image_name_patterns = ["*.tif", "*.tiff"]
+# whether to sort images by last modification date
+sort_image_names_by_mtime = true
+
+[analysis]
+# number of iterations to perform for camera calibrations (includes adjustments of center points and robotic arm home pos)
+n_iterations = 3
+# maximum allowed outliers (0 - not allowed outlier detection, < 1 - part of number of points, >=1 - allowed number of outliers
+max_outliers = 0
+
+[analysis.background]
+# fixed threshold value for the background (0 estimation will be done automatically based on 2 next params
+fixed_bg_threshold = 30
+# number of rows (either from bottom or from top) where only background is located
+bg_height_pxs = 200
+# percentile of intensity values of previously defined image rows to estimate the background color
+#       example, in case of 200 rows x 2000 pxs: 99.99% - 4000 pxs outliers (that might have too high intensities
+#                                                99.999% - 400 pxs
+#                                                99.9999% - 40 pxs
+bg_color_est_perc = 99.999
+
+[analysis.sphere_projection]
+# number of values for moving avarage to smooth the data to estimate where the center of found sphere is located
+n_move_aver = 11
+# part of the sphere between its center and the nozzle that holds it to take into account to fit with circle
+sphere_center_to_nozzle_part = 0.7
+# minimum number pixels on edges of found sphere from each border of the image
+min_bg_pixels_on_edges = 5
+# border thickness of rings on edge of sphere to average to estimate bluring sigma
+blur_est_border_thickness = 2
+
+[analysis.fit]
+# whether to fix principal point of the camera
+fix_cx_cy = true
+# number of distortion coefficients to be taken into account (can be 0, 4, 5, 8, 12, or 14)
+n_distortion_coefs = 4
+# initial focal length in pixels used for the first calibration fit
+focal_length_initial = 2000.0
+# initial camera distance in mm used for the first calibration fit
+camera_distance_initial = 80.0
+
+[analysis.stop]
+# stop accepting new data once this many valid observations are collected
+target_observations = 500
+# optional hard cap (leave unset to disable)
+# max_observations = 600

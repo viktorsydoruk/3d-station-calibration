@@ -5,6 +5,7 @@ These files are produced by `slice2py` from:
 - `_3dsc_resources/CalibrationPhenoseederIcing.ice`
 - `ice/CommonPhenoseeder.ice`
 - `ice/PhytoCommon.ice`
+- `ice/PhytoError.ice` (placeholder include)
 
 Do not edit them by hand. Run from the project root:
 

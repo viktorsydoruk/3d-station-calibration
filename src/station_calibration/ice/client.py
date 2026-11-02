@@ -9,7 +9,6 @@ import argparse
 from pathlib import Path
 from typing import Iterable
 
-import cv2
 import numpy as np
 
 from ._generated import ensure_generated_on_path
@@ -18,7 +17,13 @@ ensure_generated_on_path()
 
 import Ice  # noqa: E402
 from Phenoseeder import CalibrationPhenoseederIcingPrx, Point  # noqa: E402
-from Phyto.Common import extrinsicParams, imageData, intrinsicParams  # noqa: E402
+from Phyto.Common import (  # noqa: E402
+    IMAGEFORMAT,
+    extrinsicParams,
+    intrinsicParams,
+)
+
+from .images import decode_image, image_data_from_array  # noqa: E402
 
 __all__ = [
     "DEFAULT_PROXY",
@@ -87,44 +92,33 @@ class CalibrationIceClient:
         )
 
     def add_image(self,
-                  image_bytes: bytes,
+                  image: np.ndarray | bytes,
                   robot_coord: Iterable[float],
                   *,
-                  width: int = 0,
-                  height: int = 0,
-                  channels: int = 0) -> None:
-        """Send one encoded image and its robot coordinate."""
+                  imgformat: IMAGEFORMAT | None = None) -> None:
+        """Send one raw camera frame and its robot coordinate.
+
+        ``image`` may be a NumPy frame or encoded image bytes (TIFF, PNG, ...).
+        Encoded bytes are decoded locally because the shared ``imageData``
+        contract transports raw pixels.
+        """
+        array = decode_image(image) if isinstance(image, bytes) else image
         x, y, z = (float(value) for value in robot_coord)
         self.proxy.addData(
             Point(x=x, y=y, z=z),
-            imageData(
-                data=bytes(image_bytes),
-                width=int(width),
-                height=int(height),
-                channels=int(channels),
-            ),
+            image_data_from_array(array, imgformat=imgformat),
         )
 
     def add_image_file(self,
                        image_path: str | Path,
-                       robot_coord: Iterable[float]) -> None:
-        """Read an image file, derive its dimensions, and send it."""
-        data = Path(image_path).read_bytes()
-        decoded = cv2.imdecode(
-            np.frombuffer(data, dtype=np.uint8),
-            cv2.IMREAD_UNCHANGED,
-        )
-        if decoded is None:
-            width = height = channels = 0
-        else:
-            height, width = decoded.shape[:2]
-            channels = 1 if decoded.ndim == 2 else decoded.shape[2]
+                       robot_coord: Iterable[float],
+                       *,
+                       imgformat: IMAGEFORMAT | None = None) -> None:
+        """Read an image file, decode it, and send the raw frame."""
         self.add_image(
-            data,
+            Path(image_path).read_bytes(),
             robot_coord,
-            width=width,
-            height=height,
-            channels=channels,
+            imgformat=imgformat,
         )
 
     def is_ready(self) -> bool:
@@ -178,11 +172,14 @@ def run_cli(argv: list[str] | None = None) -> None:
         extrinsic, extrinsic_error = client.get_extrinsic()
         distortion, distortion_error = client.get_distortion()
         nozzle = client.get_optimal_nozzle_position()
-        intrinsic_matrix = np.asarray(intrinsic.matrix, dtype=np.float64).reshape(3, 3)
+        intrinsic_matrix = np.asarray(intrinsic.modelParams, dtype=np.float64).reshape(3, 3)
+        extrinsic_params = np.asarray(extrinsic.modelParams, dtype=np.float64)
+        translation = extrinsic_params[:3]
+        rotation = extrinsic_params[3:].reshape(3, 3)
         print(f"intrinsic:\n{intrinsic_matrix}")
         print(f"intrinsic error: {intrinsic_error}")
-        print(f"rotation: {extrinsic.rotation}")
-        print(f"translation: {extrinsic.translation}")
+        print(f"rotation:\n{rotation}")
+        print(f"translation: {translation}")
         print(f"extrinsic error: {extrinsic_error}")
         print(f"distortion: {distortion}")
         print(f"distortion error: {distortion_error}")

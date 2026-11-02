@@ -6,36 +6,57 @@ The wire contract remains at:
 _3dsc_resources/CalibrationPhenoseederIcing.ice
 ```
 
-The shared production files `CommonPhenoseeder.ice` and `PhytoCommon.ice` are
-not available in this checkout. This folder therefore contains local
-compatibility definitions:
+It includes the shared production definitions that now live in this folder:
 
 ```text
-CommonPhenoseeder.ice     CommonPhenoseeder::vecOfDoubles
-PhytoCommon.ice           imageData, intrinsicParams, extrinsicParams
+CommonPhenoseeder.ice     shared CommonPhenoseeder module
+PhytoCommon.ice           Phyto::Common camera and image types
+PhytoError.ice            placeholder for the include used by PhytoCommon.ice
 ```
 
-They are sufficient for a self-contained server/client pair and for end-to-end
-testing. They are **not guaranteed to be wire-compatible** with the production
-contracts on another machine. Before deploying against another machine, replace
-these two files with the production definitions and regenerate the stubs.
+The `*_test.ice` files are the previous local compatibility shims, kept only as
+a reference for the old wire layout. `ice/generate_stubs.py` uses the production
+files without the `_test` suffix.
 
-The local definitions currently use these field layouts:
+`PhytoCommon.ice` includes `PhytoError.ice`. The calibration contract does not
+reference any Phyto error type, so `ice/PhytoError.ice` contains an empty
+`Phyto::Error` module. Replace it with the production file if error types ever
+become part of the wire contract.
+
+## Wire types
 
 ```text
 Phyto::Common::imageData
-    sequence<byte> data
-    int width
+    long timeNbr
     int height
-    int channels
+    int width
+    int spp
+    IMAGEFORMAT imgformat
+    IMAGEDATATYPE imgDataType
+    int cameraId
+    cameraParams virtualCamParams
+    boolVec boolPixels
+    byteVec bytePixels
+    shortVec shortPixels
+    floatVec floatPixels
 
 Phyto::Common::intrinsicParams
-    CommonPhenoseeder::vecOfDoubles matrix   (row-major 3x3)
+    INTRINSICMODEL modelId
+    doubleVec modelParams
 
 Phyto::Common::extrinsicParams
-    CommonPhenoseeder::vecOfDoubles rotation   (row-major 3x3)
-    CommonPhenoseeder::vecOfDoubles translation
+    EXTRINSICMODEL modelId
+    BOOLFLAG isAbsolute
+    COORDINATESYSTEM coordsys
+    int coordSysIndex
+    doubleVec modelParams
 ```
+
+`addData` transports a **raw camera frame**, not an encoded image file. Exactly
+one pixel vector is populated, normally `bytePixels`. The servant selects that
+vector, reshapes it with `height`, `width`, and `spp`, and calls
+`CalibrationService.add_image_array()`. The client decodes image files locally
+and fills the same fields.
 
 ## Generated stubs
 
@@ -50,6 +71,10 @@ Regenerate them after changing any `.ice` file:
 ```powershell
 .\.venv\Scripts\python.exe ice\generate_stubs.py
 ```
+
+The script removes the generated `Phenoseeder`, `Phyto`, and
+`CommonPhenoseeder` packages before compiling, so renamed or removed Slice
+definitions do not leave stale stubs behind.
 
 The generated packages use absolute imports (`Phenoseeder`, `Phyto`,
 `CommonPhenoseeder`). `station_calibration.ice._generated` adds the generated
@@ -74,10 +99,12 @@ The existing `init` operation accepts:
 
 ## Return conventions
 
-- `getIntrinsic`: full 3x3 intrinsic matrix; the error sequence contains nine
-  row-major one-sigma values, with zero for structurally fixed entries.
-- `getExtrinsic`: row-major 3x3 rotation followed by the translation; the error
-  sequence is `r1, r2, r3, t1, t2, t3`.
+- `getIntrinsic`: `modelId = INTRINSICMATRIX`; `modelParams` is the full 3x3
+  matrix in row-major order. The error sequence contains nine row-major
+  one-sigma values, with zero for structurally fixed entries.
+- `getExtrinsic`: `modelId = EXTRINSICROTMATRIX`; `modelParams` is
+  `Tx, Ty, Tz` followed by the row-major 3x3 rotation, as required by the shared
+  contract. The error sequence is `r1, r2, r3, t1, t2, t3`.
 - `getDistortion`: only the active `n_distortion_coefs` values; the error
   sequence has the same length.
 - `getOptimalNozzlePosition`: nozzle-end home position in robot coordinates,
@@ -99,6 +126,10 @@ with CalibrationIceClient.connect() as client:
         distortion, distortion_error = client.get_distortion()
         nozzle = client.get_optimal_nozzle_position()
 ```
+
+`add_image()` accepts either a NumPy frame or encoded image bytes. Encoded bytes
+are decoded locally because the shared contract transports raw pixels.
+`add_image_file()` reads and decodes the file before sending.
 
 A one-image command-line client is also available:
 

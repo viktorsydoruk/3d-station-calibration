@@ -5,6 +5,8 @@ the working volume; the images and matching robot positions are used to estimate
 the camera intrinsics, distortion, the robot-to-camera transform, and the nozzle
 home position.
 
+Full documentation: [`docs/wiki/Home.md`](docs/wiki/Home.md).
+
 ## Install
 
 The project uses a `src` layout. Install it in editable mode for development:
@@ -51,14 +53,14 @@ individual values from that file.
 The folder workflow writes its results below the analysis folder:
 
 ```text
-<analysis folder>/output/all_points.dat
+<analysis folder>/output/CalibrationAllPoints.dat
 <analysis folder>/output/calibration_data.yaml
 <analysis folder>/debug/
 ```
 
-`all_points.dat` is the reusable per-image point cache. If it exists and
-`load_stored_data` is enabled, the folder workflow can skip image analysis and
-fit the cached observations directly.
+`CalibrationAllPoints.dat` is the reusable per-image point cache. If it exists
+and `load_stored_data` is enabled, the folder workflow can skip image analysis
+and fit the cached observations directly.
 
 ## Architecture
 
@@ -123,12 +125,12 @@ recorded but do not count toward the 500-observation stop target.
 
 ## Ice frontend (optional)
 
-The Ice frontend lives in `station_calibration.ice`. Because the shared
-`CommonPhenoseeder.ice` and `PhytoCommon.ice` files are not part of this
-checkout, `ice/CommonPhenoseeder.ice` and `ice/PhytoCommon.ice` provide local
-compatibility definitions. They are enough for a self-contained server/client
-pair and for testing. For interoperability with the machine that owns the
-production contracts, replace those two files and regenerate the stubs.
+The Ice frontend lives in `station_calibration.ice`. The shared production
+definitions are in `ice/CommonPhenoseeder.ice` and `ice/PhytoCommon.ice`; the
+older `*_test.ice` files are retained only as a reference for the previous wire
+layout. `addData` transports raw camera frames in `Phyto::Common::imageData`,
+and the client decodes image files locally before sending them. Regenerate the
+stubs with `ice/generate_stubs.py` after changing any `.ice` file.
 
 Ice is an optional dependency:
 
@@ -145,7 +147,14 @@ Start the server with the calibration folder:
 The existing `init` operation can receive a TOML configuration file or a
 calibration folder. The folder is a server deployment setting because it is not
 part of the shared wire contract. See `ice/README.md` for generation details and
-the local type-layout assumptions.
+the wire type layout, and
+[`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for Windows/Raspberry Pi
+installation and service autostart.
+
+Linux note: PyPI does not publish a Linux `zeroc-ice` wheel for 3.8.3. On
+Debian/Ubuntu (including Raspberry Pi OS), install `python3-zeroc-ice` from the
+official ZeroC APT repository and create the venv with
+`--system-site-packages`; do not use the `[ice]` extra there.
 
 ## License
 

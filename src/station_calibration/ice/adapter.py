@@ -18,11 +18,14 @@ ensure_generated_on_path()
 
 from Phenoseeder import CalibrationPhenoseederIcing, Point  # noqa: E402
 from Phyto.Common import (  # noqa: E402
+    EXTRINSICMODEL,
+    INTRINSICMODEL,
     extrinsicParams,
     imageData,
     intrinsicParams,
 )
 
+from .images import array_from_image_data  # noqa: E402
 from ..calibration import calculate_calibration_errors  # noqa: E402
 from ..debug import DebugInfo  # noqa: E402
 from ..models import CalibrationResult  # noqa: E402
@@ -88,7 +91,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
                 robotCoord: Point,
                 image: imageData,
                 current: Any = None) -> None:
-        """Analyze one encoded image and add it to the calibration session."""
+        """Analyze one raw camera frame and add it to the calibration session."""
         with self._lock:
             service = self._require_service()
             robot_position = np.array(
@@ -98,12 +101,8 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             if not np.all(np.isfinite(robot_position)):
                 raise ValueError("robotCoord must contain only finite values")
 
-            image_bytes = bytes(image.data)
-            if not image_bytes:
-                raise ValueError("imageData.data must not be empty")
-
-            service.add_image_bytes(
-                image_bytes,
+            service.add_image_array(
+                array_from_image_data(image),
                 robot_position,
                 source="ice",
             )
@@ -120,7 +119,8 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             intrinsic = np.asarray(result.intrinsic_matrix, dtype=np.float64).reshape(3, 3)
             return (
                 intrinsicParams(
-                    matrix=[float(value) for value in intrinsic.reshape(-1)]
+                    modelId=INTRINSICMODEL.INTRINSICMATRIX,
+                    modelParams=[float(value) for value in intrinsic.reshape(-1)],
                 ),
                 self._intrinsic_error_sequence(result),
             )
@@ -128,7 +128,11 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
     def getExtrinsic(self,
                      current: Any = None
                      ) -> tuple[extrinsicParams, list[float]]:
-        """Return the rotation matrix, translation, and six uncertainty values."""
+        """Return the rotation matrix, translation, and six uncertainty values.
+
+        ``EXTRINSICROTMATRIX`` stores ``Tx, Ty, Tz`` followed by the row-major
+        3x3 rotation, as defined by the shared ``PhytoCommon.ice`` contract.
+        """
         with self._lock:
             result = self._current_result()
             _, _, rotation_std, translation_std = self._calibration_errors(result)
@@ -140,8 +144,11 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             ]
             return (
                 extrinsicParams(
-                    rotation=[float(value) for value in rotation.reshape(-1)],
-                    translation=[float(value) for value in translation],
+                    modelId=EXTRINSICMODEL.EXTRINSICROTMATRIX,
+                    modelParams=[
+                        *[float(value) for value in translation],
+                        *[float(value) for value in rotation.reshape(-1)],
+                    ],
                 ),
                 error,
             )

@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+#
+# Template for a systemd service that runs the ZeroC Ice calibration server.
+# Copy to /etc/systemd/system/3dsc-ice-server.service and edit the paths.
+#
+# Prerequisites:
+#   - the project is installed in /opt/3dsc/.venv
+#   - the venv was created with --system-site-packages and can import Ice
+#   - /etc/3dsc/config.toml exists and is readable by the service user
+#   - the calibration folder and /var/lib/3dsc are accessible to the user
+
+[Unit]
+Description=3D Station Calibration Ice Server
+Documentation=file:///opt/3dsc/app/docs/wiki/Deployment.md
+After=network-online.target remote-fs.target
+Wants=network-online.target
+# Remove this line when the calibration folder is local.
+RequiresMountsFor=/mnt/calibration
+
+[Service]
+Type=simple
+User=3dsc
+Group=3dsc
+WorkingDirectory=/opt/3dsc/app
+Environment=PYTHONUNBUFFERED=1
+Environment=MPLBACKEND=Agg
+ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server /mnt/calibration/station01 --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+
+# Basic hardening. Add calibration paths to ReadWritePaths only when the
+# service must write there.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/3dsc
+
+[Install]
+WantedBy=multi-user.target

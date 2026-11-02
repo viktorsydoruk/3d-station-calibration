@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
 # SPDX-License-Identifier: Apache-2.0
 
-"""Regenerate the Python Ice stubs from the local contracts."""
+"""Regenerate the Python Ice stubs from the production contracts."""
 
 from __future__ import annotations
 
@@ -15,10 +15,11 @@ __all__ = ["main"]
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED_DIR = ROOT / "src" / "station_calibration" / "ice" / "generated"
 CONTRACT = ROOT / "_3dsc_resources" / "CalibrationPhenoseederIcing.ice"
-LOCAL_INCLUDES = (
+SHARED_INCLUDES = (
     ROOT / "ice" / "CommonPhenoseeder.ice",
     ROOT / "ice" / "PhytoCommon.ice",
 )
+GENERATED_PACKAGES = ("Phenoseeder", "Phyto", "CommonPhenoseeder")
 
 
 def _find_slice2py() -> str:
@@ -41,13 +42,19 @@ def main() -> None:
     slice2py = _find_slice2py()
 
     GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    # slice2py does not delete stubs whose Slice definition has disappeared.
+    # Remove the generated packages first so the tree always matches the .ice
+    # files name for name.
+    for package in GENERATED_PACKAGES:
+        shutil.rmtree(GENERATED_DIR / package, ignore_errors=True)
+
     command = [
         slice2py,
         "-I",
         str(ROOT / "ice"),
         "--output-dir",
         str(GENERATED_DIR),
-        *[str(path) for path in LOCAL_INCLUDES],
+        *[str(path) for path in SHARED_INCLUDES],
         str(CONTRACT),
     ]
     print("Running:", " ".join(command))

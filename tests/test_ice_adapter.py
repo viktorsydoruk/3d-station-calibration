@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 import pytest
 
@@ -15,15 +16,25 @@ Ice = pytest.importorskip("Ice")
 import station_calibration.ice.adapter as adapter_module  # noqa: E402
 from station_calibration.ice.adapter import CalibrationIceServant  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
+from station_calibration.ice.images import (  # noqa: E402
+    array_from_image_data,
+    image_data_from_array,
+)
 from Phenoseeder import Point  # noqa: E402
-from Phyto.Common import imageData  # noqa: E402
+from Phyto.Common import (  # noqa: E402
+    EXTRINSICMODEL,
+    IMAGEDATATYPE,
+    IMAGEFORMAT,
+    INTRINSICMODEL,
+    imageData,
+)
 
 
 class FakeService:
     def __init__(self) -> None:
         self.last_result = _fake_result()
         self.ready = True
-        self.images: list[tuple[bytes, np.ndarray, str | None]] = []
+        self.images: list[tuple[np.ndarray, np.ndarray, str | None]] = []
         self.error_calls: list[int] = []
         self.session = SimpleNamespace(fit_observations=[object()])
 
@@ -34,16 +45,16 @@ class FakeService:
     def finish_if_ready(self):
         return self.last_result if self.ready else None
 
-    def add_image_bytes(
+    def add_image_array(
         self,
-        image_bytes: bytes,
+        image: np.ndarray,
         robot_position: np.ndarray,
         *,
         source: str | None = None,
         fit: bool | None = None,
     ) -> None:
         self.images.append(
-            (bytes(image_bytes), np.asarray(robot_position), source)
+            (np.asarray(image), np.asarray(robot_position), source)
         )
 
 
@@ -126,7 +137,8 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     servant, service = _make_servant(tmp_path, monkeypatch)
 
     intrinsic, intrinsic_error = servant.getIntrinsic()
-    assert intrinsic.matrix == pytest.approx(
+    assert intrinsic.modelId is INTRINSICMODEL.INTRINSICMATRIX
+    assert intrinsic.modelParams == pytest.approx(
         [100.0, 0.0, 10.0, 0.0, 200.0, 20.0, 0.0, 0.0, 1.0]
     )
     assert intrinsic_error == pytest.approx(
@@ -134,8 +146,10 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     )
 
     extrinsic, extrinsic_error = servant.getExtrinsic()
-    assert extrinsic.rotation == pytest.approx(np.eye(3).reshape(-1).tolist())
-    assert extrinsic.translation == pytest.approx([1.0, 2.0, 3.0])
+    assert extrinsic.modelId is EXTRINSICMODEL.EXTRINSICROTMATRIX
+    assert extrinsic.modelParams == pytest.approx(
+        [1.0, 2.0, 3.0, *np.eye(3).reshape(-1).tolist()]
+    )
     assert extrinsic_error == pytest.approx([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
 
     distortion, distortion_error = servant.getDistortion()
@@ -149,13 +163,21 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     assert servant.isReady() is True
     assert servant.calibrate() == []
 
+    frame = np.arange(2 * 3 * 3, dtype=np.uint8).reshape(2, 3, 3)
     servant.addData(
         Point(x=4.0, y=5.0, z=6.0),
-        imageData(data=b"image-bytes", width=10, height=20, channels=3),
+        imageData(
+            height=2,
+            width=3,
+            spp=3,
+            imgformat=IMAGEFORMAT.PMBGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
     )
     assert len(service.images) == 1
-    image_bytes, robot_position, source = service.images[0]
-    assert image_bytes == b"image-bytes"
+    image, robot_position, source = service.images[0]
+    np.testing.assert_array_equal(image, frame)
     np.testing.assert_allclose(robot_position, [4.0, 5.0, 6.0])
     assert source == "ice"
 
@@ -168,6 +190,19 @@ def test_adapter_init_accepts_folder(tmp_path, monkeypatch) -> None:
     servant.init(str(other_folder))
     assert servant.folder == tmp_path.resolve()
     assert servant._settings.main_folder == other_folder.resolve()
+
+
+@pytest.mark.parametrize("dtype", [np.bool_, np.uint8, np.int16, np.float32])
+def test_image_wire_round_trip(dtype) -> None:
+    if dtype is np.bool_:
+        frame = np.array([[True, False, True], [False, True, False]])
+    else:
+        frame = np.arange(6, dtype=dtype).reshape(2, 3)
+
+    decoded = array_from_image_data(image_data_from_array(frame))
+
+    assert decoded.dtype == dtype
+    np.testing.assert_array_equal(decoded, frame)
 
 
 def test_ice_round_trip(tmp_path, monkeypatch) -> None:
@@ -189,7 +224,10 @@ def test_ice_round_trip(tmp_path, monkeypatch) -> None:
             client.init(None)
             assert client.is_ready() is True
             intrinsic, intrinsic_error = client.get_intrinsic()
-            intrinsic_matrix = np.asarray(intrinsic.matrix, dtype=np.float64).reshape(3, 3)
+            intrinsic_matrix = np.asarray(
+                intrinsic.modelParams,
+                dtype=np.float64,
+            ).reshape(3, 3)
             assert intrinsic_matrix[0, 0] == pytest.approx(100.0)
             assert intrinsic_matrix[1, 1] == pytest.approx(200.0)
             assert intrinsic_matrix[0, 2] == pytest.approx(10.0)
@@ -198,8 +236,14 @@ def test_ice_round_trip(tmp_path, monkeypatch) -> None:
                 [1.0, 0.0, 2.0, 0.0, 3.0, 4.0, 0.0, 0.0, 0.0]
             )
 
-            client.add_image(b"remote-image", (1.0, 2.0, 3.0))
-            assert service.images[-1][0] == b"remote-image"
+            frame = np.arange(4 * 5, dtype=np.uint8).reshape(4, 5)
+            client.add_image(frame, (1.0, 2.0, 3.0))
+            np.testing.assert_array_equal(service.images[-1][0], frame)
+
+            encoded_ok, encoded = cv2.imencode(".png", frame)
+            assert encoded_ok
+            client.add_image(encoded.tobytes(), (1.0, 2.0, 3.0))
+            np.testing.assert_array_equal(service.images[-1][0], frame)
 
             nozzle = client.get_optimal_nozzle_position()
             assert (nozzle.x, nozzle.y, nozzle.z) == pytest.approx((7.0, 8.0, 9.0))

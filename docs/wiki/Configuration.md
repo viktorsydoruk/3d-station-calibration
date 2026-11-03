@@ -30,6 +30,7 @@ value.
 | --- | --- | --- |
 | `debug` | `true` | Print detailed progress and write reporting plots |
 | `store_debug_images` | `false` | Also write a debug image for successful analyses |
+| `archive_sessions` | `true` | Archive each Ice session as a timestamped folder with images, robot positions, and the latest result |
 | `load_stored_data` | `true` | Reuse the point cache when it exists |
 
 ## `[general.files]`

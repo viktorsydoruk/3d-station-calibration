@@ -10,12 +10,18 @@ the production client.
 
 ## Deployment model
 
-- The **server** owns the calibration folder: images, `Calibration3DPositions.csv`,
-  the production TOML configuration, and writable output/debug folders.
 - The **client** runs on the machine that produces the images and robot
   coordinates. It sends `addData(Point, imageData)` calls.
-- The server does **not** receive the image folder over Ice. The folder is a
-  deployment setting supplied on the server command line.
+- The **server** receives each frame and robot position over Ice. It does not
+  read images or `Calibration3DPositions.csv` from its working folder.
+- The **working folder** is still required by the current CLI. It is the base for
+  relative paths and for writable output/debug files.
+- When `archive_sessions = true` (the default), every Ice session is archived in
+  a timestamped subfolder of the working folder. The archive contains 8-bit
+  TIFF frames, `Calibration3DPositions.csv`, and the latest
+  `calibration_result.yaml`.
+- The production TOML configuration is supplied with `--config`; it is not part
+  of the Ice wire contract.
 - The default endpoint is `tcp -h 127.0.0.1 -p 10000`. Use
   `tcp -h 0.0.0.0 -p 10000` only when a remote client must connect directly.
 - The current contract has **no authentication or encryption**. Keep the port on
@@ -24,6 +30,45 @@ the production client.
 
 The file inventory and install order for both platforms are summarized in
 `deploy/README.md`.
+
+### Session archive
+
+The server creates a folder named `YYYYMMDD_HHMM` on the first image of each
+session. If another session starts in the same minute, `_01`, `_02`, and so on
+are appended:
+
+```text
+<working folder>/
+├─ 20261103_1542/
+│  ├─ Calibration3DPositions.csv
+│  ├─ image_0001.tif
+│  ├─ image_0002.tif
+│  ├─ ...
+│  ├─ calibration_result.yaml
+│  └─ session.yaml
+└─ 20261104_0810/
+   └─ ...
+```
+
+The CSV uses the folder-workflow format `Xr;Yr;Zr;image_name`, so an archived
+session can be re-analyzed later with an updated fitting procedure. Archived
+frames are 8-bit TIFF; wider input frames are scaled to the 0-255 range per frame
+to preserve contrast. For example:
+
+```powershell
+3dsc "C:\ProgramData\3DSC\station01\20261103_1542" `
+  --config "C:\3DSC\config.toml"
+```
+
+Use a re-analysis configuration with relative `output_folder` and `debug_folder`
+paths if you want the new results inside the archived session folder. Set
+`archive_sessions = false` in `[general]` if disk space is more important than
+replayability.
+
+> **Disk use.** Archived frames are 8-bit TIFF. A 500-frame session from a 5 MP
+> camera is roughly 2.5 GB before TIFF compression. Monitor free space on the
+> working folder and adjust `target_observations` or disable archiving if
+> necessary.
 
 ## Capacity and platform notes
 
@@ -41,20 +86,20 @@ interval is exposed as a command-line option (a recommended change).
 
 ## Common preparation
 
-### 1. Prepare the calibration folder
+### 1. Prepare the server working folder
 
-The folder must contain:
+Create an empty writable folder, for example `C:\ProgramData\3DSC\station01` or
+`/var/lib/3dsc/station01`. In Ice mode this is not an image input folder: the
+images and robot positions arrive over Ice. The server uses it for the session
+archive and for any relative output/debug paths.
 
-```text
-Calibration3DPositions.csv
-image_0001.tif
-image_0002.tif
-...
-```
+If you also use the folder workflow (`3dsc`) on this machine, that workflow still
+needs its own folder with images and `Calibration3DPositions.csv`. Keep the two
+workflows separate unless you intentionally want to re-analyze an archived
+session.
 
-The CSV delimiter is `;`. The first three fields are `Xr;Yr;Zr`; a fourth field
-may contain the image name. A line whose first field contains `calibration` is
-treated as a comment.
+The CSV delimiter and image-name rules are only relevant to the folder workflow;
+see [Folder Workflow](Folder-Workflow).
 
 ### 2. Create a production configuration
 
@@ -73,6 +118,7 @@ At minimum set:
 [general]
 debug = false
 store_debug_images = false
+archive_sessions = true
 load_stored_data = false
 
 [general.files]
@@ -85,6 +131,8 @@ debug_folder = "C:/ProgramData/3DSC/debug"     # Windows example
 
 `load_stored_data = false` is important for the Ice server: it must analyze the
 frames that arrive over the wire, not reuse an old point cache.
+`archive_sessions = true` keeps the timestamped image/CSV archive for later
+re-analysis; set it to `false` only if you do not need that record.
 
 ### 3. Smoke-test from a terminal first
 
@@ -92,7 +140,7 @@ Always start the server manually once before installing it as a service. This
 makes configuration and firewall problems visible immediately.
 
 ```powershell
-3dsc-ice-server "<calibration folder>" `
+3dsc-ice-server "<server working folder>" `
   --config "<config.toml>" `
   --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
@@ -174,6 +222,7 @@ C:\3DSC\.venv\Scripts\3dsc-ice-server.exe --help
 
 ```powershell
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\logs | Out-Null
+New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\station01 | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\output | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\debug | Out-Null
 
@@ -189,17 +238,17 @@ Edit `C:\3DSC\config.toml` as described in
 
 ```powershell
 C:\3DSC\.venv\Scripts\3dsc-ice-server.exe `
-  "\\fileserver\share\station01" `
+  "C:\ProgramData\3DSC\station01" `
   --config "C:\3DSC\config.toml" `
   --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
 
 Stop it with `Ctrl+C` after confirming that it starts and prints the proxy.
 
-> **Service accounts and mapped drives.** A Windows service does not see `P:`
-> drives mapped in your interactive session. Use a UNC path such as
-> `\\fileserver\share\station01`, or run the service as an account that has the
-> same drive mapping (not recommended).
+> **Working folder, not an input folder.** The Ice server does not read images
+> from this path. It writes the timestamped session archive there. A local path
+> is recommended; if you intentionally archive to a network share, use a UNC
+> path and give the service account write permission.
 
 ### 6. Install as a Windows service with NSSM
 
@@ -221,7 +270,7 @@ Install and configure the service:
 ```powershell
 $svc      = "3DSC-IceServer"
 $exe      = "C:\3DSC\.venv\Scripts\3dsc-ice-server.exe"
-$folder   = "\\fileserver\share\station01"
+$folder   = "C:\ProgramData\3DSC\station01"
 $config   = "C:\3DSC\config.toml"
 $endpoint = "tcp -h 0.0.0.0 -p 10000"
 
@@ -243,13 +292,13 @@ nssm start $svc
 ```
 
 `SERVICE_DELAYED_AUTO_START` gives the network stack and SMB client time to come
-up before the server tries to open a UNC path.
+up if you intentionally archive to a UNC path.
 
 #### Service account
 
 By default NSSM runs the service as `LocalSystem`. That is sufficient for a local
-calibration folder. For a network share, use a dedicated domain or local account
-that has read access to the images and write access to the output/debug folders:
+working folder. For a network share, use a dedicated domain or local account that
+has write access to the working folder and the configured output/debug folders:
 
 ```powershell
 $svc = "3DSC-IceServer"
@@ -372,11 +421,10 @@ Update the OS:
 ```bash
 sudo apt update
 sudo apt full-upgrade -y
-sudo apt install -y git python3-venv python3-pip libgl1 libglib2.0-0 cifs-utils
+sudo apt install -y git python3-venv python3-pip libgl1 libglib2.0-0
 ```
 
-`libgl1` and `libglib2.0-0` satisfy the non-headless OpenCV wheel. `cifs-utils`
-is only needed when the calibration folder is on an SMB share.
+`libgl1` and `libglib2.0-0` satisfy the non-headless OpenCV wheel.
 
 ### 2. Install ZeroC Ice from the ZeroC APT repository
 
@@ -424,7 +472,7 @@ Verify:
 sudo useradd --system --home-dir /opt/3dsc --shell /usr/sbin/nologin 3dsc
 sudo chown -R 3dsc:3dsc /opt/3dsc
 
-sudo mkdir -p /var/lib/3dsc/output /var/lib/3dsc/debug /etc/3dsc
+sudo mkdir -p /var/lib/3dsc/output /var/lib/3dsc/debug /var/lib/3dsc/station01 /etc/3dsc
 sudo chown -R 3dsc:3dsc /var/lib/3dsc
 
 sudo cp /opt/3dsc/app/src/station_calibration/resources/config.toml /etc/3dsc/config.toml
@@ -436,46 +484,18 @@ Edit `/etc/3dsc/config.toml` as described in
 [Common preparation](#common-preparation). Use the Linux output/debug paths, for
 example `/var/lib/3dsc/output` and `/var/lib/3dsc/debug`.
 
-### 5. Mount the calibration folder (optional)
+### 5. Prepare the server working folder
 
-For a local folder, use a path such as `/srv/3dsc/station01` and skip this step.
+The Ice server archives each session below a writable working folder. The
+`/var/lib/3dsc/station01` folder created above is the working folder for this
+example.
 
-For an SMB share, create a credentials file:
+Pass `/var/lib/3dsc/station01` as the folder argument. The archived
+`Calibration3DPositions.csv` and TIFF frames are written below it. Images and
+robot positions arrive over Ice, so no SMB mount is required for the Ice server.
 
-```bash
-sudo install -m 600 /dev/null /etc/3dsc-cifs.credentials
-sudo nano /etc/3dsc-cifs.credentials
-```
-
-```ini
-username=svc-3dsc
-password=CHANGE_ME
-domain=EXAMPLE
-```
-
-Mount it read-only because the server only reads the images and CSV; the output
-and debug folders are absolute paths under `/var/lib/3dsc`:
-
-```bash
-sudo mkdir -p /mnt/calibration
-```
-
-Add to `/etc/fstab`:
-
-```fstab
-//fileserver/share /mnt/calibration cifs credentials=/etc/3dsc-cifs.credentials,uid=3dsc,gid=3dsc,iocharset=utf8,vers=3.1.1,ro 0 0
-```
-
-Then:
-
-```bash
-sudo systemctl daemon-reload
-sudo mount -a
-sudo -u 3dsc ls /mnt/calibration/station01
-```
-
-The calibration folder for the service is
-`/mnt/calibration/station01` in this example.
+If you also use the folder workflow on this machine, keep its image/CSV folder
+separate and see [Folder Workflow](Folder-Workflow).
 
 ### 6. Install the systemd service
 
@@ -495,15 +515,14 @@ sudo nano /etc/systemd/system/3dsc-ice-server.service
 The important lines are:
 
 ```ini
-ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server /mnt/calibration/station01 --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
+ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server /var/lib/3dsc/station01 --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
 User=3dsc
 Group=3dsc
 ReadWritePaths=/var/lib/3dsc
-RequiresMountsFor=/mnt/calibration
 ```
 
-Remove `RequiresMountsFor=` when the calibration folder is local. If the
-calibration folder itself must be writable, add it to `ReadWritePaths=`.
+`ReadWritePaths=/var/lib/3dsc` covers the working folder and the archived
+sessions below it.
 
 Enable and start:
 

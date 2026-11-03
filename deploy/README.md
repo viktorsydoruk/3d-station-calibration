@@ -34,9 +34,10 @@ and security notes.
 2. Create the `3dsc` service account and the `/opt/3dsc/app` checkout.
 3. Create `/opt/3dsc/.venv` with `--system-site-packages` and install the
    package without the `[ice]` extra.
-4. Create `/etc/3dsc/config.toml` and the writable output/debug directories.
+4. Create `/etc/3dsc/config.toml`, the writable output/debug directories, and
+   the `/var/lib/3dsc/station01` session working folder.
 5. Copy `linux/3dsc-ice-server.service` to `/etc/systemd/system/` and edit the
-   paths, calibration folder, and mount requirements.
+   paths and working folder.
 6. Enable the server unit and verify the TCP endpoint.
 7. Copy the updater service and timer, then enable the timer.
 

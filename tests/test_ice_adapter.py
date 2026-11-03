@@ -5,17 +5,21 @@
 
 from __future__ import annotations
 
+import csv
+import re
 from types import SimpleNamespace
 
 import cv2
 import numpy as np
 import pytest
+import yaml
 
 Ice = pytest.importorskip("Ice")
 
 import station_calibration.ice.adapter as adapter_module  # noqa: E402
 import station_calibration.service as service_module  # noqa: E402
 from station_calibration.ice.adapter import CalibrationIceServant  # noqa: E402
+from station_calibration.ice.archive import SessionArchive  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
 from station_calibration.ice.images import (  # noqa: E402
     array_from_image_data,
@@ -78,8 +82,10 @@ def _fake_result():
         optimize_result=SimpleNamespace(),
         pos_home=np.zeros(3, dtype=np.float64),
         center_points_adjusted=np.zeros((1, 2), dtype=np.float64),
+        image_size_xy=(3, 2),
         observation_count=1,
         n_used=1,
+        rmse=0.25,
     )
 
 
@@ -181,6 +187,87 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     np.testing.assert_array_equal(image, frame)
     np.testing.assert_allclose(robot_position, [4.0, 5.0, 6.0])
     assert source == "ice"
+
+
+def test_adapter_archives_session_images_csv_and_result(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    servant, _service = _make_servant(tmp_path, monkeypatch)
+    frame = np.arange(2 * 3, dtype=np.uint8).reshape(2, 3)
+
+    servant.addData(
+        Point(x=4.0, y=5.0, z=6.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+    servant.getIntrinsic()
+    servant.close()
+
+    sessions = [
+        path
+        for path in tmp_path.iterdir()
+        if path.is_dir() and re.fullmatch(
+            r"\d{8}_\d{4}(?:_\d{2})?",
+            path.name,
+        )
+    ]
+    assert len(sessions) == 1
+    session = sessions[0]
+
+    image_path = session / "image_0001.tif"
+    assert image_path.is_file()
+    np.testing.assert_array_equal(
+        cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED),
+        frame,
+    )
+
+    with (session / "Calibration3DPositions.csv").open(newline="") as handle:
+        rows = list(csv.reader(handle, delimiter=";"))
+    assert rows[0][0] == "calibration session"
+    assert rows[1] == ["4", "5", "6", "image_0001.tif"]
+
+    result = yaml.safe_load(
+        (session / "calibration_result.yaml").read_text(encoding="utf-8")
+    )
+    assert result["camera"]["intrinsic_matrix"][0][0] == pytest.approx(100.0)
+    assert result["session"]["image_count"] == 1
+
+    metadata = yaml.safe_load(
+        (session / "session.yaml").read_text(encoding="utf-8")
+    )
+    assert metadata["session"]["image_count"] == 1
+    assert metadata["session"]["ended_at"] is not None
+
+
+def test_session_archive_converts_wide_frames_to_8_bit(tmp_path) -> None:
+    archive = SessionArchive(tmp_path)
+    frame = np.array(
+        [
+            [1000, 2000],
+            [3000, 4000],
+        ],
+        dtype=np.uint16,
+    )
+
+    archive.record(frame, np.zeros(3, dtype=np.float64))
+    session_dir = archive.session_dir
+    assert session_dir is not None
+    archive.close()
+
+    saved = cv2.imread(
+        str(session_dir / "image_0001.tif"),
+        cv2.IMREAD_UNCHANGED,
+    )
+    assert saved.dtype == np.uint8
+    assert saved[0, 0] == 0
+    assert saved[1, 1] == 255
 
 
 def test_adapter_add_data_turns_analysis_failure_into_rejection(

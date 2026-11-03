@@ -36,6 +36,7 @@ class PossibleOptions(TypedDict, total=False):
     config_file: str | Path
     debug: bool
     store_debug_images: bool
+    archive_sessions: bool
     robot_pos_file: str | Path
     output_folder: str | Path
     debug_folder: str | Path
@@ -74,6 +75,7 @@ class Settings:
     _opts: dict[str, Any]
     debug: bool
     store_debug_images: bool
+    archive_sessions: bool
     _robot_pos_file: Path
     _all_center_points_file: Path
     _output_folder: Path
@@ -218,6 +220,7 @@ class Settings:
         general = self._section("general")
         self.debug = bool(self._get(general, 'debug', False))
         self.store_debug_images = bool(self._get(general, 'store_debug_images', False))
+        self.archive_sessions = bool(self._get(general, 'archive_sessions', True))
         self.load_stored_data = bool(self._get(general, 'load_stored_data', False))
 
     def _init_files(self) -> None:

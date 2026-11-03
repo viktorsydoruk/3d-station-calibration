@@ -25,6 +25,7 @@ from Phyto.Common import (  # noqa: E402
     intrinsicParams,
 )
 
+from .archive import SessionArchive  # noqa: E402
 from .images import array_from_image_data  # noqa: E402
 from ..calibration import calculate_calibration_errors  # noqa: E402
 from ..debug import DebugInfo  # noqa: E402
@@ -76,6 +77,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         self._nozzle_cache: np.ndarray | None = None
         self._error_cache_result: Any | None = None
         self._error_cache_value: tuple[np.ndarray, ...] | None = None
+        self._archive: SessionArchive | None = None
         self._initialize(None)
 
     # ------------------------------------------------------------------
@@ -101,11 +103,16 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             if not np.all(np.isfinite(robot_position)):
                 raise ValueError("robotCoord must contain only finite values")
 
-            service.add_image_array(
-                array_from_image_data(image),
+            image_array = array_from_image_data(image)
+            if self._archive is not None:
+                self._archive.record(image_array, robot_position)
+
+            result = service.add_image_array(
+                image_array,
                 robot_position,
                 source="ice",
             )
+            self._remember_result(result)
 
     def isReady(self, current: Any = None) -> bool:
         """Return the session readiness flag without forcing a final fit."""
@@ -199,6 +206,9 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
     # ------------------------------------------------------------------
 
     def _initialize(self, configurationfilepath: str | None) -> None:
+        if getattr(self, "_archive", None) is not None:
+            self._archive.close()
+
         folder = self.folder
         config_file = self.config_file
 
@@ -226,10 +236,28 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
 
         self._settings = settings
         self._service = service
+        self._archive = (
+            SessionArchive(
+                settings.main_folder,
+                csv_filename=settings.robot_pos_file.name,
+            )
+            if settings.archive_sessions
+            else None
+        )
         self._nozzle_cache_key = None
         self._nozzle_cache = None
         self._error_cache_result = None
         self._error_cache_value = None
+
+    def close(self) -> None:
+        """Finalize the active session archive and close its CSV file."""
+        with self._lock:
+            if self._archive is not None:
+                self._archive.close()
+
+    def _remember_result(self, result: Any | None) -> None:
+        if result is not None and self._archive is not None:
+            self._archive.write_result(result)
 
     def _require_service(self) -> Any:
         if self._service is None:
@@ -246,6 +274,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         if service.is_ready:
             result = service.finish_if_ready()
             if result is not None:
+                self._remember_result(result)
                 return result
 
         result = service.last_result
@@ -253,6 +282,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             raise RuntimeError(
                 "Calibration is not ready and no fitted result is available"
             )
+        self._remember_result(result)
         return result
 
     def _calibration_errors(

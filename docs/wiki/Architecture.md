@@ -44,6 +44,7 @@ src/station_calibration/
 │  └─ folder.py             folder source adapter
 └─ ice/                     optional ZeroC Ice frontend
    ├─ adapter.py            CalibrationIceServant
+   ├─ archive.py            timestamped session image/CSV archive
    ├─ server.py             server CLI
    ├─ client.py             synchronous client and CLI
    ├─ _generated.py         adds generated stubs to sys.path

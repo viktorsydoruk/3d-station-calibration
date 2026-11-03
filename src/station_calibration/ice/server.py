@@ -56,7 +56,10 @@ def run_server(folder: str | Path,
     except KeyboardInterrupt:
         pass
     finally:
-        communicator.destroy()
+        try:
+            servant.close()
+        finally:
+            communicator.destroy()
 
 
 def run_cli(argv: list[str] | None = None) -> None:

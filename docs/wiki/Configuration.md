@@ -14,7 +14,8 @@ value.
 > replacement, not merged key-by-key with the packaged default. Copy the
 > packaged `config.toml` and edit the copy; a partial file is rejected with a
 > missing-section error. Deep-merging the packaged defaults and the user file is
-> a recommended future improvement.
+> a recommended future improvement. The same rule applies to each
+> `<stations-root>/<station-id>/config.toml` used by the Ice station registry.
 
 ## Path resolution
 

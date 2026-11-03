@@ -173,6 +173,15 @@ the production client. See [Ice Interface](Ice-Interface).
 No fit has succeeded yet. Send enough observations to reach
 `min_observations`, or call `init` and confirm the folder/config are correct.
 
+### Station ID errors
+
+- `station IDs are not enabled`: start the server with `--stations-root`.
+- `station 'station01' has no configuration file`: create
+  `<stations-root>/station01/config.toml`.
+- `station 'station01' has an active calibration`: retrieve the current results
+  first. To abandon the session, re-select the same station to reset it, then
+  select the next station.
+
 ## Windows notes
 
 - Quote paths with spaces or commas:

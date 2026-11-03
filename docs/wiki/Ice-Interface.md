@@ -21,7 +21,7 @@ Operations:
 | Operation | Direction | Purpose |
 | --- | --- | --- |
 | `calibrate(...)` | legacy | Retained by the contract; returns an empty list |
-| `init(optional string path)` | client → server | Reset the session from a TOML file, folder, or `None` |
+| `init(optional string path)` | client → server | Reset from a station ID, TOML file, folder, or `None` |
 | `addData(Point, imageData)` | client → server | Analyze one image and add the observation |
 | `isReady()` | client → server | Readiness flag |
 | `getIntrinsic()` | client → server | 3×3 matrix + 9 errors |
@@ -87,14 +87,21 @@ absolute imports (`Phenoseeder`, `Phyto`, `CommonPhenoseeder`) resolve.
 ```powershell
 uv sync --extra ice
 3dsc-ice-server "P:\3Dcalibration\3D_example"
+
+# Or serve several station profiles from one process:
+3dsc-ice-server --stations-root "C:\ProgramData\3DSC\stations"
 ```
 
 | Option | Default |
 | --- | --- |
-| `folder` | required |
+| `folder` | `<stations-root>/default` when `--stations-root` is set, otherwise required |
 | `--config` | packaged config |
+| `--stations-root` | disabled |
 | `--endpoint` | `tcp -h 127.0.0.1 -p 10000` |
 | `--identity` | `CalibrationPhenoseederIcing` |
+
+With `--stations-root`, station IDs resolve to
+`<root>/<station-id>/config.toml` and `<root>/<station-id>/data`.
 
 At startup the servant constructs a `CalibrationService` with
 `fit_every_n=1`, `apply_radius_filter=True`, and `load_stored_data=False`, so the
@@ -104,12 +111,19 @@ server always analyzes newly arriving images.
 
 | Argument | Effect |
 | --- | --- |
+| Station ID | Use `<stations-root>/<id>/config.toml` and `<stations-root>/<id>/data` |
 | `None` | Keep the server's startup folder and config |
 | Directory path | Use that folder as the calibration folder |
 | TOML file path | Use that configuration with the server's folder |
 
-Every `init` creates a fresh settings object and a fresh service, clearing the
-nozzle and error caches.
+Every accepted `init` creates a fresh settings object and a fresh service,
+clearing the nozzle and error caches. It also starts a new archive session.
+
+A switch to a different station, folder, or configuration is rejected with an
+Ice exception while the current session has received images and is not ready.
+Re-select the same station to reset it intentionally. After `isReady()` becomes
+true, the next station may be selected; retrieve the results first because the
+live session is reset, although the archive remains on disk.
 
 ### Thread safety and caching
 
@@ -153,7 +167,7 @@ are decoded locally because the wire contract carries raw pixels.
 | Option | Meaning |
 | --- | --- |
 | `--proxy` | Proxy string, default `CalibrationPhenoseederIcing:tcp -h 127.0.0.1 -p 10000` |
-| `--config` | Optional TOML file or calibration folder passed to `init` |
+| `--config` | Optional station ID, TOML file, or calibration folder passed to `init` |
 | `image` | Encoded image file |
 | `--x`, `--y`, `--z` | Robot coordinate |
 

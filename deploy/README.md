@@ -19,8 +19,10 @@ stay outside the checkout.
 2. Clone the repository to `C:\3DSC\app` and create `C:\3DSC\.venv`.
 3. Install the package with the Ice extra.
 4. Copy `src/station_calibration/resources/config.toml` to
-   `C:\3DSC\config.toml` and set production paths.
-5. Register the NSSM service, then start it and check the log.
+   `C:\3DSC\config.toml` and set production paths. For several stations, create
+   `C:\ProgramData\3DSC\stations\<station-id>\config.toml` for each profile.
+5. Register the NSSM service, then start it and check the log. Add
+   `--stations-root C:\ProgramData\3DSC\stations` when using station IDs.
 6. Run `Update-3DSC.ps1 -DryRun` before enabling the scheduled task.
 7. Register the task with `Register-UpdateTask.ps1`.
 
@@ -35,9 +37,11 @@ and security notes.
 3. Create `/opt/3dsc/.venv` with `--system-site-packages` and install the
    package without the `[ice]` extra.
 4. Create `/etc/3dsc/config.toml`, the writable output/debug directories, and
-   the `/var/lib/3dsc/station01` session working folder.
+   the `/var/lib/3dsc/station01` session working folder. For several stations,
+   create `/var/lib/3dsc/stations/<station-id>/config.toml` for each profile.
 5. Copy `linux/3dsc-ice-server.service` to `/etc/systemd/system/` and edit the
-   paths and working folder.
+   paths and working folder. Add `--stations-root /var/lib/3dsc/stations` when
+   using station IDs.
 6. Enable the server unit and verify the TCP endpoint.
 7. Copy the updater service and timer, then enable the timer.
 

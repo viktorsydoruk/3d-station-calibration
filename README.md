@@ -156,17 +156,29 @@ Start the server with a writable working folder:
 3dsc-ice-server "C:\ProgramData\3DSC\station01" --config "C:\3DSC\config.toml"
 ```
 
+For several stations on one server, enable station profiles:
+
+```powershell
+3dsc-ice-server --stations-root "C:\ProgramData\3DSC\stations"
+```
+
+The expected layout is `<stations-root>/<station-id>/config.toml` and
+`<stations-root>/<station-id>/data`. The client selects the active station with
+`init("station01")`. One server process is sufficient when only one station is
+calibrated at a time; switching away from an unfinished station is rejected.
+
 The server receives images and robot positions over Ice; it does not read them
 from the working folder. With `archive_sessions = true` (the default), each
 session is stored in a timestamped subfolder containing 8-bit TIFF frames,
 `Calibration3DPositions.csv`, `calibration_result.yaml`, and `session.yaml`, so
 it can be re-analyzed with an updated fitting procedure later.
 
-The existing `init` operation can receive a TOML configuration file or a folder.
-The folder is a server deployment setting because it is not part of the shared
-wire contract. See `ice/README.md` for generation details and the wire type
-layout, and [`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for
-Windows/Raspberry Pi installation, service autostart, and automatic updates.
+The existing `init` operation can receive a station ID, a TOML configuration
+file, a folder, or `None`. The folder is a server deployment setting because it
+is not part of the shared wire contract. See `ice/README.md` for generation
+details and the wire type layout, and
+[`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for Windows/Raspberry Pi
+installation, service autostart, and automatic updates.
 
 Linux note: PyPI does not publish a Linux `zeroc-ice` wheel for 3.8.3. On
 Debian/Ubuntu (including Raspberry Pi OS), install `python3-zeroc-ice` from the

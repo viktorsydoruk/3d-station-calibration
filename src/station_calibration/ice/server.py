@@ -19,13 +19,15 @@ DEFAULT_IDENTITY = "CalibrationPhenoseederIcing"
 def run_server(folder: str | Path,
                *,
                config_file: str | Path | None = None,
+               stations_root: str | Path | None = None,
                endpoint: str = DEFAULT_ENDPOINT,
                identity: str = DEFAULT_IDENTITY) -> None:
     """Create the Ice adapter and block until it shuts down.
 
-    The image folder is a server deployment setting: it is deliberately not part
-    of the shared wire contract. Clients may still pass a different folder or a
-    TOML path to the existing ``init`` operation.
+    The default folder is a server deployment setting: it is deliberately not
+    part of the shared wire contract. Clients may still pass a different folder,
+    a TOML path, or a station ID to the existing ``init`` operation. Station IDs
+    are resolved below ``stations_root``.
     """
     try:
         import Ice
@@ -37,7 +39,11 @@ def run_server(folder: str | Path,
 
     from .adapter import CalibrationIceServant
 
-    servant = CalibrationIceServant(folder, config_file=config_file)
+    servant = CalibrationIceServant(
+        folder,
+        config_file=config_file,
+        stations_root=stations_root,
+    )
     communicator = Ice.initialize([])
     try:
         adapter = communicator.createObjectAdapterWithEndpoints(
@@ -51,6 +57,9 @@ def run_server(folder: str | Path,
         adapter.activate()
         print(f"Version: {__version__}", flush=True)
         print(f"Ice calibration server listening on {endpoint}", flush=True)
+        if stations_root is not None:
+            root = Path(stations_root).expanduser().resolve()
+            print(f"Station profiles: {root}", flush=True)
         print(f"Proxy: {proxy.ice_toString()}", flush=True)
         communicator.waitForShutdown()
     except KeyboardInterrupt:
@@ -76,13 +85,27 @@ def run_cli(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "folder",
         type=Path,
-        help="calibration folder containing images and robot positions",
+        nargs="?",
+        default=None,
+        help=(
+            "default working folder used when init does not select a station "
+            "profile; defaults to <stations-root>/default when omitted"
+        ),
     )
     parser.add_argument(
         "--config",
         type=Path,
         default=None,
         help="optional TOML configuration; defaults to the packaged config",
+    )
+    parser.add_argument(
+        "--stations-root",
+        type=Path,
+        default=None,
+        help=(
+            "root for station profiles; enables init(\"station-id\") using "
+            "<root>/<id>/config.toml and <root>/<id>/data"
+        ),
     )
     parser.add_argument(
         "--endpoint",
@@ -96,9 +119,16 @@ def run_cli(argv: list[str] | None = None) -> None:
     )
     args = parser.parse_args(argv)
 
+    folder = args.folder
+    if folder is None:
+        if args.stations_root is None:
+            parser.error("folder is required unless --stations-root is supplied")
+        folder = args.stations_root / "default"
+
     run_server(
-        args.folder,
+        folder,
         config_file=args.config,
+        stations_root=args.stations_root,
         endpoint=args.endpoint,
         identity=args.identity,
     )

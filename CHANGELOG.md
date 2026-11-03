@@ -21,6 +21,10 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - Optional Ice-session archiving: each session is written to a `YYYYMMDD_HHMM`
   timestamped folder with 8-bit TIFF frames, `Calibration3DPositions.csv`, the
   latest `calibration_result.yaml`, and `session.yaml`.
+- Station profiles for the Ice server: `init("station01")` resolves
+  `<stations-root>/station01/config.toml` and
+  `<stations-root>/station01/data`, and switching away from an unfinished
+  station is rejected.
 
 ### Changed
 

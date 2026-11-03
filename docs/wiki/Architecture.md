@@ -45,6 +45,7 @@ src/station_calibration/
 └─ ice/                     optional ZeroC Ice frontend
    ├─ adapter.py            CalibrationIceServant
    ├─ archive.py            timestamped session image/CSV archive
+   ├─ stations.py           station-profile resolution for init(station-id)
    ├─ server.py             server CLI
    ├─ client.py             synchronous client and CLI
    ├─ _generated.py         adds generated stubs to sys.path
@@ -104,7 +105,9 @@ the YAML file and optional plots.
 `CalibrationIceServant` owns a `CalibrationService`. `addData` analyzes one
 image, adds the observation to the service's session, and the service refits
 according to the same fit policy. `isReady` and the getters query the session.
-See [Ice Interface](Ice-Interface).
+`init` can select a station profile through `ice/stations.py`; the servant
+rejects switching to another profile while the current session has received
+images and is not ready. See [Ice Interface](Ice-Interface).
 
 ### Direct library use
 

@@ -42,10 +42,12 @@ class SessionArchive:
                  root: str | Path,
                  *,
                  enabled: bool = True,
-                 csv_filename: str = CSV_FILENAME) -> None:
+                 csv_filename: str = CSV_FILENAME,
+                 station_id: str | None = None) -> None:
         self.root = Path(root).expanduser()
         self.enabled = bool(enabled)
         self.csv_filename = csv_filename
+        self.station_id = station_id
         self._session_dir: Path | None = None
         self._csv_file: Any | None = None
         self._csv_writer: Any | None = None
@@ -145,6 +147,7 @@ class SessionArchive:
 
         data = {
             "session": {
+                "station_id": self.station_id,
                 "started_at": _isoformat(self._started_at),
                 "package_version": __version__,
                 "image_count": self._image_index,
@@ -192,6 +195,7 @@ class SessionArchive:
             return
         data = {
             "session": {
+                "station_id": self.station_id,
                 "started_at": _isoformat(self._started_at),
                 "ended_at": (
                     datetime.now().astimezone().isoformat(timespec="seconds")

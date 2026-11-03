@@ -48,10 +48,21 @@ the archived folder replayable:
 3dsc "<working-folder>\20261103_1542" --config "C:\3DSC\config.toml"
 ```
 
+In a multi-station deployment, the working folder is
+`<stations-root>/<station-id>/data`, so the full path is:
+
+```text
+<stations-root>/station01/data/20261103_1542/
+```
+
+When replaying such a folder, pass the matching
+`<stations-root>/station01/config.toml` so the camera-specific settings are the
+same as during the Ice session.
+
 `calibration_result.yaml` contains the latest intrinsic matrix, extrinsic matrix,
 distortion coefficients, resolution, RMSE, and observation counts. It is updated
-whenever a fitted result is available. `session.yaml` records the session start
-and end times, package version, and image count.
+whenever a fitted result is available. `session.yaml` records the station ID,
+session start and end times, package version, and image count.
 
 ## Point cache
 

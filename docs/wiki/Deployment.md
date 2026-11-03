@@ -14,8 +14,13 @@ the production client.
   coordinates. It sends `addData(Point, imageData)` calls.
 - The **server** receives each frame and robot position over Ice. It does not
   read images or `Calibration3DPositions.csv` from its working folder.
-- The **working folder** is still required by the current CLI. It is the base for
-  relative paths and for writable output/debug files.
+- The **working folder** is the base for relative paths and for writable
+  output/debug files. It is required unless `--stations-root` is supplied; in
+  that case it defaults to `<stations-root>/default`.
+- With `--stations-root`, the server can host several station profiles. The
+  client selects one with `init("station01")`; the server loads
+  `<stations-root>/station01/config.toml` and uses
+  `<stations-root>/station01/data` for that session.
 - When `archive_sessions = true` (the default), every Ice session is archived in
   a timestamped subfolder of the working folder. The archive contains 8-bit
   TIFF frames, `Calibration3DPositions.csv`, and the latest
@@ -69,6 +74,68 @@ replayability.
 > camera is roughly 2.5 GB before TIFF compression. Monitor free space on the
 > working folder and adjust `target_observations` or disable archiving if
 > necessary.
+
+## Several stations on one server
+
+Use one server process when only one station is calibrated at a time. Each
+station still has its own configuration and data folder:
+
+```text
+C:\ProgramData\3DSC\
+└─ stations\
+   ├─ station01\
+   │  ├─ config.toml
+   │  └─ data\
+   │     └─ 20261103_1542\
+   ├─ station02\
+   │  ├─ config.toml
+   │  └─ data\
+   │     └─ 20261104_0810\
+   └─ default\
+```
+
+Start the server with the station root:
+
+```powershell
+3dsc-ice-server `
+  --stations-root "C:\ProgramData\3DSC\stations" `
+  --endpoint "tcp -h 0.0.0.0 -p 10000"
+```
+
+The positional folder may be omitted. It then defaults to
+`C:\ProgramData\3DSC\stations\default` and is only used if a client calls
+`init(None)`. A station-specific `config.toml` is required; the server creates
+`data` when the profile is selected. Each station config is a complete TOML
+replacement, so copy the packaged `config.toml` and adjust the camera-specific
+values. Use simple station IDs such as `station01`, `station02`, or
+`greenhouse-left`. IDs must start with a letter or digit and may contain only
+letters, digits, `_`, and `-`.
+
+The client tells the server which station is active:
+
+```text
+init("station01")
+addData(...)
+...
+getIntrinsic()
+getExtrinsic()
+getDistortion()
+```
+
+The server rejects `init("station02")` while `station01` has received images and
+is not ready. Once the session is ready, or before any image has arrived, the
+next station may be selected. Retrieve the results before switching; the live
+session is reset, although the archive remains on disk. Re-selecting the same
+station resets it and starts a new archive folder.
+
+For central deployment on Linux, the equivalent systemd command is:
+
+```ini
+ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server --stations-root /var/lib/3dsc/stations --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
+```
+
+Use one process per station only when calibrations may overlap or when stations
+need independent restarts, versions, or camera SDKs.
 
 ## Capacity and platform notes
 
@@ -290,6 +357,10 @@ nssm set $svc AppExit Default Restart
 nssm set $svc AppRestartDelay 5000
 nssm start $svc
 ```
+
+For station profiles, append
+`--stations-root "C:\ProgramData\3DSC\stations"` to `AppParameters`. The
+positional `$folder` may then be omitted.
 
 `SERVICE_DELAYED_AUTO_START` gives the network stack and SMB client time to come
 up if you intentionally archive to a UNC path.

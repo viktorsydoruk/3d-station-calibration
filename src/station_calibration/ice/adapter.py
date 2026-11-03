@@ -25,7 +25,9 @@ from Phyto.Common import (  # noqa: E402
     intrinsicParams,
 )
 
+from .archive import SessionArchive  # noqa: E402
 from .images import array_from_image_data  # noqa: E402
+from .stations import StationRegistry  # noqa: E402
 from ..calibration import calculate_calibration_errors  # noqa: E402
 from ..debug import DebugInfo  # noqa: E402
 from ..models import CalibrationResult  # noqa: E402
@@ -39,14 +41,25 @@ __all__ = ["CalibrationIceServant"]
 ServiceFactory = Callable[[Settings], Any]
 
 
+def _looks_like_path(value: str) -> bool:
+    """Return whether an ``init`` argument is a path, not a station ID."""
+    return (
+        Path(value).is_absolute()
+        or "/" in value
+        or "\\" in value
+        or value.lower().endswith(".toml")
+    )
+
+
 class CalibrationIceServant(CalibrationPhenoseederIcing):
     """
         Serve one incremental calibration session over Ice.
 
         The shared protocol does not carry the image folder. The server therefore
-        takes the folder as a deployment argument. ``init`` accepts either a TOML
-        configuration file, a calibration folder, or ``None``:
+        takes the folder as a deployment argument. ``init`` accepts a station ID,
+        a TOML configuration file, a calibration folder, or ``None``:
 
+        * a configured station ID selects that station's config and data folder;
         * a file path selects the TOML configuration;
         * a directory path selects the calibration folder;
         * ``None`` keeps the server's configured folder and TOML file.
@@ -59,6 +72,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
                  folder: str | Path,
                  config_file: str | Path | None = None,
                  *,
+                 stations_root: str | Path | None = None,
                  service_factory: ServiceFactory | None = None,
                  print_debug: DebugInfo | None = None) -> None:
         self.folder = Path(folder).expanduser().resolve()
@@ -67,23 +81,38 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             if config_file is not None
             else None
         )
+        self.stations_root = (
+            Path(stations_root).expanduser().resolve()
+            if stations_root is not None
+            else None
+        )
+        self._stations = StationRegistry(self.stations_root)
         self._service_factory = service_factory
         self._print_debug = print_debug
         self._lock = RLock()
         self._service: Any | None = None
         self._settings: Settings | None = None
+        self._active_station_id: str | None = None
+        self._active_session_key: tuple[Any, ...] | None = None
+        self._session_has_data = False
         self._nozzle_cache_key: tuple[int, int, int] | None = None
         self._nozzle_cache: np.ndarray | None = None
         self._error_cache_result: Any | None = None
         self._error_cache_value: tuple[np.ndarray, ...] | None = None
+        self._archive: SessionArchive | None = None
         self._initialize(None)
+
+    @property
+    def active_station_id(self) -> str | None:
+        """Return the selected station ID, or ``None`` for the default profile."""
+        return self._active_station_id
 
     # ------------------------------------------------------------------
     # Ice operations
     # ------------------------------------------------------------------
 
     def init(self, configurationfilepath: str | None, current: Any = None) -> None:
-        """Initialize or reset the session from a config file or folder path."""
+        """Initialize or reset from a station ID, config file, or folder path."""
         with self._lock:
             self._initialize(configurationfilepath)
 
@@ -101,11 +130,17 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             if not np.all(np.isfinite(robot_position)):
                 raise ValueError("robotCoord must contain only finite values")
 
-            service.add_image_array(
-                array_from_image_data(image),
+            image_array = array_from_image_data(image)
+            self._session_has_data = True
+            if self._archive is not None:
+                self._archive.record(image_array, robot_position)
+
+            result = service.add_image_array(
+                image_array,
                 robot_position,
                 source="ice",
             )
+            self._remember_result(result)
 
     def isReady(self, current: Any = None) -> bool:
         """Return the session readiness flag without forcing a final fit."""
@@ -201,13 +236,33 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
     def _initialize(self, configurationfilepath: str | None) -> None:
         folder = self.folder
         config_file = self.config_file
+        station_id: str | None = None
 
         if configurationfilepath is not None:
             candidate = Path(configurationfilepath).expanduser()
-            if candidate.is_dir():
-                folder = candidate.resolve()
-            else:
+            if candidate.exists():
+                if candidate.is_dir():
+                    folder = candidate.resolve()
+                else:
+                    config_file = candidate
+            elif _looks_like_path(configurationfilepath):
                 config_file = candidate
+            else:
+                profile = self._stations.resolve(configurationfilepath)
+                folder = profile.working_folder
+                config_file = profile.config_file
+                station_id = profile.station_id
+
+        session_key = (
+            station_id,
+            Path(folder).expanduser().resolve(),
+            (
+                Path(config_file).expanduser().resolve()
+                if config_file is not None
+                else None
+            ),
+        )
+        self._guard_station_switch(session_key, station_id)
 
         settings = Settings(
             folder,
@@ -224,12 +279,58 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         else:
             service = self._service_factory(settings)
 
+        archive = (
+            SessionArchive(
+                settings.main_folder,
+                csv_filename=settings.robot_pos_file.name,
+                station_id=station_id,
+            )
+            if settings.archive_sessions
+            else None
+        )
+        if getattr(self, "_archive", None) is not None:
+            self._archive.close()
+
         self._settings = settings
         self._service = service
+        self._archive = archive
+        self._active_station_id = station_id
+        self._active_session_key = session_key
+        self._session_has_data = False
         self._nozzle_cache_key = None
         self._nozzle_cache = None
         self._error_cache_result = None
         self._error_cache_value = None
+
+    def _guard_station_switch(self,
+                              session_key: tuple[Any, ...],
+                              station_id: str | None) -> None:
+        """Reject switching away from a station with an unfinished session."""
+        if self._active_session_key is None:
+            return
+        if session_key == self._active_session_key:
+            return
+        if self._service is None or not self._session_has_data:
+            return
+        if self._service.is_ready:
+            return
+
+        active = self._active_station_id or "default"
+        requested = station_id or "default"
+        raise RuntimeError(
+            f"station {active!r} has an active calibration; finish it "
+            f"before selecting {requested!r}"
+        )
+
+    def close(self) -> None:
+        """Finalize the active session archive and close its CSV file."""
+        with self._lock:
+            if self._archive is not None:
+                self._archive.close()
+
+    def _remember_result(self, result: Any | None) -> None:
+        if result is not None and self._archive is not None:
+            self._archive.write_result(result)
 
     def _require_service(self) -> Any:
         if self._service is None:
@@ -246,6 +347,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         if service.is_ready:
             result = service.finish_if_ready()
             if result is not None:
+                self._remember_result(result)
                 return result
 
         result = service.last_result
@@ -253,6 +355,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             raise RuntimeError(
                 "Calibration is not ready and no fitted result is available"
             )
+        self._remember_result(result)
         return result
 
     def _calibration_errors(

@@ -125,6 +125,7 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.config_file_path == context.config_file
     assert settings.debug is False
     assert settings.store_debug_images is False
+    assert settings.archive_sessions is True
     assert settings.load_stored_data is True
 
     assert settings.robot_pos_file == context.main_folder / "robot_positions.csv"
@@ -316,6 +317,7 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
         fix_cx_cy=False,
         debug=True,
         store_debug_images=True,
+        archive_sessions=False,
         load_stored_data=False,
         bg_height_pxs=123,
     )
@@ -332,6 +334,7 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
     assert settings.fix_cx_cy is False
     assert settings.debug is True
     assert settings.store_debug_images is True
+    assert settings.archive_sessions is False
     assert settings.load_stored_data is False
     assert settings.bg_height_pxs == 123
 
@@ -366,6 +369,7 @@ def test_optional_settings_use_defaults(context: ConfigContext) -> None:
 
     assert settings.debug is False
     assert settings.store_debug_images is False
+    assert settings.archive_sessions is True
     assert settings.load_stored_data is False
     assert settings.image_name_patterns == ("*.tif", "*.tiff")
     assert settings.sort_imagenames_by_mtime is True

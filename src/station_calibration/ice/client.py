@@ -86,7 +86,7 @@ class CalibrationIceClient:
         self.close()
 
     def init(self, configurationfilepath: str | Path | None = None) -> None:
-        """Initialize the remote session from a config file or folder path."""
+        """Initialize the remote session from a station ID, config file, or folder."""
         self.proxy.init(
             str(Path(configurationfilepath).expanduser())
             if configurationfilepath is not None
@@ -159,7 +159,7 @@ def run_cli(argv: list[str] | None = None) -> None:
         "--config",
         type=Path,
         default=None,
-        help="optional TOML configuration or calibration folder for init()",
+        help="optional station ID, TOML configuration, or folder for init()",
     )
     parser.add_argument("image", type=Path, help="encoded image to send")
     parser.add_argument("--x", type=float, required=True, help="robot X coordinate")

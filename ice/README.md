@@ -81,13 +81,18 @@ directory to `sys.path` when the optional transport is used.
 .\.venv\Scripts\3dsc-ice-server.exe "P:\3Dcalibration\3D_20260824_2,3mm"
 ```
 
-The server also accepts `--config`, `--endpoint`, and `--identity`. The image
-folder is a deployment setting because it is not carried by the shared wire
-contract. For clients on another machine, bind an externally reachable address,
-for example `--endpoint "tcp -h 0.0.0.0 -p 10000"`.
+The server also accepts `--config`, `--stations-root`, `--endpoint`, and
+`--identity`. The image folder is a deployment setting because it is not carried
+by the shared wire contract. For clients on another machine, bind an externally
+reachable address, for example `--endpoint "tcp -h 0.0.0.0 -p 10000"`.
+
+With `--stations-root`, station profiles are resolved from
+`<root>/<station-id>/config.toml` and `<root>/<station-id>/data`. The positional
+folder can then be omitted; it defaults to `<root>/default`.
 
 The existing `init` operation accepts:
 
+- a station ID: use that profile's TOML configuration and data folder;
 - `None`: use the server's startup folder and TOML configuration;
 - a TOML file path: use that configuration with the server's folder;
 - a directory path: use that folder as the calibration folder.

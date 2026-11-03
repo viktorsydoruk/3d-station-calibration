@@ -18,6 +18,13 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - GitLab CI checks for tests, wheel/sdist builds, and shell syntax.
 - Deployment, manual update, rollback, and troubleshooting documentation for
   Windows and Raspberry Pi.
+- Optional Ice-session archiving: each session is written to a `YYYYMMDD_HHMM`
+  timestamped folder with 8-bit TIFF frames, `Calibration3DPositions.csv`, the
+  latest `calibration_result.yaml`, and `session.yaml`.
+- Station profiles for the Ice server: `init("station01")` resolves
+  `<stations-root>/station01/config.toml` and
+  `<stations-root>/station01/data`, and switching away from an unfinished
+  station is rejected.
 
 ### Changed
 

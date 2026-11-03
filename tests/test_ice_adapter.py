@@ -5,18 +5,25 @@
 
 from __future__ import annotations
 
+import csv
+import re
+import shutil
 from types import SimpleNamespace
 
 import cv2
 import numpy as np
 import pytest
+import yaml
 
 Ice = pytest.importorskip("Ice")
 
 import station_calibration.ice.adapter as adapter_module  # noqa: E402
 import station_calibration.service as service_module  # noqa: E402
 from station_calibration.ice.adapter import CalibrationIceServant  # noqa: E402
+from station_calibration.ice.archive import SessionArchive  # noqa: E402
+from station_calibration.ice import server as ice_server  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
+from station_calibration.ice.stations import StationRegistry  # noqa: E402
 from station_calibration.ice.images import (  # noqa: E402
     array_from_image_data,
     image_data_from_array,
@@ -78,12 +85,19 @@ def _fake_result():
         optimize_result=SimpleNamespace(),
         pos_home=np.zeros(3, dtype=np.float64),
         center_points_adjusted=np.zeros((1, 2), dtype=np.float64),
+        image_size_xy=(3, 2),
         observation_count=1,
         n_used=1,
+        rmse=0.25,
     )
 
 
-def _make_servant(tmp_path, monkeypatch) -> tuple[CalibrationIceServant, FakeService]:
+def _make_servant(
+    tmp_path,
+    monkeypatch,
+    *,
+    stations_root=None,
+) -> tuple[CalibrationIceServant, FakeService]:
     service = FakeService()
 
     def fake_calculate_errors(*args, **kwargs):
@@ -129,6 +143,7 @@ def _make_servant(tmp_path, monkeypatch) -> tuple[CalibrationIceServant, FakeSer
 
     servant = CalibrationIceServant(
         tmp_path,
+        stations_root=stations_root,
         service_factory=_factory,
     )
     return servant, service
@@ -183,6 +198,87 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     assert source == "ice"
 
 
+def test_adapter_archives_session_images_csv_and_result(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    servant, _service = _make_servant(tmp_path, monkeypatch)
+    frame = np.arange(2 * 3, dtype=np.uint8).reshape(2, 3)
+
+    servant.addData(
+        Point(x=4.0, y=5.0, z=6.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+    servant.getIntrinsic()
+    servant.close()
+
+    sessions = [
+        path
+        for path in tmp_path.iterdir()
+        if path.is_dir() and re.fullmatch(
+            r"\d{8}_\d{4}(?:_\d{2})?",
+            path.name,
+        )
+    ]
+    assert len(sessions) == 1
+    session = sessions[0]
+
+    image_path = session / "image_0001.tif"
+    assert image_path.is_file()
+    np.testing.assert_array_equal(
+        cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED),
+        frame,
+    )
+
+    with (session / "Calibration3DPositions.csv").open(newline="") as handle:
+        rows = list(csv.reader(handle, delimiter=";"))
+    assert rows[0][0] == "calibration session"
+    assert rows[1] == ["4", "5", "6", "image_0001.tif"]
+
+    result = yaml.safe_load(
+        (session / "calibration_result.yaml").read_text(encoding="utf-8")
+    )
+    assert result["camera"]["intrinsic_matrix"][0][0] == pytest.approx(100.0)
+    assert result["session"]["image_count"] == 1
+
+    metadata = yaml.safe_load(
+        (session / "session.yaml").read_text(encoding="utf-8")
+    )
+    assert metadata["session"]["image_count"] == 1
+    assert metadata["session"]["ended_at"] is not None
+
+
+def test_session_archive_converts_wide_frames_to_8_bit(tmp_path) -> None:
+    archive = SessionArchive(tmp_path)
+    frame = np.array(
+        [
+            [1000, 2000],
+            [3000, 4000],
+        ],
+        dtype=np.uint16,
+    )
+
+    archive.record(frame, np.zeros(3, dtype=np.float64))
+    session_dir = archive.session_dir
+    assert session_dir is not None
+    archive.close()
+
+    saved = cv2.imread(
+        str(session_dir / "image_0001.tif"),
+        cv2.IMREAD_UNCHANGED,
+    )
+    assert saved.dtype == np.uint8
+    assert saved[0, 0] == 0
+    assert saved[1, 1] == 255
+
+
 def test_adapter_add_data_turns_analysis_failure_into_rejection(
     tmp_path,
     monkeypatch,
@@ -213,6 +309,151 @@ def test_adapter_add_data_turns_analysis_failure_into_rejection(
     assert service.session.n_observations == 0
     assert service.session.n_rejections == 1
     assert "image analysis failed" in service.session.rejections[0].reason
+
+
+def test_station_registry_resolves_profile(tmp_path) -> None:
+    root = tmp_path / "stations"
+    station_dir = root / "station01"
+    station_dir.mkdir(parents=True)
+    config_file = station_dir / "config.toml"
+    shutil.copy(adapter_module.Settings.DEFAULT_CONFIG_FILE, config_file)
+
+    profile = StationRegistry(root).resolve("station01")
+
+    assert profile.station_id == "station01"
+    assert profile.config_file == config_file
+    assert profile.working_folder == station_dir / "data"
+    assert profile.working_folder.is_dir()
+
+    with pytest.raises(ValueError, match="invalid station ID"):
+        StationRegistry(root).resolve("../station01")
+    with pytest.raises(FileNotFoundError, match="no configuration file"):
+        StationRegistry(root).resolve("missing")
+    with pytest.raises(ValueError, match="not enabled"):
+        StationRegistry(None).resolve("station01")
+
+
+def test_ice_server_cli_defaults_folder_to_station_root(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    stations_root = tmp_path / "stations"
+    captured = {}
+
+    def fake_run_server(folder, **kwargs):
+        captured["folder"] = folder
+        captured.update(kwargs)
+
+    monkeypatch.setattr(ice_server, "run_server", fake_run_server)
+
+    ice_server.run_cli(["--stations-root", str(stations_root)])
+
+    assert captured["folder"] == stations_root / "default"
+    assert captured["stations_root"] == stations_root
+
+
+def test_adapter_init_accepts_station_id(tmp_path, monkeypatch) -> None:
+    stations_root = tmp_path / "stations"
+    station_dir = stations_root / "station01"
+    station_dir.mkdir(parents=True)
+    shutil.copy(
+        adapter_module.Settings.DEFAULT_CONFIG_FILE,
+        station_dir / "config.toml",
+    )
+    servant, _service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        stations_root=stations_root,
+    )
+
+    servant.init("station01")
+    assert servant.active_station_id == "station01"
+    assert servant._settings.main_folder == (station_dir / "data").resolve()
+    with pytest.raises(FileNotFoundError, match="no configuration file"):
+        servant.init("station99")
+
+    frame = np.arange(2 * 3, dtype=np.uint8).reshape(2, 3)
+    servant.addData(
+        Point(x=1.0, y=2.0, z=3.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+    servant.getIntrinsic()
+    servant.close()
+
+    sessions = [
+        path
+        for path in (station_dir / "data").iterdir()
+        if path.is_dir() and re.fullmatch(
+            r"\d{8}_\d{4}(?:_\d{2})?",
+            path.name,
+        )
+    ]
+    assert len(sessions) == 1
+    result = yaml.safe_load(
+        (sessions[0] / "calibration_result.yaml").read_text(encoding="utf-8")
+    )
+    assert result["session"]["station_id"] == "station01"
+    metadata = yaml.safe_load(
+        (sessions[0] / "session.yaml").read_text(encoding="utf-8")
+    )
+    assert metadata["session"]["station_id"] == "station01"
+
+
+def test_adapter_missing_config_path_is_not_treated_as_station_id(
+    tmp_path,
+) -> None:
+    servant = CalibrationIceServant(tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="Config file not found"):
+        servant.init(str(tmp_path / "missing.toml"))
+
+
+def test_adapter_rejects_station_switch_during_active_calibration(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    stations_root = tmp_path / "stations"
+    for station_id in ("station01", "station02"):
+        station_dir = stations_root / station_id
+        station_dir.mkdir(parents=True)
+        shutil.copy(
+            adapter_module.Settings.DEFAULT_CONFIG_FILE,
+            station_dir / "config.toml",
+        )
+
+    servant, service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        stations_root=stations_root,
+    )
+    servant.init("station01")
+    service.ready = False
+    frame = np.zeros((2, 3), dtype=np.uint8)
+    servant.addData(
+        Point(x=1.0, y=2.0, z=3.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="active calibration"):
+        servant.init("station02")
+
+    service.ready = True
+    servant.init("station02")
+    assert servant.active_station_id == "station02"
 
 
 def test_adapter_init_accepts_folder(tmp_path, monkeypatch) -> None:

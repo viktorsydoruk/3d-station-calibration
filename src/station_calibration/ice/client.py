@@ -85,12 +85,17 @@ class CalibrationIceClient:
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
 
-    def init(self, configurationfilepath: str | Path | None = None) -> None:
-        """Initialize the remote session from a station ID, config file, or folder."""
-        self.proxy.init(
-            str(Path(configurationfilepath).expanduser())
-            if configurationfilepath is not None
-            else None
+    def init(self,
+             procedure_id: int,
+             configurationfilepath: str | Path | None = None) -> str:
+        """Start a procedure session and return its remote date folder."""
+        return self.proxy.init(
+            int(procedure_id),
+            (
+                str(configurationfilepath)
+                if configurationfilepath is not None
+                else None
+            ),
         )
 
     def add_image(self,
@@ -156,10 +161,19 @@ def run_cli(argv: list[str] | None = None) -> None:
         help=f"Ice proxy (default: {DEFAULT_PROXY})",
     )
     parser.add_argument(
+        "--procedure-id",
+        type=int,
+        required=True,
+        help="procedure ID selecting <procedures-root>/<procedure-id>/config.toml",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=None,
-        help="optional station ID, TOML configuration, or folder for init()",
+        help=(
+            "optional absolute server-side TOML configuration merged with the "
+            "procedure default for this session"
+        ),
     )
     parser.add_argument("image", type=Path, help="encoded image to send")
     parser.add_argument("--x", type=float, required=True, help="robot X coordinate")
@@ -168,7 +182,8 @@ def run_cli(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     with CalibrationIceClient.connect(args.proxy) as client:
-        client.init(args.config)
+        session_folder = client.init(args.procedure_id, args.config)
+        print(f"session: {session_folder}")
         client.add_image_file(args.image, (args.x, args.y, args.z))
         ready = client.is_ready()
         print(f"ready: {ready}")

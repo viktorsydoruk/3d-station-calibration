@@ -16,18 +16,16 @@ DEFAULT_ENDPOINT = "tcp -h 127.0.0.1 -p 10000"
 DEFAULT_IDENTITY = "CalibrationPhenoseederIcing"
 
 
-def run_server(folder: str | Path,
+def run_server(config_file: str | Path,
                *,
-               config_file: str | Path | None = None,
-               stations_root: str | Path | None = None,
                endpoint: str = DEFAULT_ENDPOINT,
                identity: str = DEFAULT_IDENTITY) -> None:
     """Create the Ice adapter and block until it shuts down.
 
-    The default folder is a server deployment setting: it is deliberately not
-    part of the shared wire contract. Clients may still pass a different folder,
-    a TOML path, or a station ID to the existing ``init`` operation. Station IDs
-    are resolved below ``stations_root``.
+    ``config_file`` is the deployment config. It must contain
+    ``[general] procedures_root`` pointing to the absolute folder that holds the
+    per-procedure folders. The procedure default configurations live beside the
+    procedure data, so the server does not need a separate default folder.
     """
     try:
         import Ice
@@ -37,30 +35,28 @@ def run_server(folder: str | Path,
             "python -m pip install -e \".[ice]\""
         ) from exc
 
-    from .adapter import CalibrationIceServant
+    from ._generated import ensure_generated_on_path
 
-    servant = CalibrationIceServant(
-        folder,
-        config_file=config_file,
-        stations_root=stations_root,
-    )
+    ensure_generated_on_path()
+
+    from .adapter import CalibrationIceServant
+    from .procedures import load_procedures_root
+
+    procedures_root = load_procedures_root(config_file)
+    servant = CalibrationIceServant(procedures_root)
     communicator = Ice.initialize([])
     try:
         adapter = communicator.createObjectAdapterWithEndpoints(
-            "CalibrationAdapter",
+            "Calibration",
             endpoint,
         )
-        proxy = adapter.add(
-            servant,
-            Ice.stringToIdentity(identity),
-        )
+        adapter.add(servant, Ice.stringToIdentity(identity))
         adapter.activate()
-        print(f"Version: {__version__}", flush=True)
-        print(f"Ice calibration server listening on {endpoint}", flush=True)
-        if stations_root is not None:
-            root = Path(stations_root).expanduser().resolve()
-            print(f"Station profiles: {root}", flush=True)
-        print(f"Proxy: {proxy.ice_toString()}", flush=True)
+        print(f"3D station calibration Ice server {__version__}", flush=True)
+        print(f"Endpoint: {endpoint}", flush=True)
+        print(f"Identity: {identity}", flush=True)
+        print(f"Procedures root: {procedures_root}", flush=True)
+        print("Press Ctrl+C to stop.", flush=True)
         communicator.waitForShutdown()
     except KeyboardInterrupt:
         pass
@@ -72,67 +68,45 @@ def run_server(folder: str | Path,
 
 
 def run_cli(argv: list[str] | None = None) -> None:
-    """Parse command-line arguments and start the server."""
+    """Run the command-line server entry point."""
     parser = argparse.ArgumentParser(
         prog="3dsc-ice-server",
-        description="Serve the calibration session over ZeroC Ice.",
+        description=(
+            "Serve the 3D station calibration interface over ZeroC Ice. "
+            "All deployment paths come from the required TOML config."
+        ),
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        required=True,
+        help=(
+            "server TOML config containing [general] procedures_root "
+            "(absolute path)"
+        ),
+    )
+    parser.add_argument(
+        "--endpoint",
+        default=DEFAULT_ENDPOINT,
+        help=f"Ice endpoint (default: {DEFAULT_ENDPOINT!r})",
+    )
+    parser.add_argument(
+        "--identity",
+        default=DEFAULT_IDENTITY,
+        help=f"Ice identity (default: {DEFAULT_IDENTITY!r})",
     )
     parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
     )
-    parser.add_argument(
-        "folder",
-        type=Path,
-        nargs="?",
-        default=None,
-        help=(
-            "default working folder used when init does not select a station "
-            "profile; defaults to <stations-root>/default when omitted"
-        ),
-    )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="optional TOML configuration; defaults to the packaged config",
-    )
-    parser.add_argument(
-        "--stations-root",
-        type=Path,
-        default=None,
-        help=(
-            "root for station profiles; enables init(\"station-id\") using "
-            "<root>/<id>/config.toml and <root>/<id>/data"
-        ),
-    )
-    parser.add_argument(
-        "--endpoint",
-        default=DEFAULT_ENDPOINT,
-        help=f"Ice endpoint string (default: {DEFAULT_ENDPOINT})",
-    )
-    parser.add_argument(
-        "--identity",
-        default=DEFAULT_IDENTITY,
-        help=f"Ice object identity (default: {DEFAULT_IDENTITY})",
-    )
     args = parser.parse_args(argv)
-
-    folder = args.folder
-    if folder is None:
-        if args.stations_root is None:
-            parser.error("folder is required unless --stations-root is supplied")
-        folder = args.stations_root / "default"
-
     run_server(
-        folder,
-        config_file=args.config,
-        stations_root=args.stations_root,
+        args.config,
         endpoint=args.endpoint,
         identity=args.identity,
     )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     run_cli()

@@ -18,13 +18,18 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - GitLab CI checks for tests, wheel/sdist builds, and shell syntax.
 - Deployment, manual update, rollback, and troubleshooting documentation for
   Windows and Raspberry Pi.
-- Optional Ice-session archiving: each session is written to a `YYYYMMDD_HHMM`
-  timestamped folder with 8-bit TIFF frames, `Calibration3DPositions.csv`, the
-  latest `calibration_result.yaml`, and `session.yaml`.
-- Station profiles for the Ice server: `init("station01")` resolves
-  `<stations-root>/station01/config.toml` and
-  `<stations-root>/station01/data`, and switching away from an unfinished
-  station is rejected.
+- Optional Ice-session archiving: each session writes 8-bit TIFF frames,
+  `Calibration3DPositions.csv`, the latest `calibration_result.yaml`, and
+  `session.yaml` directly into its date folder's `data` directory.
+- Procedure-based Ice sessions: `init(int procedureId, optional string
+  configurationfilepath)` resolves `<procedures-root>/<procedure-id>/config.toml`,
+  creates `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged
+  `config.toml` and `data/`, and returns the date folder. The optional absolute
+  override is recursively merged over the procedure default, and switching away
+  from an unfinished procedure is rejected. If a procedure does not exist yet,
+  `init` creates it from the packaged default and folds the override into that
+  new procedure default; an override for an existing procedure applies only to
+  the current run.
 
 ### Changed
 
@@ -34,10 +39,15 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   to `scripts/generate_ice_stubs.py`.
 - New releases use annotated `vYYYY.MM.DD.N` tags; legacy `vYYYY.MM.DD` tags are
   treated as revision `0`.
+- `3dsc-ice-server` now requires `--config`; the procedures root comes from
+  `[general] procedures_root`. The positional server folder and
+  `--stations-root` were removed. `3dsc-ice-client` now requires
+  `--procedure-id`.
 
 ### Fixed
 
 - Hardened bad-frame handling and CSV input validation.
+- Restored the packaged `config.toml` header comment to a valid TOML comment.
 
 <!--
 When the first release tag is created, rename [Unreleased] to the release

@@ -28,7 +28,8 @@ module Phenoseeder
 	
 
 		//init with file or use std file (toml format)
-		void init(optional(1) string configurationfilepath);
+		//returns the path of the folder where the calibration data is stored
+		string init(int procedureId, optional(1) string configurationfilepath);
 
 		//sent new point, image to calibration server		
 		void addData(Point robotCoord, Phyto::Common::imageData image);

@@ -78,24 +78,36 @@ directory to `sys.path` when the optional transport is used.
 ## Server
 
 ```powershell
-.\.venv\Scripts\3dsc-ice-server.exe "P:\3Dcalibration\3D_20260824_2,3mm"
+.\.venv\Scripts\3dsc-ice-server.exe --config "C:\3DSC\config.toml"
 ```
 
-The server also accepts `--config`, `--stations-root`, `--endpoint`, and
-`--identity`. The image folder is a deployment setting because it is not carried
-by the shared wire contract. For clients on another machine, bind an externally
-reachable address, for example `--endpoint "tcp -h 0.0.0.0 -p 10000"`.
+The config is required and must contain an absolute procedures root:
 
-With `--stations-root`, station profiles are resolved from
-`<root>/<station-id>/config.toml` and `<root>/<station-id>/data`. The positional
-folder can then be omitted; it defaults to `<root>/default`.
+```toml
+[general]
+procedures_root = "C:/ProgramData/3DSC/procedures"
+```
 
-The existing `init` operation accepts:
+The server also accepts `--endpoint` and `--identity`. For clients on another
+machine, bind an externally reachable address, for example
+`--endpoint "tcp -h 0.0.0.0 -p 10000"`.
 
-- a station ID: use that profile's TOML configuration and data folder;
-- `None`: use the server's startup folder and TOML configuration;
-- a TOML file path: use that configuration with the server's folder;
-- a directory path: use that folder as the calibration folder.
+Each procedure has a complete default configuration at
+`<procedures-root>/<procedure-id>/config.toml`. If that file does not exist yet,
+`init` creates the procedure folder and copies the packaged default there.
+`init` also creates `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a
+merged `config.toml` and a `data` folder, then returns the date folder.
+
+```text
+init(int procedureId, optional(1) string configurationfilepath) -> string
+```
+
+`configurationfilepath` is optional and must be an absolute path on the server.
+Its tables are recursively merged over the procedure default; scalars and arrays
+replace the default value. For a procedure created by this call, the override is
+also stored in the new procedure default. For an existing procedure it applies
+only to that run. The date folder name uses `_01`, `_02`, ... for same-minute
+collisions.
 
 ## Return conventions
 
@@ -118,7 +130,7 @@ The client is a small synchronous wrapper around the generated proxy:
 from station_calibration.ice import CalibrationIceClient
 
 with CalibrationIceClient.connect() as client:
-    client.init(None)
+    session_folder = client.init(1)
     client.add_image_file("image.tif", (x, y, z))
     if client.is_ready():
         intrinsic, intrinsic_error = client.get_intrinsic()
@@ -134,7 +146,7 @@ are decoded locally because the shared contract transports raw pixels.
 A one-image command-line client is also available:
 
 ```powershell
-.\.venv\Scripts\3dsc-ice-client.exe --x 0 --y 0 --z 0 image.tif
+.\.venv\Scripts\3dsc-ice-client.exe --procedure-id 1 --x 0 --y 0 --z 0 image.tif
 ```
 
 Ice remains an optional dependency:

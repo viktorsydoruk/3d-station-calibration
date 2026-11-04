@@ -150,33 +150,44 @@ Ice is an optional dependency:
 python -m pip install -e ".[ice]"
 ```
 
-Start the server with a writable working folder:
+Start the server with its deployment config:
 
 ```powershell
-3dsc-ice-server "C:\ProgramData\3DSC\station01" --config "C:\3DSC\config.toml"
+3dsc-ice-server --config "C:\3DSC\config.toml"
 ```
 
-For several stations on one server, enable station profiles:
+The config must contain an absolute procedures root:
 
-```powershell
-3dsc-ice-server --stations-root "C:\ProgramData\3DSC\stations"
+```toml
+[general]
+procedures_root = "C:/ProgramData/3DSC/procedures"
 ```
 
-The expected layout is `<stations-root>/<station-id>/config.toml` and
-`<stations-root>/<station-id>/data`. The client selects the active station with
-`init("station01")`. One server process is sufficient when only one station is
-calibrated at a time; switching away from an unfinished station is rejected.
+If a procedure does not exist yet, `init` creates its folder and copies the
+packaged default config, merging any optional override into that new procedure
+default. The expected layout is:
+
+```text
+<procedures-root>/<procedure-id>/config.toml
+<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/config.toml
+<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/data/
+```
+
+The client starts a procedure with `init(procedureId[, configurationfilepath])`.
+The optional config path must be absolute and on the server; it is recursively
+merged over the procedure default. For an existing procedure, the override
+applies only to that run. `init` returns the date folder, so the client can
+derive `<returned>/config.toml` and `<returned>/data`. One server process is
+sufficient when only one procedure is calibrated at a time; switching away from
+an unfinished procedure is rejected.
 
 The server receives images and robot positions over Ice; it does not read them
-from the working folder. With `archive_sessions = true` (the default), each
-session is stored in a timestamped subfolder containing 8-bit TIFF frames,
-`Calibration3DPositions.csv`, `calibration_result.yaml`, and `session.yaml`, so
-it can be re-analyzed with an updated fitting procedure later.
+from the procedure folder. With `archive_sessions = true` (the default), each
+session writes 8-bit TIFF frames, `Calibration3DPositions.csv`,
+`calibration_result.yaml`, and `session.yaml` directly into `<date>/data`, so it
+can be re-analyzed with an updated fitting procedure later.
 
-The existing `init` operation can receive a station ID, a TOML configuration
-file, a folder, or `None`. The folder is a server deployment setting because it
-is not part of the shared wire contract. See `ice/README.md` for generation
-details and the wire type layout, and
+See `ice/README.md` for generation details and the wire type layout, and
 [`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for Windows/Raspberry Pi
 installation, service autostart, and automatic updates.
 

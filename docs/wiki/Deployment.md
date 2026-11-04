@@ -13,20 +13,20 @@ the production client.
 - The **client** runs on the machine that produces the images and robot
   coordinates. It sends `addData(Point, imageData)` calls.
 - The **server** receives each frame and robot position over Ice. It does not
-  read images or `Calibration3DPositions.csv` from its working folder.
-- The **working folder** is the base for relative paths and for writable
-  output/debug files. It is required unless `--stations-root` is supplied; in
-  that case it defaults to `<stations-root>/default`.
-- With `--stations-root`, the server can host several station profiles. The
-  client selects one with `init("station01")`; the server loads
-  `<stations-root>/station01/config.toml` and uses
-  `<stations-root>/station01/data` for that session.
-- When `archive_sessions = true` (the default), every Ice session is archived in
-  a timestamped subfolder of the working folder. The archive contains 8-bit
-  TIFF frames, `Calibration3DPositions.csv`, and the latest
-  `calibration_result.yaml`.
-- The production TOML configuration is supplied with `--config`; it is not part
-  of the Ice wire contract.
+  read images or `Calibration3DPositions.csv` from the procedures root.
+- The **procedures root** is configured only in the server TOML file as
+  `[general] procedures_root`. It must be an absolute path and is the base for
+  every procedure folder and session archive.
+- Each procedure has a complete default config at
+  `<procedures-root>/<procedure-id>/config.toml`. The client selects a procedure
+  with `init(procedureId)`; `init` creates
+  `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged
+  `config.toml` and a `data` folder.
+- When `archive_sessions = true` (the default), every Ice session is archived
+  directly in `<date>/data`. The archive contains 8-bit TIFF frames,
+  `Calibration3DPositions.csv`, `calibration_result.yaml`, and `session.yaml`.
+- The production TOML configuration is supplied with the required `--config`;
+  it is not part of the Ice wire contract.
 - The default endpoint is `tcp -h 127.0.0.1 -p 10000`. Use
   `tcp -h 0.0.0.0 -p 10000` only when a remote client must connect directly.
 - The current contract has **no authentication or encryption**. Keep the port on
@@ -38,83 +38,96 @@ The file inventory and install order for both platforms are summarized in
 
 ### Session archive
 
-The server creates a folder named `YYYYMMDD_HHMM` on the first image of each
-session. If another session starts in the same minute, `_01`, `_02`, and so on
-are appended:
+`init` creates a folder named `YYYYMMDD_HHMM` immediately. If another session
+starts in the same minute, `_01`, `_02`, and so on are appended:
 
 ```text
-<working folder>/
+<procedures-root>/<procedure-id>/
+├─ config.toml                         procedure default
 ├─ 20261103_1542/
-│  ├─ Calibration3DPositions.csv
-│  ├─ image_0001.tif
-│  ├─ image_0002.tif
-│  ├─ ...
-│  ├─ calibration_result.yaml
-│  └─ session.yaml
+│  ├─ config.toml                     merged config used for this session
+│  └─ data/
+│     ├─ Calibration3DPositions.csv
+│     ├─ image_0001.tif
+│     ├─ image_0002.tif
+│     ├─ ...
+│     ├─ calibration_result.yaml
+│     └─ session.yaml
 └─ 20261104_0810/
-   └─ ...
+   ├─ config.toml
+   └─ data/
+      └─ ...
 ```
 
 The CSV uses the folder-workflow format `Xr;Yr;Zr;image_name`, so an archived
-session can be re-analyzed later with an updated fitting procedure. Archived
+session can be re-analyzed later with an updated fitting procedure. The date
+`config.toml` is a complete copy of the settings used for that run. Archived
 frames are 8-bit TIFF; wider input frames are scaled to the 0-255 range per frame
 to preserve contrast. For example:
 
 ```powershell
-3dsc "C:\ProgramData\3DSC\station01\20261103_1542" `
-  --config "C:\3DSC\config.toml"
+3dsc "C:\ProgramData\3DSC\procedures\1\20261103_1542\data" `
+  --config "C:\ProgramData\3DSC\procedures\1\20261103_1542\config.toml"
 ```
 
-Use a re-analysis configuration with relative `output_folder` and `debug_folder`
-paths if you want the new results inside the archived session folder. Set
-`archive_sessions = false` in `[general]` if disk space is more important than
-replayability.
+Set `archive_sessions = false` in `[general]` if disk space is more important
+than replayability.
 
 > **Disk use.** Archived frames are 8-bit TIFF. A 500-frame session from a 5 MP
 > camera is roughly 2.5 GB before TIFF compression. Monitor free space on the
-> working folder and adjust `target_observations` or disable archiving if
+> procedures root and adjust `target_observations` or disable archiving if
 > necessary.
 
-## Several stations on one server
+## Several procedures on one server
 
-Use one server process when only one station is calibrated at a time. Each
-station still has its own configuration and data folder:
+Use one server process when only one procedure is calibrated at a time. Each
+procedure still has its own default configuration and session folders. A missing
+procedure folder/config is created on its first `init`:
 
 ```text
 C:\ProgramData\3DSC\
-└─ stations\
-   ├─ station01\
+└─ procedures\
+   ├─ 1\
    │  ├─ config.toml
-   │  └─ data\
-   │     └─ 20261103_1542\
-   ├─ station02\
+   │  └─ 20261103_1542\
+   │     ├─ config.toml
+   │     └─ data\
+   ├─ 2\
    │  ├─ config.toml
-   │  └─ data\
-   │     └─ 20261104_0810\
-   └─ default\
+   │  └─ 20261104_0810\
+   │     ├─ config.toml
+   │     └─ data\
+   └─ 3\
+      └─ config.toml
 ```
 
-Start the server with the station root:
+Set the root in the server config:
+
+```toml
+[general]
+procedures_root = "C:/ProgramData/3DSC/procedures"
+```
+
+Then start the server with only that config:
 
 ```powershell
 3dsc-ice-server `
-  --stations-root "C:\ProgramData\3DSC\stations" `
+  --config "C:\3DSC\config.toml" `
   --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
 
-The positional folder may be omitted. It then defaults to
-`C:\ProgramData\3DSC\stations\default` and is only used if a client calls
-`init(None)`. A station-specific `config.toml` is required; the server creates
-`data` when the profile is selected. Each station config is a complete TOML
-replacement, so copy the packaged `config.toml` and adjust the camera-specific
-values. Use simple station IDs such as `station01`, `station02`, or
-`greenhouse-left`. IDs must start with a letter or digit and may contain only
-letters, digits, `_`, and `-`.
+If a procedure `config.toml` is missing, `init` creates the procedure folder and
+copies the packaged default there. Pre-create the folder and copy the packaged
+`config.toml` when you want camera-specific defaults before the first run. Each
+procedure config is a complete TOML replacement. Procedure IDs are integers; the
+folder name is the decimal value without zero padding, so `procedureId = 1` maps
+to `<procedures-root>/1/`.
 
-The client tells the server which station is active:
+The client tells the server which procedure is active and may supply an
+absolute server-side override config for that run:
 
 ```text
-init("station01")
+init(1)
 addData(...)
 ...
 getIntrinsic()
@@ -122,20 +135,26 @@ getExtrinsic()
 getDistortion()
 ```
 
-The server rejects `init("station02")` while `station01` has received images and
-is not ready. Once the session is ready, or before any image has arrived, the
-next station may be selected. Retrieve the results before switching; the live
+`init` returns the date folder. The optional override is recursively merged over
+the procedure default: tables merge recursively; scalar values and arrays are
+replaced. For a procedure created by that `init`, the override is also stored in
+the new procedure default. For an existing procedure, it applies only to that
+run. The merged result is written to `<date>/config.toml`.
+
+The server rejects `init(2)` while procedure `1` has received images and is not
+ready. Once the session is ready, or before any image has arrived, the next
+procedure may be selected. Retrieve the results before switching; the live
 session is reset, although the archive remains on disk. Re-selecting the same
-station resets it and starts a new archive folder.
+procedure resets it and starts a new date folder.
 
 For central deployment on Linux, the equivalent systemd command is:
 
 ```ini
-ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server --stations-root /var/lib/3dsc/stations --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
+ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
 
-Use one process per station only when calibrations may overlap or when stations
-need independent restarts, versions, or camera SDKs.
+Use one process per physical station only when calibrations may overlap or when
+stations need independent restarts, versions, or camera SDKs.
 
 ## Capacity and platform notes
 
@@ -153,12 +172,23 @@ interval is exposed as a command-line option (a recommended change).
 
 ## Common preparation
 
-### 1. Prepare the server working folder
+### 1. Prepare the procedures root
 
-Create an empty writable folder, for example `C:\ProgramData\3DSC\station01` or
-`/var/lib/3dsc/station01`. In Ice mode this is not an image input folder: the
-images and robot positions arrive over Ice. The server uses it for the session
-archive and for any relative output/debug paths.
+Create the writable root that will contain the procedure folders, for example
+`C:\ProgramData\3DSC\procedures` or `/var/lib/3dsc/procedures`. In Ice mode this
+is not an image input folder: images and robot positions arrive over Ice. The
+server creates each session's date folder below the selected procedure folder.
+
+You do not have to create procedure folders in advance: the first `init` for a
+procedure creates `<procedures-root>/<procedure-id>/` and copies the packaged
+default config there. Auto-created files use the packaged defaults, so pre-create
+and edit them if you want production or camera-specific values before the first
+run:
+
+```text
+C:\ProgramData\3DSC\procedures\1\config.toml
+C:\ProgramData\3DSC\procedures\2\config.toml
+```
 
 If you also use the folder workflow (`3dsc`) on this machine, that workflow still
 needs its own folder with images and `Calibration3DPositions.csv`. Keep the two
@@ -176,10 +206,19 @@ The packaged default is:
 src/station_calibration/resources/config.toml
 ```
 
-Copy it, then edit the copy. The `--config` file is currently a **complete
-replacement**, not merged with the packaged defaults, so keep every section.
+Copy it, then edit the copy. The server config must set the absolute procedures
+root:
 
-At minimum set:
+```toml
+[general]
+procedures_root = "C:/ProgramData/3DSC/procedures"
+```
+
+The server only reads `procedures_root` from this file. The same file can also
+serve as the complete runtime configuration for the folder workflow. Each
+procedure default config is a separate complete TOML file. Auto-created procedure
+configs start from the packaged defaults; pre-create and edit them if you need
+the production values below. At minimum set:
 
 ```toml
 [general]
@@ -187,6 +226,7 @@ debug = false
 store_debug_images = false
 archive_sessions = true
 load_stored_data = false
+procedures_root = "C:/ProgramData/3DSC/procedures"
 
 [general.files]
 # Use absolute, writable paths for a service account.
@@ -198,8 +238,9 @@ debug_folder = "C:/ProgramData/3DSC/debug"     # Windows example
 
 `load_stored_data = false` is important for the Ice server: it must analyze the
 frames that arrive over the wire, not reuse an old point cache.
-`archive_sessions = true` keeps the timestamped image/CSV archive for later
-re-analysis; set it to `false` only if you do not need that record.
+`archive_sessions = true` keeps the image/CSV archive in each session's `data`
+folder for later re-analysis; set it to `false` only if you do not need that
+record.
 
 ### 3. Smoke-test from a terminal first
 
@@ -207,7 +248,7 @@ Always start the server manually once before installing it as a service. This
 makes configuration and firewall problems visible immediately.
 
 ```powershell
-3dsc-ice-server "<server working folder>" `
+3dsc-ice-server `
   --config "<config.toml>" `
   --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
@@ -215,9 +256,11 @@ makes configuration and firewall problems visible immediately.
 The server should print:
 
 ```text
-Version: <package-version>
-Ice calibration server listening on tcp -h 0.0.0.0 -p 10000
-Proxy: CalibrationPhenoseederIcing:tcp -h ...
+3D station calibration Ice server <package-version>
+Endpoint: tcp -h 0.0.0.0 -p 10000
+Identity: CalibrationPhenoseederIcing
+Procedures root: <absolute-path>
+Press Ctrl+C to stop.
 ```
 
 The version is generated from Git tags by `hatch-vcs`; it is not edited in
@@ -289,7 +332,7 @@ C:\3DSC\.venv\Scripts\3dsc-ice-server.exe --help
 
 ```powershell
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\logs | Out-Null
-New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\station01 | Out-Null
+New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\procedures | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\output | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\debug | Out-Null
 
@@ -299,23 +342,28 @@ Copy-Item `
 ```
 
 Edit `C:\3DSC\config.toml` as described in
-[Common preparation](#common-preparation). Use forward slashes in TOML paths.
+[Common preparation](#common-preparation). Set
+`procedures_root = "C:/ProgramData/3DSC/procedures"`. The first `init` creates
+`C:\ProgramData\3DSC\procedures\<procedure-id>\config.toml` from the packaged
+default. To set camera-specific values before first use, create that procedure
+folder, copy the packaged config there, and edit it. Use forward slashes in TOML
+paths.
 
 ### 5. Run manually once
 
 ```powershell
 C:\3DSC\.venv\Scripts\3dsc-ice-server.exe `
-  "C:\ProgramData\3DSC\station01" `
   --config "C:\3DSC\config.toml" `
   --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
 
-Stop it with `Ctrl+C` after confirming that it starts and prints the proxy.
+Stop it with `Ctrl+C` after confirming that it starts and prints the procedures
+root.
 
-> **Working folder, not an input folder.** The Ice server does not read images
-> from this path. It writes the timestamped session archive there. A local path
-> is recommended; if you intentionally archive to a network share, use a UNC
-> path and give the service account write permission.
+> **Procedures root, not an input folder.** The Ice server does not read images
+> from this path. It creates the procedure session folders and writes the
+> archive there. A local path is recommended; if you intentionally archive to a
+> network share, use a UNC path and give the service account write permission.
 
 ### 6. Install as a Windows service with NSSM
 
@@ -337,13 +385,12 @@ Install and configure the service:
 ```powershell
 $svc      = "3DSC-IceServer"
 $exe      = "C:\3DSC\.venv\Scripts\3dsc-ice-server.exe"
-$folder   = "C:\ProgramData\3DSC\station01"
 $config   = "C:\3DSC\config.toml"
 $endpoint = "tcp -h 0.0.0.0 -p 10000"
 
 nssm install $svc $exe
 nssm set $svc AppDirectory "C:\3DSC"
-nssm set $svc AppParameters "`"$folder`" --config `"$config`" --endpoint `"$endpoint`""
+nssm set $svc AppParameters "--config `"$config`" --endpoint `"$endpoint`""
 nssm set $svc DisplayName "3D Station Calibration Ice Server"
 nssm set $svc Description "Serves the phenoSeeder 3D station calibration over ZeroC Ice."
 nssm set $svc Start SERVICE_DELAYED_AUTO_START
@@ -358,9 +405,8 @@ nssm set $svc AppRestartDelay 5000
 nssm start $svc
 ```
 
-For station profiles, append
-`--stations-root "C:\ProgramData\3DSC\stations"` to `AppParameters`. The
-positional `$folder` may then be omitted.
+The procedures root is not a service argument; it is read from
+`[general] procedures_root` in `$config`.
 
 `SERVICE_DELAYED_AUTO_START` gives the network stack and SMB client time to come
 up if you intentionally archive to a UNC path.
@@ -368,8 +414,9 @@ up if you intentionally archive to a UNC path.
 #### Service account
 
 By default NSSM runs the service as `LocalSystem`. That is sufficient for a local
-working folder. For a network share, use a dedicated domain or local account that
-has write access to the working folder and the configured output/debug folders:
+procedures root. For a network share, use a dedicated domain or local account
+that has write access to the procedures root and the configured output/debug
+folders:
 
 ```powershell
 $svc = "3DSC-IceServer"
@@ -543,7 +590,7 @@ Verify:
 sudo useradd --system --home-dir /opt/3dsc --shell /usr/sbin/nologin 3dsc
 sudo chown -R 3dsc:3dsc /opt/3dsc
 
-sudo mkdir -p /var/lib/3dsc/output /var/lib/3dsc/debug /var/lib/3dsc/station01 /etc/3dsc
+sudo mkdir -p /var/lib/3dsc/output /var/lib/3dsc/debug /var/lib/3dsc/procedures /etc/3dsc
 sudo chown -R 3dsc:3dsc /var/lib/3dsc
 
 sudo cp /opt/3dsc/app/src/station_calibration/resources/config.toml /etc/3dsc/config.toml
@@ -552,18 +599,24 @@ sudo chmod 640 /etc/3dsc/config.toml
 ```
 
 Edit `/etc/3dsc/config.toml` as described in
-[Common preparation](#common-preparation). Use the Linux output/debug paths, for
-example `/var/lib/3dsc/output` and `/var/lib/3dsc/debug`.
+[Common preparation](#common-preparation). Set
+`procedures_root = "/var/lib/3dsc/procedures"` and use the Linux output/debug
+paths, for example `/var/lib/3dsc/output` and `/var/lib/3dsc/debug`. The first
+`init` creates `/var/lib/3dsc/procedures/<procedure-id>/config.toml` from the
+packaged default. To set camera-specific values before first use, create the
+procedure folder, copy the packaged config there, and edit it as the `3dsc`
+service account.
 
-### 5. Prepare the server working folder
+### 5. Prepare the procedures root
 
-The Ice server archives each session below a writable working folder. The
-`/var/lib/3dsc/station01` folder created above is the working folder for this
-example.
+The Ice server creates each session's date folder below the selected procedure
+folder. The `/var/lib/3dsc/procedures` folder created above is the procedures
+root for this example; procedure 1 uses `/var/lib/3dsc/procedures/1`, which is
+created on the first `init` if it does not exist.
 
-Pass `/var/lib/3dsc/station01` as the folder argument. The archived
-`Calibration3DPositions.csv` and TIFF frames are written below it. Images and
-robot positions arrive over Ice, so no SMB mount is required for the Ice server.
+The archived `Calibration3DPositions.csv` and TIFF frames are written below
+`/var/lib/3dsc/procedures/1/<date>/data`. Images and robot positions arrive over
+Ice, so no SMB mount is required for the Ice server.
 
 If you also use the folder workflow on this machine, keep its image/CSV folder
 separate and see [Folder Workflow](Folder-Workflow).
@@ -586,13 +639,13 @@ sudo nano /etc/systemd/system/3dsc-ice-server.service
 The important lines are:
 
 ```ini
-ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server /var/lib/3dsc/station01 --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
+ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
 User=3dsc
 Group=3dsc
 ReadWritePaths=/var/lib/3dsc
 ```
 
-`ReadWritePaths=/var/lib/3dsc` covers the working folder and the archived
+`ReadWritePaths=/var/lib/3dsc` covers the procedures root and the archived
 sessions below it.
 
 Enable and start:
@@ -973,20 +1026,21 @@ Test with the one-image CLI:
 ```powershell
 3dsc-ice-client `
   --proxy "CalibrationPhenoseederIcing:tcp -h 192.168.1.50 -p 10000" `
+  --procedure-id 1 `
   --x 12.5 --y -40.0 --z 81.2 `
   image_0001.tif
 ```
 
-> The one-image CLI calls `init(None)` before sending its image. That resets the
-> server session. Do not invoke the CLI once per image for a full calibration
-> run. Use a long-lived client and call `init(None)` only once.
+> The one-image CLI calls `init(1)` before sending its image. That starts a new
+> date folder. Do not invoke the CLI once per image for a full calibration run.
+> Use a long-lived client and call `init(1)` only once.
 
 ```python
 from station_calibration.ice import CalibrationIceClient
 
 proxy = "CalibrationPhenoseederIcing:tcp -h 192.168.1.50 -p 10000"
 with CalibrationIceClient.connect(proxy) as client:
-    client.init(None)  # once per calibration run
+    session_folder = client.init(1)  # once per calibration run
 
     for image_path, robot_xyz in images:
         client.add_image_file(image_path, robot_xyz)
@@ -1005,8 +1059,11 @@ with CalibrationIceClient.connect(proxy) as client:
 | --- | --- | --- |
 | `ModuleNotFoundError: Ice` on the Pi | venv was created without system packages | Recreate it with `python3 -m venv --system-site-packages ...`; reinstall the project. |
 | `pip` tries to build `zeroc-ice` on Linux | `.[ice]` extra used on Linux | Install the project without the extra and install `python3-zeroc-ice` from the ZeroC APT repo. |
-| `Config file not found` | Wrong `--config` path | Use an absolute path. |
-| `Missing config section '[...]'` | The `--config` file is partial | Copy the full packaged config and edit the copy. |
+| `server config file not found` | Wrong `--config` path | Use an absolute path. |
+| `missing required setting 'procedures_root'` | Server config lacks the procedures root | Add `procedures_root = "<absolute path>"` under `[general]`. |
+| `procedures root does not exist` | Typo or missing directory | Create the directory or correct `[general] procedures_root`. |
+| Cannot create the procedure folder/config | The service account cannot write under the procedures root | Give it write access to `<procedures-root>` and restart the server. |
+| `Missing config section '[...]'` | A runtime TOML file is partial | Copy the full packaged config and edit the copy. |
 | `Permission denied` for `output` or `debug` | Relative paths under a read-only share | Set absolute writable paths in `[general.files]`. |
 | `Access is denied` during a Windows update | Jupyter, an IDE, or another process still uses the venv | Close it, then rerun the pip install. |
 | `--version` still shows the old version | pip skipped the reinstall or the service was not restarted | Reinstall with `--upgrade`, restart the service, and check again. |

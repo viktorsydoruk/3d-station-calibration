@@ -27,7 +27,7 @@ from Phyto.Common import (  # noqa: E402
 
 from .archive import SessionArchive  # noqa: E402
 from .images import array_from_image_data  # noqa: E402
-from .stations import StationRegistry  # noqa: E402
+from .procedures import ProcedureRegistry, ProcedureSession  # noqa: E402
 from ..calibration import calculate_calibration_errors  # noqa: E402
 from ..debug import DebugInfo  # noqa: E402
 from ..models import CalibrationResult  # noqa: E402
@@ -41,80 +41,69 @@ __all__ = ["CalibrationIceServant"]
 ServiceFactory = Callable[[Settings], Any]
 
 
-def _looks_like_path(value: str) -> bool:
-    """Return whether an ``init`` argument is a path, not a station ID."""
-    return (
-        Path(value).is_absolute()
-        or "/" in value
-        or "\\" in value
-        or value.lower().endswith(".toml")
-    )
-
-
 class CalibrationIceServant(CalibrationPhenoseederIcing):
     """
-        Serve one incremental calibration session over Ice.
+        Serve one incremental calibration procedure over Ice.
 
-        The shared protocol does not carry the image folder. The server therefore
-        takes the folder as a deployment argument. ``init`` accepts a station ID,
-        a TOML configuration file, a calibration folder, or ``None``:
+        The shared protocol carries only the procedure ID and an optional
+        server-side configuration file. The server owns the procedures root:
 
-        * a configured station ID selects that station's config and data folder;
-        * a file path selects the TOML configuration;
-        * a directory path selects the calibration folder;
-        * ``None`` keeps the server's configured folder and TOML file.
+        * ``<procedures-root>/<procedure-id>/config.toml`` is the default config;
+        * ``init`` creates ``<procedures-root>/<procedure-id>/<date>/`` with a
+          merged ``config.toml`` and a ``data`` folder;
+        * ``init`` returns that date folder so the client can derive
+          ``<date>/config.toml`` and ``<date>/data``.
 
         The adapter is intentionally thin: image analysis, fit policy, readiness,
         and final fitting stay in :class:`CalibrationService`.
     """
 
     def __init__(self,
-                 folder: str | Path,
-                 config_file: str | Path | None = None,
+                 procedures_root: str | Path,
                  *,
-                 stations_root: str | Path | None = None,
                  service_factory: ServiceFactory | None = None,
                  print_debug: DebugInfo | None = None) -> None:
-        self.folder = Path(folder).expanduser().resolve()
-        self.config_file = (
-            Path(config_file).expanduser().resolve()
-            if config_file is not None
-            else None
-        )
-        self.stations_root = (
-            Path(stations_root).expanduser().resolve()
-            if stations_root is not None
-            else None
-        )
-        self._stations = StationRegistry(self.stations_root)
+        self._procedures = ProcedureRegistry(procedures_root)
         self._service_factory = service_factory
         self._print_debug = print_debug
         self._lock = RLock()
         self._service: Any | None = None
         self._settings: Settings | None = None
-        self._active_station_id: str | None = None
-        self._active_session_key: tuple[Any, ...] | None = None
+        self._active_procedure_id: int | None = None
         self._session_has_data = False
         self._nozzle_cache_key: tuple[int, int, int] | None = None
         self._nozzle_cache: np.ndarray | None = None
         self._error_cache_result: Any | None = None
         self._error_cache_value: tuple[np.ndarray, ...] | None = None
         self._archive: SessionArchive | None = None
-        self._initialize(None)
+        self._procedure_session: ProcedureSession | None = None
 
     @property
-    def active_station_id(self) -> str | None:
-        """Return the selected station ID, or ``None`` for the default profile."""
-        return self._active_station_id
+    def procedures_root(self) -> Path:
+        """Return the deployment-owned procedures root."""
+        return self._procedures.root
+
+    @property
+    def active_procedure_id(self) -> int | None:
+        """Return the active procedure ID, or ``None`` before ``init``."""
+        return self._active_procedure_id
+
+    @property
+    def procedure_session(self) -> ProcedureSession | None:
+        """Return the active procedure session paths, or ``None`` before ``init``."""
+        return self._procedure_session
 
     # ------------------------------------------------------------------
     # Ice operations
     # ------------------------------------------------------------------
 
-    def init(self, configurationfilepath: str | None, current: Any = None) -> None:
-        """Initialize or reset from a station ID, config file, or folder path."""
+    def init(self,
+             procedureId: int,
+             configurationfilepath: str | None = None,
+             current: Any = None) -> str:
+        """Start a procedure session and return its absolute date folder."""
         with self._lock:
-            self._initialize(configurationfilepath)
+            return self._initialize(procedureId, configurationfilepath)
 
     def addData(self,
                 robotCoord: Point,
@@ -145,7 +134,9 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
     def isReady(self, current: Any = None) -> bool:
         """Return the session readiness flag without forcing a final fit."""
         with self._lock:
-            return bool(self._require_service().is_ready)
+            if self._service is None:
+                return False
+            return bool(self._service.is_ready)
 
     def getIntrinsic(self, current: Any = None) -> tuple[intrinsicParams, list[float]]:
         """Return the 3x3 intrinsic matrix and row-major one-sigma uncertainties."""
@@ -233,40 +224,18 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _initialize(self, configurationfilepath: str | None) -> None:
-        folder = self.folder
-        config_file = self.config_file
-        station_id: str | None = None
+    def _initialize(self,
+                    procedure_id: int,
+                    configurationfilepath: str | None) -> str:
+        self._guard_procedure_switch(procedure_id)
 
-        if configurationfilepath is not None:
-            candidate = Path(configurationfilepath).expanduser()
-            if candidate.exists():
-                if candidate.is_dir():
-                    folder = candidate.resolve()
-                else:
-                    config_file = candidate
-            elif _looks_like_path(configurationfilepath):
-                config_file = candidate
-            else:
-                profile = self._stations.resolve(configurationfilepath)
-                folder = profile.working_folder
-                config_file = profile.config_file
-                station_id = profile.station_id
-
-        session_key = (
-            station_id,
-            Path(folder).expanduser().resolve(),
-            (
-                Path(config_file).expanduser().resolve()
-                if config_file is not None
-                else None
-            ),
+        profile = self._procedures.create_session(
+            procedure_id,
+            configurationfilepath,
         )
-        self._guard_station_switch(session_key, station_id)
-
         settings = Settings(
-            folder,
-            config_file=config_file,
+            profile.data_dir,
+            config_file=profile.config_file,
             load_stored_data=False,
         )
         if self._service_factory is None:
@@ -281,45 +250,44 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
 
         archive = (
             SessionArchive(
-                settings.main_folder,
+                profile.data_dir,
                 csv_filename=settings.robot_pos_file.name,
-                station_id=station_id,
+                procedure_id=procedure_id,
+                session_folder=profile.session_dir,
+                config_file=profile.config_file,
             )
             if settings.archive_sessions
             else None
         )
-        if getattr(self, "_archive", None) is not None:
+        if self._archive is not None:
             self._archive.close()
 
         self._settings = settings
         self._service = service
         self._archive = archive
-        self._active_station_id = station_id
-        self._active_session_key = session_key
+        self._active_procedure_id = procedure_id
+        self._procedure_session = profile
         self._session_has_data = False
         self._nozzle_cache_key = None
         self._nozzle_cache = None
         self._error_cache_result = None
         self._error_cache_value = None
+        return str(profile.session_dir)
 
-    def _guard_station_switch(self,
-                              session_key: tuple[Any, ...],
-                              station_id: str | None) -> None:
-        """Reject switching away from a station with an unfinished session."""
-        if self._active_session_key is None:
+    def _guard_procedure_switch(self, procedure_id: int) -> None:
+        """Reject switching away from a procedure with an unfinished session."""
+        if self._active_procedure_id is None:
             return
-        if session_key == self._active_session_key:
+        if procedure_id == self._active_procedure_id:
             return
         if self._service is None or not self._session_has_data:
             return
         if self._service.is_ready:
             return
 
-        active = self._active_station_id or "default"
-        requested = station_id or "default"
         raise RuntimeError(
-            f"station {active!r} has an active calibration; finish it "
-            f"before selecting {requested!r}"
+            f"procedure {self._active_procedure_id!r} has an active "
+            f"calibration; finish it before selecting {procedure_id!r}"
         )
 
     def close(self) -> None:
@@ -334,12 +302,16 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
 
     def _require_service(self) -> Any:
         if self._service is None:
-            raise RuntimeError("Calibration service is not initialized")
+            raise RuntimeError(
+                "Calibration service is not initialized; call init first"
+            )
         return self._service
 
     def _require_settings(self) -> Settings:
         if self._settings is None:
-            raise RuntimeError("Calibration settings are not initialized")
+            raise RuntimeError(
+                "Calibration settings are not initialized; call init first"
+            )
         return self._settings
 
     def _current_result(self) -> CalibrationResult:

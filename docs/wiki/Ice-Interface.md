@@ -21,7 +21,7 @@ Operations:
 | Operation | Direction | Purpose |
 | --- | --- | --- |
 | `calibrate(...)` | legacy | Retained by the contract; returns an empty list |
-| `init(optional string path)` | client → server | Reset from a station ID, TOML file, folder, or `None` |
+| `init(int procedureId, optional string configurationfilepath)` | client → server | Start a procedure session and return its date folder |
 | `addData(Point, imageData)` | client → server | Analyze one image and add the observation |
 | `isReady()` | client → server | Readiness flag |
 | `getIntrinsic()` | client → server | 3×3 matrix + 9 errors |
@@ -86,44 +86,60 @@ absolute imports (`Phenoseeder`, `Phyto`, `CommonPhenoseeder`) resolve.
 
 ```powershell
 uv sync --extra ice
-3dsc-ice-server "P:\3Dcalibration\3D_example"
-
-# Or serve several station profiles from one process:
-3dsc-ice-server --stations-root "C:\ProgramData\3DSC\stations"
+3dsc-ice-server --config "C:\3DSC\config.toml"
 ```
 
 | Option | Default |
 | --- | --- |
-| `folder` | `<stations-root>/default` when `--stations-root` is set, otherwise required |
-| `--config` | packaged config |
-| `--stations-root` | disabled |
+| `--config` | required |
 | `--endpoint` | `tcp -h 127.0.0.1 -p 10000` |
 | `--identity` | `CalibrationPhenoseederIcing` |
 
-With `--stations-root`, station IDs resolve to
-`<root>/<station-id>/config.toml` and `<root>/<station-id>/data`.
+The config must contain an absolute procedures root:
 
-At startup the servant constructs a `CalibrationService` with
-`fit_every_n=1`, `apply_radius_filter=True`, and `load_stored_data=False`, so the
-server always analyzes newly arriving images.
+```toml
+[general]
+procedures_root = "C:/ProgramData/3DSC/procedures"
+```
+
+Each procedure has a complete default at
+`<procedures-root>/<procedure-id>/config.toml`. If it is missing, `init` creates
+the procedure folder and copies the packaged default there. `init` also creates
+`<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged `config.toml`
+and a `data` folder.
+
+The servant starts uninitialized. Before `init`, `isReady()` returns `false` and
+the data/getter operations raise a clear `RuntimeError`. Once initialized, the
+servant constructs a `CalibrationService` with `fit_every_n=1`,
+`apply_radius_filter=True`, and `load_stored_data=False`, so the server always
+analyzes newly arriving images.
 
 ### `init` semantics
 
 | Argument | Effect |
 | --- | --- |
-| Station ID | Use `<stations-root>/<id>/config.toml` and `<stations-root>/<id>/data` |
-| `None` | Keep the server's startup folder and config |
-| Directory path | Use that folder as the calibration folder |
-| TOML file path | Use that configuration with the server's folder |
+| `procedureId` | Select `<procedures-root>/<str(procedureId)>/config.toml`, creating the procedure folder/config from the packaged default if needed |
+| `configurationfilepath` | Optional absolute server-side TOML recursively merged over the procedure default |
 
-Every accepted `init` creates a fresh settings object and a fresh service,
-clearing the nozzle and error caches. It also starts a new archive session.
+The folder name is exactly `str(procedureId)`, with no zero padding. If the
+optional path is relative or missing, `init` raises. For a new procedure, the
+override is merged into the new persistent procedure default. For an existing
+procedure, the override applies only to the current run. The merged result is
+always a complete config and is written to `<date>/config.toml`; the archive
+writes to `<date>/data`.
 
-A switch to a different station, folder, or configuration is rejected with an
-Ice exception while the current session has received images and is not ready.
-Re-select the same station to reset it intentionally. After `isReady()` becomes
-true, the next station may be selected; retrieve the results first because the
-live session is reset, although the archive remains on disk.
+The date folder format is `YYYYMMDD_HHMM`. If a session already exists for that
+minute, `_01`, `_02`, ... is appended. `init` returns the absolute date folder so
+the client can derive `<returned>/config.toml` and `<returned>/data`.
+
+Every accepted `init` creates a fresh settings object, service, and archive
+session, clearing the nozzle and error caches.
+
+A switch to a different procedure is rejected with an Ice exception while the
+current session has received images and is not ready. Re-select the same
+procedure to reset it intentionally. After `isReady()` becomes true, the next
+procedure may be selected; retrieve the results first because the live session
+is reset, although the archive remains on disk.
 
 ### Thread safety and caching
 
@@ -143,7 +159,7 @@ otherwise it returns the last result. If neither exists, the getters raise
 from station_calibration.ice import CalibrationIceClient
 
 with CalibrationIceClient.connect("CalibrationPhenoseederIcing:tcp -h 127.0.0.1 -p 10000") as client:
-    client.init(None)
+    session_folder = client.init(1)
     client.add_image_file("image.tif", (x, y, z))
 
     if client.is_ready():
@@ -161,18 +177,19 @@ are decoded locally because the wire contract carries raw pixels.
 ### Client CLI
 
 ```powershell
-3dsc-ice-client --x 12.5 --y -40.0 --z 81.2 image.tif
+3dsc-ice-client --procedure-id 1 --x 12.5 --y -40.0 --z 81.2 image.tif
 ```
 
 | Option | Meaning |
 | --- | --- |
 | `--proxy` | Proxy string, default `CalibrationPhenoseederIcing:tcp -h 127.0.0.1 -p 10000` |
-| `--config` | Optional station ID, TOML file, or calibration folder passed to `init` |
+| `--procedure-id` | Integer procedure ID passed to `init` |
+| `--config` | Optional absolute server-side TOML merged with the procedure default |
 | `image` | Encoded image file |
 | `--x`, `--y`, `--z` | Robot coordinate |
 
-The CLI prints readiness and, when ready, the matrices, errors, distortion,
-and nozzle position.
+The CLI prints the returned session folder, readiness, and, when ready, the
+matrices, errors, distortion, and nozzle position.
 
 ## Return conventions
 
@@ -191,7 +208,8 @@ The nozzle result matches the folder workflow's
 For a client on another machine, bind an externally reachable address:
 
 ```powershell
-3dsc-ice-server "\\server\share\3Dcalibration\run_001" `
+3dsc-ice-server `
+  --config "C:\3DSC\config.toml" `
   --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
 

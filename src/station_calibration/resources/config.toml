@@ -5,10 +5,13 @@ debug = true
 # whether to store debug images
 store_debug_images = false
 # whether the Ice server archives each session with images, robot positions,
-# and the latest calibration result under a timestamped folder
+# and the latest calibration result in the session's data folder
 archive_sessions = true
 # whether to load the data of previous analysis of images
 load_stored_data = true
+# absolute folder containing one subfolder per procedure for the Ice server;
+# this is required by 3dsc-ice-server and ignored by the folder workflow
+procedures_root = ""
 
 [general.files]
 # name of the file where the positions of robotic arm are stored

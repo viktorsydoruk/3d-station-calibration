@@ -171,16 +171,22 @@ the production client. See [Ice Interface](Ice-Interface).
 ### Getter raises “Calibration is not ready and no fitted result is available”
 
 No fit has succeeded yet. Send enough observations to reach
-`min_observations`, or call `init` and confirm the folder/config are correct.
+`min_observations`, or call `init` and confirm the procedure/config are correct.
 
-### Station ID errors
+### Procedure and server-config errors
 
-- `station IDs are not enabled`: start the server with `--stations-root`.
-- `station 'station01' has no configuration file`: create
-  `<stations-root>/station01/config.toml`.
-- `station 'station01' has an active calibration`: retrieve the current results
-  first. To abandon the session, re-select the same station to reset it, then
-  select the next station.
+- `missing required setting 'procedures_root'`: add
+  `procedures_root = "<absolute path>"` under `[general]` in the `--config` file.
+- `'procedures_root' ... must be an absolute path`: use a full Windows drive or
+  UNC path, or a full POSIX path.
+- A missing `<procedures-root>/<procedure-id>/config.toml` is created from the
+  packaged default on the first `init`. If creation fails, make sure the service
+  account can write under `<procedures-root>`.
+- `configurationfilepath must be an absolute path`: the optional `init` override
+  is interpreted on the server, not on the client.
+- `procedure 1 has an active calibration`: retrieve the current results first.
+  To abandon the session, re-select procedure 1 to reset it, then select the next
+  procedure.
 
 ## Windows notes
 

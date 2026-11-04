@@ -58,11 +58,11 @@ class CalibrationPhenoseederIcingPrx(ObjectPrx):
     def calibrateAsync(self, numberOfPoints: int, shutter: int, gain: int, ubV: int, vrV: int, offsetX: int, offsetY: int, HMin: int, HMax: int, SMin: int, SMax: int, VMin: int, VMax: int, minSizeObj: int, maxSizeObj: int, minSizeHoles: int, mask: imageData, h: int, w: int, c: float, z: float, centralPointX: float, centralPointY: float, radius: float, tool: int, context: dict[str, str] | None = None) -> Awaitable[list[float]]:
         return CalibrationPhenoseederIcing._op_calibrate.invokeAsync(self, ((numberOfPoints, shutter, gain, ubV, vrV, offsetX, offsetY, HMin, HMax, SMin, SMax, VMin, VMax, minSizeObj, maxSizeObj, minSizeHoles, mask, h, w, c, z, centralPointX, centralPointY, radius, tool), context))
 
-    def init(self, configurationfilepath: str | None = None, context: dict[str, str] | None = None) -> None:
-        return CalibrationPhenoseederIcing._op_init.invoke(self, ((configurationfilepath, ), context))
+    def init(self, procedureId: int, configurationfilepath: str | None = None, context: dict[str, str] | None = None) -> str:
+        return CalibrationPhenoseederIcing._op_init.invoke(self, ((procedureId, configurationfilepath), context))
 
-    def initAsync(self, configurationfilepath: str | None = None, context: dict[str, str] | None = None) -> Awaitable[None]:
-        return CalibrationPhenoseederIcing._op_init.invokeAsync(self, ((configurationfilepath, ), context))
+    def initAsync(self, procedureId: int, configurationfilepath: str | None = None, context: dict[str, str] | None = None) -> Awaitable[str]:
+        return CalibrationPhenoseederIcing._op_init.invokeAsync(self, ((procedureId, configurationfilepath), context))
 
     def addData(self, robotCoord: Point, image: imageData, context: dict[str, str] | None = None) -> None:
         return CalibrationPhenoseederIcing._op_addData.invoke(self, ((robotCoord, image), context))
@@ -162,7 +162,7 @@ class CalibrationPhenoseederIcing(Object, ABC):
         pass
 
     @abstractmethod
-    def init(self, configurationfilepath: str | None, current: Current) -> None | Awaitable[None]:
+    def init(self, procedureId: int, configurationfilepath: str | None, current: Current) -> str | Awaitable[str]:
         pass
 
     @abstractmethod
@@ -207,9 +207,9 @@ CalibrationPhenoseederIcing._op_init = IcePy.Operation(
     OperationMode.Normal,
     None,
     (),
-    (((), IcePy._t_string, True, 1),),
+    (((), IcePy._t_int, False, 0), ((), IcePy._t_string, True, 1)),
     (),
-    None,
+    ((), IcePy._t_string, False, 0),
     (),
     False)
 

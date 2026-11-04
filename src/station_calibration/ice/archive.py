@@ -3,11 +3,12 @@
 
 """On-disk archive for incoming Ice calibration sessions.
 
-Each session gets a timestamped directory below the server's working folder.
-The directory is intentionally compatible with the folder workflow: it contains
-8-bit TIFF frames and a semicolon-separated ``Calibration3DPositions.csv``. The
-latest fit is also written as ``calibration_result.yaml`` so the matrices
-returned over Ice remain available later.
+Each procedure session has a timestamped folder created by the server. The
+archive writes directly into that folder's ``data`` directory so it stays
+compatible with the folder workflow: 8-bit TIFF frames plus a semicolon-separated
+``Calibration3DPositions.csv``. The latest fit is also written as
+``calibration_result.yaml`` so the matrices returned over Ice remain available
+later.
 """
 
 from __future__ import annotations
@@ -31,23 +32,34 @@ METADATA_FILENAME = "session.yaml"
 
 
 class SessionArchive:
-    """Write one Ice session to a timestamped folder.
+    """Write one Ice session directly into a prepared data directory.
 
-    The archive is created lazily on the first image. Calling :meth:`close`
-    finalizes the metadata and closes the CSV file. A new instance is created
-    whenever the Ice servant reinitializes its calibration session.
+    The directory is created by :class:`ProcedureRegistry` before ``init``
+    returns, so the archive itself does not create a second timestamp folder. The
+    archive starts lazily on the first image. Calling :meth:`close` finalizes the
+    metadata and closes the CSV file.
     """
 
     def __init__(self,
-                 root: str | Path,
+                 data_folder: str | Path,
                  *,
                  enabled: bool = True,
                  csv_filename: str = CSV_FILENAME,
-                 station_id: str | None = None) -> None:
-        self.root = Path(root).expanduser()
+                 procedure_id: int | None = None,
+                 session_folder: str | Path | None = None,
+                 config_file: str | Path | None = None) -> None:
+        self.data_folder = Path(data_folder).expanduser()
         self.enabled = bool(enabled)
         self.csv_filename = csv_filename
-        self.station_id = station_id
+        self.procedure_id = procedure_id
+        self.session_folder = (
+            Path(session_folder).expanduser()
+            if session_folder is not None
+            else self.data_folder.parent
+        )
+        self.config_file = (
+            Path(config_file).expanduser() if config_file is not None else None
+        )
         self._session_dir: Path | None = None
         self._csv_file: Any | None = None
         self._csv_writer: Any | None = None
@@ -57,7 +69,7 @@ class SessionArchive:
 
     @property
     def session_dir(self) -> Path | None:
-        """Return the active session directory, or ``None`` before the first image."""
+        """Return the active data directory, or ``None`` before the first image."""
         return self._session_dir
 
     @property
@@ -66,26 +78,19 @@ class SessionArchive:
         return self._image_index
 
     def start(self) -> Path | None:
-        """Create the session folder and CSV file if they do not exist yet."""
+        """Create the data folder and CSV file if they do not exist yet."""
         if not self.enabled:
             return None
         if self._session_dir is not None:
             return self._session_dir
 
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.data_folder.mkdir(parents=True, exist_ok=True)
         self._started_at = datetime.now()
-        base_name = self._started_at.strftime("%Y%m%d_%H%M")
-        session_dir = self.root / base_name
-        suffix = 1
-        while session_dir.exists():
-            session_dir = self.root / f"{base_name}_{suffix:02d}"
-            suffix += 1
-        session_dir.mkdir(parents=True)
 
-        self._session_dir = session_dir
+        self._session_dir = self.data_folder
         self._image_index = 0
         self._last_result_key = None
-        csv_path = session_dir / self.csv_filename
+        csv_path = self._session_dir / self.csv_filename
         self._csv_file = csv_path.open("w", newline="", encoding="utf-8")
         self._csv_writer = csv.writer(
             self._csv_file,
@@ -99,13 +104,13 @@ class SessionArchive:
         )
         self._csv_file.flush()
         self._write_metadata()
-        return session_dir
+        return self._session_dir
 
     def record(self, image: np.ndarray, robot_position: np.ndarray) -> Path | None:
         """Archive one frame and its robot position.
 
-        Images are converted to 8-bit TIFF and named in the CSV, so the folder
-        can be re-analyzed later with ``3dsc <session-folder>``.
+        Images are converted to 8-bit TIFF and named in the CSV, so the data
+        folder can be re-analyzed later with ``3dsc <data-folder>``.
         """
         session_dir = self.start()
         if session_dir is None:
@@ -147,7 +152,14 @@ class SessionArchive:
 
         data = {
             "session": {
-                "station_id": self.station_id,
+                "procedure_id": self.procedure_id,
+                "session_folder": str(self.session_folder),
+                "data_folder": str(self.data_folder),
+                "config_file": (
+                    str(self.config_file)
+                    if self.config_file is not None
+                    else None
+                ),
                 "started_at": _isoformat(self._started_at),
                 "package_version": __version__,
                 "image_count": self._image_index,
@@ -195,7 +207,14 @@ class SessionArchive:
             return
         data = {
             "session": {
-                "station_id": self.station_id,
+                "procedure_id": self.procedure_id,
+                "session_folder": str(self.session_folder),
+                "data_folder": str(self.data_folder),
+                "config_file": (
+                    str(self.config_file)
+                    if self.config_file is not None
+                    else None
+                ),
                 "started_at": _isoformat(self._started_at),
                 "ended_at": (
                     datetime.now().astimezone().isoformat(timespec="seconds")

@@ -8,6 +8,9 @@ from __future__ import annotations
 import csv
 import re
 import shutil
+import tomllib
+from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import cv2
@@ -23,7 +26,12 @@ from station_calibration.ice.adapter import CalibrationIceServant  # noqa: E402
 from station_calibration.ice.archive import SessionArchive  # noqa: E402
 from station_calibration.ice import server as ice_server  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
-from station_calibration.ice.stations import StationRegistry  # noqa: E402
+from station_calibration.ice.procedures import (  # noqa: E402
+    ProcedureRegistry,
+    deep_merge,
+    dumps_toml,
+    load_procedures_root,
+)
 from station_calibration.ice.images import (  # noqa: E402
     array_from_image_data,
     image_data_from_array,
@@ -92,12 +100,34 @@ def _fake_result():
     )
 
 
+def _make_procedure_root(
+    tmp_path: Path,
+    *,
+    procedure_ids: tuple[int, ...] = (1,),
+) -> Path:
+    root = tmp_path / "procedures"
+    root.mkdir()
+    for procedure_id in procedure_ids:
+        procedure_dir = root / str(procedure_id)
+        procedure_dir.mkdir()
+        shutil.copy(
+            adapter_module.Settings.DEFAULT_CONFIG_FILE,
+            procedure_dir / "config.toml",
+        )
+    return root
+
+
 def _make_servant(
-    tmp_path,
+    tmp_path: Path,
     monkeypatch,
     *,
-    stations_root=None,
+    procedures_root: Path | None = None,
+    procedure_ids: tuple[int, ...] = (1,),
 ) -> tuple[CalibrationIceServant, FakeService]:
+    root = procedures_root or _make_procedure_root(
+        tmp_path,
+        procedure_ids=procedure_ids,
+    )
     service = FakeService()
 
     def fake_calculate_errors(*args, **kwargs):
@@ -142,8 +172,7 @@ def _make_servant(
         return service
 
     servant = CalibrationIceServant(
-        tmp_path,
-        stations_root=stations_root,
+        root,
         service_factory=_factory,
     )
     return servant, service
@@ -151,6 +180,7 @@ def _make_servant(
 
 def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     servant, service = _make_servant(tmp_path, monkeypatch)
+    servant.init(1)
 
     intrinsic, intrinsic_error = servant.getIntrinsic()
     assert intrinsic.modelId is INTRINSICMODEL.INTRINSICMATRIX
@@ -203,6 +233,8 @@ def test_adapter_archives_session_images_csv_and_result(
     monkeypatch,
 ) -> None:
     servant, _service = _make_servant(tmp_path, monkeypatch)
+    session = Path(servant.init(1))
+    data = session / "data"
     frame = np.arange(2 * 3, dtype=np.uint8).reshape(2, 3)
 
     servant.addData(
@@ -219,40 +251,38 @@ def test_adapter_archives_session_images_csv_and_result(
     servant.getIntrinsic()
     servant.close()
 
-    sessions = [
-        path
-        for path in tmp_path.iterdir()
-        if path.is_dir() and re.fullmatch(
-            r"\d{8}_\d{4}(?:_\d{2})?",
-            path.name,
-        )
-    ]
-    assert len(sessions) == 1
-    session = sessions[0]
+    assert (session / "config.toml").is_file()
+    assert data.is_dir()
+    assert re.fullmatch(r"\d{8}_\d{4}(?:_\d{2})?", session.name)
 
-    image_path = session / "image_0001.tif"
+    image_path = data / "image_0001.tif"
     assert image_path.is_file()
     np.testing.assert_array_equal(
         cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED),
         frame,
     )
 
-    with (session / "Calibration3DPositions.csv").open(newline="") as handle:
+    with (data / "Calibration3DPositions.csv").open(newline="") as handle:
         rows = list(csv.reader(handle, delimiter=";"))
     assert rows[0][0] == "calibration session"
     assert rows[1] == ["4", "5", "6", "image_0001.tif"]
 
     result = yaml.safe_load(
-        (session / "calibration_result.yaml").read_text(encoding="utf-8")
+        (data / "calibration_result.yaml").read_text(encoding="utf-8")
     )
     assert result["camera"]["intrinsic_matrix"][0][0] == pytest.approx(100.0)
     assert result["session"]["image_count"] == 1
+    assert result["session"]["procedure_id"] == 1
+    assert result["session"]["config_file"] == str(session / "config.toml")
 
     metadata = yaml.safe_load(
-        (session / "session.yaml").read_text(encoding="utf-8")
+        (data / "session.yaml").read_text(encoding="utf-8")
     )
     assert metadata["session"]["image_count"] == 1
     assert metadata["session"]["ended_at"] is not None
+    assert metadata["session"]["procedure_id"] == 1
+    assert metadata["session"]["session_folder"] == str(session)
+    assert metadata["session"]["config_file"] == str(session / "config.toml")
 
 
 def test_session_archive_converts_wide_frames_to_8_bit(tmp_path) -> None:
@@ -267,7 +297,7 @@ def test_session_archive_converts_wide_frames_to_8_bit(tmp_path) -> None:
 
     archive.record(frame, np.zeros(3, dtype=np.float64))
     session_dir = archive.session_dir
-    assert session_dir is not None
+    assert session_dir == tmp_path
     archive.close()
 
     saved = cv2.imread(
@@ -290,7 +320,9 @@ def test_adapter_add_data_turns_analysis_failure_into_rejection(
 
     monkeypatch.setattr(service_module, "analyze_image", fail_analysis)
 
-    servant = CalibrationIceServant(tmp_path)
+    root = _make_procedure_root(tmp_path)
+    servant = CalibrationIceServant(root)
+    servant.init(1)
     frame = np.zeros((2, 3), dtype=np.uint8)
 
     servant.addData(
@@ -311,129 +343,222 @@ def test_adapter_add_data_turns_analysis_failure_into_rejection(
     assert "image analysis failed" in service.session.rejections[0].reason
 
 
-def test_station_registry_resolves_profile(tmp_path) -> None:
-    root = tmp_path / "stations"
-    station_dir = root / "station01"
-    station_dir.mkdir(parents=True)
-    config_file = station_dir / "config.toml"
-    shutil.copy(adapter_module.Settings.DEFAULT_CONFIG_FILE, config_file)
+def test_procedure_registry_creates_session_layout(tmp_path) -> None:
+    root = _make_procedure_root(tmp_path)
+    registry = ProcedureRegistry(root)
+    now = datetime(2026, 11, 4, 12, 34)
 
-    profile = StationRegistry(root).resolve("station01")
+    session = registry.create_session(1, now=now)
 
-    assert profile.station_id == "station01"
-    assert profile.config_file == config_file
-    assert profile.working_folder == station_dir / "data"
-    assert profile.working_folder.is_dir()
+    assert session.procedure_id == 1
+    assert session.procedure_dir == root / "1"
+    assert session.session_dir == root / "1" / "20261104_1234"
+    assert session.config_file == session.session_dir / "config.toml"
+    assert session.data_dir == session.session_dir / "data"
+    assert session.data_dir.is_dir()
+    assert session.override_config_file is None
 
-    with pytest.raises(ValueError, match="invalid station ID"):
-        StationRegistry(root).resolve("../station01")
-    with pytest.raises(FileNotFoundError, match="no configuration file"):
-        StationRegistry(root).resolve("missing")
-    with pytest.raises(ValueError, match="not enabled"):
-        StationRegistry(None).resolve("station01")
+    default = tomllib.loads(
+        (root / "1" / "config.toml").read_text(encoding="utf-8")
+    )
+    written = tomllib.loads(session.config_file.read_text(encoding="utf-8"))
+    assert written == default
+
+    second = registry.create_session(1, now=now)
+    assert second.session_dir.name == "20261104_1234_01"
+    assert second.data_dir.is_dir()
 
 
-def test_ice_server_cli_defaults_folder_to_station_root(
-    tmp_path,
-    monkeypatch,
-) -> None:
-    stations_root = tmp_path / "stations"
+def test_procedure_registry_merges_override_recursively(tmp_path) -> None:
+    root = tmp_path / "procedures"
+    procedure_dir = root / "1"
+    procedure_dir.mkdir(parents=True)
+    default = {
+        "general": {
+            "archive_sessions": True,
+            "files": {
+                "output_folder": "out",
+                "image_name_patterns": ["*.tif"],
+            },
+        },
+        "analysis": {
+            "n_iterations": 3,
+            "fit": {"fix_cx_cy": True},
+        },
+        "custom": {"keep": 1, "replace": "old", "values": [1, 2, 3]},
+    }
+    (procedure_dir / "config.toml").write_text(
+        dumps_toml(default),
+        encoding="utf-8",
+    )
+    override_file = tmp_path / "override.toml"
+    override_file.write_text(
+        dumps_toml(
+            {
+                "general": {"files": {"image_name_patterns": ["*.png"]}},
+                "analysis": {"fit": {"fix_cx_cy": False}},
+                "custom": {"replace": "new", "values": [9], "added": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    session = ProcedureRegistry(root).create_session(1, override_file)
+    merged = tomllib.loads(session.config_file.read_text(encoding="utf-8"))
+
+    assert merged["general"]["archive_sessions"] is True
+    assert merged["general"]["files"]["output_folder"] == "out"
+    assert merged["general"]["files"]["image_name_patterns"] == ["*.png"]
+    assert merged["analysis"]["n_iterations"] == 3
+    assert merged["analysis"]["fit"]["fix_cx_cy"] is False
+    assert merged["custom"]["keep"] == 1
+    assert merged["custom"]["replace"] == "new"
+    assert merged["custom"]["values"] == [9]
+    assert merged["custom"]["added"] == 2
+    assert session.override_config_file == override_file
+    assert deep_merge({"a": {"b": 1}}, {"a": {"c": 2}}) == {
+        "a": {"b": 1, "c": 2}
+    }
+
+
+def test_procedure_registry_rejects_relative_override(tmp_path) -> None:
+    root = _make_procedure_root(tmp_path)
+    registry = ProcedureRegistry(root)
+
+    with pytest.raises(ValueError, match="absolute"):
+        registry.create_session(1, "config.toml")
+    with pytest.raises(TypeError, match="integer"):
+        registry.create_session("1")  # type: ignore[arg-type]
+
+
+def test_procedure_registry_missing_default_config(tmp_path) -> None:
+    root = _make_procedure_root(tmp_path)
+
+    with pytest.raises(FileNotFoundError, match="no default configuration"):
+        ProcedureRegistry(root).create_session(99)
+
+
+def test_load_procedures_root(tmp_path) -> None:
+    root = tmp_path / "procedures"
+    root.mkdir()
+    server_config = tmp_path / "server.toml"
+    server_config.write_text(
+        dumps_toml({"general": {"procedures_root": str(root)}}),
+        encoding="utf-8",
+    )
+
+    assert load_procedures_root(server_config) == root.resolve()
+
+    missing = tmp_path / "missing.toml"
+    missing.write_text("[general]\n", encoding="utf-8")
+    with pytest.raises(KeyError, match="procedures_root"):
+        load_procedures_root(missing)
+
+    relative = tmp_path / "relative.toml"
+    relative.write_text(
+        dumps_toml({"general": {"procedures_root": "relative/path"}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="absolute"):
+        load_procedures_root(relative)
+
+
+def test_dumps_toml_round_trips_default_config() -> None:
+    data = tomllib.loads(
+        adapter_module.Settings.DEFAULT_CONFIG_FILE.read_text(encoding="utf-8")
+    )
+    assert tomllib.loads(dumps_toml(data)) == data
+
+
+def test_ice_server_cli_requires_config(tmp_path, monkeypatch) -> None:
+    config_file = tmp_path / "server.toml"
     captured = {}
 
-    def fake_run_server(folder, **kwargs):
-        captured["folder"] = folder
+    def fake_run_server(config_file, **kwargs):
+        captured["config_file"] = config_file
         captured.update(kwargs)
 
     monkeypatch.setattr(ice_server, "run_server", fake_run_server)
 
-    ice_server.run_cli(["--stations-root", str(stations_root)])
+    ice_server.run_cli(["--config", str(config_file)])
 
-    assert captured["folder"] == stations_root / "default"
-    assert captured["stations_root"] == stations_root
+    assert captured["config_file"] == config_file
 
 
-def test_adapter_init_accepts_station_id(tmp_path, monkeypatch) -> None:
-    stations_root = tmp_path / "stations"
-    station_dir = stations_root / "station01"
-    station_dir.mkdir(parents=True)
-    shutil.copy(
-        adapter_module.Settings.DEFAULT_CONFIG_FILE,
-        station_dir / "config.toml",
+def test_adapter_init_returns_date_folder_and_merged_config(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = _make_procedure_root(tmp_path)
+    override_file = tmp_path / "override.toml"
+    override_file.write_text(
+        dumps_toml(
+            {"analysis": {"fit": {"fix_cx_cy": False}}}
+        ),
+        encoding="utf-8",
     )
     servant, _service = _make_servant(
         tmp_path,
         monkeypatch,
-        stations_root=stations_root,
+        procedures_root=root,
     )
 
-    servant.init("station01")
-    assert servant.active_station_id == "station01"
-    assert servant._settings.main_folder == (station_dir / "data").resolve()
-    with pytest.raises(FileNotFoundError, match="no configuration file"):
-        servant.init("station99")
+    returned = Path(servant.init(1, str(override_file)))
 
-    frame = np.arange(2 * 3, dtype=np.uint8).reshape(2, 3)
-    servant.addData(
-        Point(x=1.0, y=2.0, z=3.0),
-        imageData(
-            height=2,
-            width=3,
-            spp=1,
-            imgformat=IMAGEFORMAT.PMBGGR,
-            imgDataType=IMAGEDATATYPE.IDTBYTE,
-            bytePixels=frame.tobytes(),
-        ),
-    )
-    servant.getIntrinsic()
-    servant.close()
+    assert returned.is_absolute()
+    assert returned.parent == root / "1"
+    assert re.fullmatch(r"\d{8}_\d{4}(?:_\d{2})?", returned.name)
+    assert servant.active_procedure_id == 1
+    assert servant.procedure_session is not None
+    assert servant.procedure_session.config_file == returned / "config.toml"
+    assert servant.procedure_session.data_dir == returned / "data"
+    assert servant._settings.main_folder == returned / "data"
 
-    sessions = [
-        path
-        for path in (station_dir / "data").iterdir()
-        if path.is_dir() and re.fullmatch(
-            r"\d{8}_\d{4}(?:_\d{2})?",
-            path.name,
+    merged = tomllib.loads((returned / "config.toml").read_text(encoding="utf-8"))
+    assert merged["analysis"]["fit"]["fix_cx_cy"] is False
+    assert merged["analysis"]["n_iterations"] == 3
+
+
+def test_adapter_uninitialized_behavior(tmp_path) -> None:
+    root = _make_procedure_root(tmp_path)
+    servant = CalibrationIceServant(root)
+
+    assert servant.isReady() is False
+    with pytest.raises(RuntimeError, match="init first"):
+        servant.getIntrinsic()
+    with pytest.raises(RuntimeError, match="init first"):
+        servant.addData(
+            Point(x=1.0, y=2.0, z=3.0),
+            imageData(
+                height=2,
+                width=3,
+                spp=1,
+                imgformat=IMAGEFORMAT.PMBGR,
+                imgDataType=IMAGEDATATYPE.IDTBYTE,
+                bytePixels=np.zeros((2, 3), dtype=np.uint8).tobytes(),
+            ),
         )
-    ]
-    assert len(sessions) == 1
-    result = yaml.safe_load(
-        (sessions[0] / "calibration_result.yaml").read_text(encoding="utf-8")
-    )
-    assert result["session"]["station_id"] == "station01"
-    metadata = yaml.safe_load(
-        (sessions[0] / "session.yaml").read_text(encoding="utf-8")
-    )
-    assert metadata["session"]["station_id"] == "station01"
 
 
-def test_adapter_missing_config_path_is_not_treated_as_station_id(
-    tmp_path,
-) -> None:
-    servant = CalibrationIceServant(tmp_path)
+def test_adapter_missing_config_path_raises(tmp_path) -> None:
+    root = _make_procedure_root(tmp_path)
+    servant = CalibrationIceServant(root)
 
-    with pytest.raises(FileNotFoundError, match="Config file not found"):
-        servant.init(str(tmp_path / "missing.toml"))
+    with pytest.raises(FileNotFoundError, match="override file not found"):
+        servant.init(1, str(tmp_path / "missing.toml"))
 
 
-def test_adapter_rejects_station_switch_during_active_calibration(
+def test_adapter_rejects_procedure_switch_during_active_calibration(
     tmp_path,
     monkeypatch,
 ) -> None:
-    stations_root = tmp_path / "stations"
-    for station_id in ("station01", "station02"):
-        station_dir = stations_root / station_id
-        station_dir.mkdir(parents=True)
-        shutil.copy(
-            adapter_module.Settings.DEFAULT_CONFIG_FILE,
-            station_dir / "config.toml",
-        )
-
+    root = _make_procedure_root(tmp_path, procedure_ids=(1, 2))
     servant, service = _make_servant(
         tmp_path,
         monkeypatch,
-        stations_root=stations_root,
+        procedures_root=root,
     )
-    servant.init("station01")
+    servant.init(1)
     service.ready = False
     frame = np.zeros((2, 3), dtype=np.uint8)
     servant.addData(
@@ -449,21 +574,24 @@ def test_adapter_rejects_station_switch_during_active_calibration(
     )
 
     with pytest.raises(RuntimeError, match="active calibration"):
-        servant.init("station02")
+        servant.init(2)
 
     service.ready = True
-    servant.init("station02")
-    assert servant.active_station_id == "station02"
+    servant.init(2)
+    assert servant.active_procedure_id == 2
 
 
-def test_adapter_init_accepts_folder(tmp_path, monkeypatch) -> None:
-    servant, _ = _make_servant(tmp_path, monkeypatch)
+def test_procedure_id_uses_unpadded_folder_name(tmp_path, monkeypatch) -> None:
+    root = _make_procedure_root(tmp_path, procedure_ids=(7,))
+    servant, _service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        procedures_root=root,
+    )
 
-    other_folder = tmp_path / "other"
-    other_folder.mkdir()
-    servant.init(str(other_folder))
-    assert servant.folder == tmp_path.resolve()
-    assert servant._settings.main_folder == other_folder.resolve()
+    returned = Path(servant.init(7))
+
+    assert returned.parent.name == "7"
 
 
 @pytest.mark.parametrize("dtype", [np.bool_, np.uint8, np.int16, np.float32])
@@ -495,7 +623,8 @@ def test_ice_round_trip(tmp_path, monkeypatch) -> None:
         adapter.activate()
 
         with CalibrationIceClient(proxy) as client:
-            client.init(None)
+            session_folder = client.init(1)
+            assert Path(session_folder).is_dir()
             assert client.is_ready() is True
             intrinsic, intrinsic_error = client.get_intrinsic()
             intrinsic_matrix = np.asarray(
@@ -523,7 +652,7 @@ def test_ice_round_trip(tmp_path, monkeypatch) -> None:
             assert (nozzle.x, nozzle.y, nozzle.z) == pytest.approx((7.0, 8.0, 9.0))
 
         with CalibrationIceClient.connect(proxy.ice_toString()) as connected:
-            connected.init(None)
+            connected.init(1)
             assert connected.is_ready() is True
     finally:
         communicator.destroy()

@@ -8,7 +8,7 @@
 #   - the project is installed in /opt/3dsc/.venv
 #   - the venv was created with --system-site-packages and can import Ice
 #   - /etc/3dsc/config.toml exists and is readable by the service user
-#   - the working folder and /var/lib/3dsc are accessible to the user
+#   - the procedures root and /var/lib/3dsc are accessible to the user
 
 [Unit]
 Description=3D Station Calibration Ice Server
@@ -23,9 +23,7 @@ Group=3dsc
 WorkingDirectory=/opt/3dsc/app
 Environment=PYTHONUNBUFFERED=1
 Environment=MPLBACKEND=Agg
-ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server /var/lib/3dsc/station01 --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
-# For several station profiles, use instead:
-# ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server --stations-root /var/lib/3dsc/stations --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
+ExecStart=/opt/3dsc/.venv/bin/3dsc-ice-server --config /etc/3dsc/config.toml --endpoint "tcp -h 0.0.0.0 -p 10000"
 Restart=always
 RestartSec=5
 TimeoutStopSec=30

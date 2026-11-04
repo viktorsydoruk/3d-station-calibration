@@ -25,7 +25,7 @@ and an optional ZeroC Ice server/client.
 | Core import | `station_calibration` |
 | Default config | `src/station_calibration/resources/config.toml` |
 | Folder command | `3dsc <folder>` |
-| Ice commands | `3dsc-ice-server <folder>`, `3dsc-ice-client` |
+| Ice commands | `3dsc-ice-server --config <config.toml>`, `3dsc-ice-client` |
 | License | Apache-2.0 (ZeroC Ice optional, see `THIRD_PARTY_NOTICES.md`) |
 
 ## Quick start
@@ -37,9 +37,9 @@ uv sync
 # calibrate a folder
 3dsc "P:\3Dcalibration\3D_example"
 
-# run the optional Ice server
+# run the optional Ice server (set [general] procedures_root in the config)
 uv sync --extra ice
-3dsc-ice-server "P:\3Dcalibration\3D_example"
+3dsc-ice-server --config "C:\3DSC\config.toml"
 ```
 
 Results are written below the calibration folder:

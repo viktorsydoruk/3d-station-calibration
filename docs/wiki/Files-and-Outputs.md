@@ -23,46 +23,47 @@ documentation may refer to `all_points.dat`; the packaged default is
 
 ## Ice session archive
 
-When `archive_sessions = true` in `[general]`, the Ice server writes each session
-to a timestamped folder below its working folder:
+When `archive_sessions = true` in `[general]`, each `init` call creates a date
+folder below the selected procedure. The merged session config is stored beside
+the archive, and all image/CSV/result files go directly into `data`:
 
 ```text
-<working folder>/
+<procedures-root>/<procedure-id>/
+├─ config.toml                         procedure default
 ├─ 20261103_1542/
-│  ├─ Calibration3DPositions.csv
-│  ├─ image_0001.tif
-│  ├─ image_0002.tif
-│  ├─ ...
-│  ├─ calibration_result.yaml
-│  └─ session.yaml
+│  ├─ config.toml                     merged config used for this session
+│  └─ data/
+│     ├─ Calibration3DPositions.csv
+│     ├─ image_0001.tif
+│     ├─ image_0002.tif
+│     ├─ ...
+│     ├─ calibration_result.yaml
+│     └─ session.yaml
 └─ 20261104_0810/
-   └─ ...
+   ├─ config.toml
+   └─ data/
+      └─ ...
 ```
+
+If another session starts in the same minute, `_01`, `_02`, ... is appended to
+the date folder name. `init` returns the date folder, so a client can derive
+`<returned>/config.toml` and `<returned>/data`.
 
 `Calibration3DPositions.csv` uses the same semicolon-separated
 `Xr;Yr;Zr;image_name` format as the folder workflow. The TIFF files are 8-bit
 frames scaled to 0-255 per frame from the frames received over Ice. This makes
-the archived folder replayable:
+the archived data folder replayable with the exact session config:
 
 ```powershell
-3dsc "<working-folder>\20261103_1542" --config "C:\3DSC\config.toml"
+3dsc "<procedures-root>\1\20261103_1542\data" `
+  --config "<procedures-root>\1\20261103_1542\config.toml"
 ```
-
-In a multi-station deployment, the working folder is
-`<stations-root>/<station-id>/data`, so the full path is:
-
-```text
-<stations-root>/station01/data/20261103_1542/
-```
-
-When replaying such a folder, pass the matching
-`<stations-root>/station01/config.toml` so the camera-specific settings are the
-same as during the Ice session.
 
 `calibration_result.yaml` contains the latest intrinsic matrix, extrinsic matrix,
 distortion coefficients, resolution, RMSE, and observation counts. It is updated
-whenever a fitted result is available. `session.yaml` records the station ID,
-session start and end times, package version, and image count.
+whenever a fitted result is available. `session.yaml` records the procedure ID,
+the date/config/data paths, session start and end times, package version, and
+image count.
 
 ## Point cache
 

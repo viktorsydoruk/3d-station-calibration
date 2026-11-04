@@ -93,9 +93,10 @@ machine, bind an externally reachable address, for example
 `--endpoint "tcp -h 0.0.0.0 -p 10000"`.
 
 Each procedure has a complete default configuration at
-`<procedures-root>/<procedure-id>/config.toml`. `init` creates
-`<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged `config.toml`
-and a `data` folder, then returns the date folder.
+`<procedures-root>/<procedure-id>/config.toml`. If that file does not exist yet,
+`init` creates the procedure folder and copies the packaged default there.
+`init` also creates `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a
+merged `config.toml` and a `data` folder, then returns the date folder.
 
 ```text
 init(int procedureId, optional(1) string configurationfilepath) -> string
@@ -103,8 +104,10 @@ init(int procedureId, optional(1) string configurationfilepath) -> string
 
 `configurationfilepath` is optional and must be an absolute path on the server.
 Its tables are recursively merged over the procedure default; scalars and arrays
-replace the default value. The date folder name uses `_01`, `_02`, ... for
-same-minute collisions.
+replace the default value. For a procedure created by this call, the override is
+also stored in the new procedure default. For an existing procedure it applies
+only to that run. The date folder name uses `_01`, `_02`, ... for same-minute
+collisions.
 
 ## Return conventions
 

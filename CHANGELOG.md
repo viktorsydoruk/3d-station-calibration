@@ -26,7 +26,10 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   creates `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged
   `config.toml` and `data/`, and returns the date folder. The optional absolute
   override is recursively merged over the procedure default, and switching away
-  from an unfinished procedure is rejected.
+  from an unfinished procedure is rejected. If a procedure does not exist yet,
+  `init` creates it from the packaged default and folds the override into that
+  new procedure default; an override for an existing procedure applies only to
+  the current run.
 
 ### Changed
 

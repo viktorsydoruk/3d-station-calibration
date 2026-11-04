@@ -9,13 +9,16 @@ The server owns a procedures root. Each procedure has a default
 ``<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/config.toml``
 ``<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/data/``
 
-The per-session configuration is a recursive merge of the procedure default
-configuration and an optional absolute override file.
+If a procedure has not been used before, ``init`` creates its folder and copies
+the packaged default configuration there. An optional absolute override file is
+merged over that new procedure default. For an existing procedure the override
+applies only to the current session.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import tomllib
@@ -24,6 +27,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from ..settings import Settings
 
 __all__ = [
     "ProcedureRegistry",
@@ -103,16 +108,9 @@ class ProcedureRegistry:
         if isinstance(procedure_id, bool) or not isinstance(procedure_id, int):
             raise TypeError("procedureId must be an integer")
         procedure_dir = self.root / str(procedure_id)
-        default_config = procedure_dir / CONFIG_FILENAME
-        if not default_config.is_file():
-            raise FileNotFoundError(
-                f"procedure {procedure_id!r} has no default configuration: "
-                f"{default_config}"
-            )
 
-        base_config = _load_toml(default_config)
         override_config: Path | None = None
-        merged_config = deepcopy(base_config)
+        override_data: dict[str, Any] | None = None
         if configuration_file is not None:
             override_config = Path(configuration_file).expanduser()
             if not override_config.is_absolute():
@@ -124,10 +122,26 @@ class ProcedureRegistry:
                 raise FileNotFoundError(
                     f"configuration override file not found: {override_config}"
                 )
-            merged_config = deep_merge(
-                base_config,
-                _load_toml(override_config),
-            )
+            override_data = _load_toml(override_config)
+
+        try:
+            procedure_dir.mkdir(parents=True, exist_ok=True)
+        except FileExistsError as exc:
+            raise NotADirectoryError(
+                f"procedure path is not a directory: {procedure_dir}"
+            ) from exc
+
+        default_config = procedure_dir / CONFIG_FILENAME
+        procedure_config = _ensure_procedure_config(
+            procedure_id,
+            default_config,
+            override_data,
+        )
+        merged_config = (
+            deep_merge(procedure_config, override_data)
+            if override_data is not None
+            else deepcopy(procedure_config)
+        )
 
         session_dir = self._create_session_dir(
             procedure_dir,
@@ -176,6 +190,60 @@ class ProcedureRegistry:
                 suffix += 1
                 continue
             return candidate
+
+
+def _ensure_procedure_config(procedure_id: int,
+                             config_path: Path,
+                             override: dict[str, Any] | None) -> dict[str, Any]:
+    """Create a missing procedure config and return its effective contents.
+
+    When no override is supplied, the packaged file is copied byte-for-byte so
+    its comments stay intact. With an override, the merged configuration is
+    written as normalized TOML. If another process creates the file first, that
+    file wins and is loaded instead.
+    """
+    if config_path.is_file():
+        return _load_toml(config_path)
+    if config_path.exists():
+        raise IsADirectoryError(
+            f"procedure configuration path is not a file: {config_path}"
+        )
+
+    template_path = Settings.DEFAULT_CONFIG_FILE
+    template = _load_toml(template_path)
+    if override is None:
+        procedure_config = template
+        content = template_path.read_bytes()
+    else:
+        procedure_config = deep_merge(template, override)
+        content = dumps_toml(
+            procedure_config,
+            header=(
+                f"Procedure {procedure_id} created from the packaged default "
+                "with an init override"
+            ),
+        ).encode("utf-8")
+
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(config_path, flags, 0o644)
+    except FileExistsError:
+        return _load_toml(config_path)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+    except Exception:
+        try:
+            config_path.unlink()
+        except OSError:
+            pass
+        raise
+    return procedure_config
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

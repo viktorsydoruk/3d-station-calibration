@@ -179,8 +179,9 @@ No fit has succeeded yet. Send enough observations to reach
   `procedures_root = "<absolute path>"` under `[general]` in the `--config` file.
 - `'procedures_root' ... must be an absolute path`: use a full Windows drive or
   UNC path, or a full POSIX path.
-- `procedure 1 has no default configuration`: create
-  `<procedures-root>/1/config.toml` from the packaged default.
+- A missing `<procedures-root>/<procedure-id>/config.toml` is created from the
+  packaged default on the first `init`. If creation fails, make sure the service
+  account can write under `<procedures-root>`.
 - `configurationfilepath must be an absolute path`: the optional `init` override
   is interpreted on the server, not on the client.
 - `procedure 1 has an active calibration`: retrieve the current results first.

@@ -431,11 +431,61 @@ def test_procedure_registry_rejects_relative_override(tmp_path) -> None:
         registry.create_session("1")  # type: ignore[arg-type]
 
 
-def test_procedure_registry_missing_default_config(tmp_path) -> None:
-    root = _make_procedure_root(tmp_path)
+def test_procedure_registry_auto_creates_missing_procedure(tmp_path) -> None:
+    root = tmp_path / "procedures"
+    root.mkdir()
 
-    with pytest.raises(FileNotFoundError, match="no default configuration"):
-        ProcedureRegistry(root).create_session(99)
+    session = ProcedureRegistry(root).create_session(5)
+
+    procedure_config = root / "5" / "config.toml"
+    assert procedure_config.is_file()
+    assert procedure_config.read_bytes() == (
+        adapter_module.Settings.DEFAULT_CONFIG_FILE.read_bytes()
+    )
+    assert session.default_config_file == procedure_config
+    assert tomllib.loads(session.config_file.read_text(encoding="utf-8")) == (
+        tomllib.loads(procedure_config.read_text(encoding="utf-8"))
+    )
+
+
+def test_procedure_registry_new_procedure_persists_override(tmp_path) -> None:
+    root = tmp_path / "procedures"
+    root.mkdir()
+    override = tmp_path / "override.toml"
+    override.write_text(
+        dumps_toml({"analysis": {"fit": {"fix_cx_cy": False}}}),
+        encoding="utf-8",
+    )
+
+    session = ProcedureRegistry(root).create_session(6, override)
+
+    procedure_config = tomllib.loads(
+        (root / "6" / "config.toml").read_text(encoding="utf-8")
+    )
+    session_config = tomllib.loads(
+        session.config_file.read_text(encoding="utf-8")
+    )
+    assert procedure_config["analysis"]["fit"]["fix_cx_cy"] is False
+    assert procedure_config["general"]["files"]["output_folder"] == "output"
+    assert session_config == procedure_config
+
+
+def test_procedure_registry_existing_override_is_session_only(tmp_path) -> None:
+    root = _make_procedure_root(tmp_path)
+    procedure_config = root / "1" / "config.toml"
+    before = procedure_config.read_bytes()
+    override = tmp_path / "override.toml"
+    override.write_text(
+        dumps_toml({"analysis": {"fit": {"fix_cx_cy": False}}}),
+        encoding="utf-8",
+    )
+
+    session = ProcedureRegistry(root).create_session(1, override)
+
+    assert tomllib.loads(
+        session.config_file.read_text(encoding="utf-8")
+    )["analysis"]["fit"]["fix_cx_cy"] is False
+    assert procedure_config.read_bytes() == before
 
 
 def test_load_procedures_root(tmp_path) -> None:
@@ -517,6 +567,29 @@ def test_adapter_init_returns_date_folder_and_merged_config(
     merged = tomllib.loads((returned / "config.toml").read_text(encoding="utf-8"))
     assert merged["analysis"]["fit"]["fix_cx_cy"] is False
     assert merged["analysis"]["n_iterations"] == 3
+
+
+def test_adapter_init_auto_creates_missing_procedure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "procedures"
+    root.mkdir()
+    servant, _service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        procedures_root=root,
+    )
+
+    returned = Path(servant.init(3))
+
+    assert (root / "3" / "config.toml").is_file()
+    assert returned.parent == root / "3"
+    assert servant.active_procedure_id == 3
+    assert servant.procedure_session is not None
+    assert servant.procedure_session.default_config_file == (
+        root / "3" / "config.toml"
+    )
 
 
 def test_adapter_uninitialized_behavior(tmp_path) -> None:

@@ -20,8 +20,10 @@ stay outside the checkout.
 3. Install the package with the Ice extra.
 4. Copy `src/station_calibration/resources/config.toml` to
    `C:\3DSC\config.toml` and set production paths, including
-   `[general] procedures_root = "C:/ProgramData/3DSC/procedures"`. Create one
-   `<procedures-root>/<procedure-id>/config.toml` per procedure.
+   `[general] procedures_root = "C:/ProgramData/3DSC/procedures"`. Missing
+   `<procedures-root>/<procedure-id>/config.toml` files are created from the
+   packaged default on their first `init`; pre-create them only to set
+   camera-specific defaults.
 5. Register the NSSM service with `--config C:\3DSC\config.toml`, then start it
    and check the log. The procedures root is read from the config, not a CLI
    argument.
@@ -38,9 +40,11 @@ and security notes.
 2. Create the `3dsc` service account and the `/opt/3dsc/app` checkout.
 3. Create `/opt/3dsc/.venv` with `--system-site-packages` and install the
    package without the `[ice]` extra.
-4. Create `/etc/3dsc/config.toml`, the writable output/debug directories, and
-   `/var/lib/3dsc/procedures/<procedure-id>/config.toml` per procedure. Set
-   `[general] procedures_root = "/var/lib/3dsc/procedures"`.
+4. Create `/etc/3dsc/config.toml` and the writable output/debug/procedures
+   directories. Set `[general] procedures_root = "/var/lib/3dsc/procedures"`.
+   Missing `<procedures-root>/<procedure-id>/config.toml` files are created from
+   the packaged default on their first `init`; pre-create them only to set
+   camera-specific defaults.
 5. Copy `linux/3dsc-ice-server.service` to `/etc/systemd/system/` and edit the
    paths. The service starts with `--config /etc/3dsc/config.toml`; the
    procedures root is read from that file.

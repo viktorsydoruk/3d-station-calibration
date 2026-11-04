@@ -163,7 +163,9 @@ The config must contain an absolute procedures root:
 procedures_root = "C:/ProgramData/3DSC/procedures"
 ```
 
-Each procedure owns a complete default configuration. The expected layout is:
+If a procedure does not exist yet, `init` creates its folder and copies the
+packaged default config, merging any optional override into that new procedure
+default. The expected layout is:
 
 ```text
 <procedures-root>/<procedure-id>/config.toml
@@ -173,8 +175,9 @@ Each procedure owns a complete default configuration. The expected layout is:
 
 The client starts a procedure with `init(procedureId[, configurationfilepath])`.
 The optional config path must be absolute and on the server; it is recursively
-merged over the procedure default. `init` returns the date folder, so the client
-can derive `<returned>/config.toml` and `<returned>/data`. One server process is
+merged over the procedure default. For an existing procedure, the override
+applies only to that run. `init` returns the date folder, so the client can
+derive `<returned>/config.toml` and `<returned>/data`. One server process is
 sufficient when only one procedure is calibrated at a time; switching away from
 an unfinished procedure is rejected.
 

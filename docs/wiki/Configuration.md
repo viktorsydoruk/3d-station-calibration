@@ -15,9 +15,12 @@ value.
 > the packaged `config.toml` and edit the copy; a partial runtime config is
 > rejected with a missing-section error. The Ice server itself only reads
 > `[general] procedures_root` from `--config`. Each Ice procedure has a complete
-> default at `<procedures-root>/<procedure-id>/config.toml`; the optional
-> `init` override is recursively merged over that procedure default, and the
-> merged copy is written to `<date>/config.toml`.
+> default at `<procedures-root>/<procedure-id>/config.toml`. If it is missing,
+> `init` creates the procedure folder and copies the packaged default there. The
+> optional `init` override is recursively merged over that procedure default; for
+> a newly created procedure it becomes part of the new procedure default, while
+> for an existing procedure it applies only to the current run. The merged copy
+> is written to `<date>/config.toml`.
 
 ## Path resolution
 

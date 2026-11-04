@@ -24,12 +24,14 @@ documentation may refer to `all_points.dat`; the packaged default is
 ## Ice session archive
 
 When `archive_sessions = true` in `[general]`, each `init` call creates a date
-folder below the selected procedure. The merged session config is stored beside
-the archive, and all image/CSV/result files go directly into `data`:
+folder below the selected procedure. If the procedure folder or its
+`config.toml` does not exist, `init` creates it from the packaged default first.
+The merged session config is stored beside the archive, and all
+image/CSV/result files go directly into `data`:
 
 ```text
 <procedures-root>/<procedure-id>/
-├─ config.toml                         procedure default
+├─ config.toml                         procedure default (auto-created)
 ├─ 20261103_1542/
 │  ├─ config.toml                     merged config used for this session
 │  └─ data/

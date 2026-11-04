@@ -103,7 +103,8 @@ procedures_root = "C:/ProgramData/3DSC/procedures"
 ```
 
 Each procedure has a complete default at
-`<procedures-root>/<procedure-id>/config.toml`. `init` creates
+`<procedures-root>/<procedure-id>/config.toml`. If it is missing, `init` creates
+the procedure folder and copies the packaged default there. `init` also creates
 `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged `config.toml`
 and a `data` folder.
 
@@ -117,13 +118,15 @@ analyzes newly arriving images.
 
 | Argument | Effect |
 | --- | --- |
-| `procedureId` | Select `<procedures-root>/<str(procedureId)>/config.toml` |
+| `procedureId` | Select `<procedures-root>/<str(procedureId)>/config.toml`, creating the procedure folder/config from the packaged default if needed |
 | `configurationfilepath` | Optional absolute server-side TOML recursively merged over the procedure default |
 
 The folder name is exactly `str(procedureId)`, with no zero padding. If the
-optional path is relative or missing, `init` raises. The merged result is always
-a complete config and is written to `<date>/config.toml`; the archive writes to
-`<date>/data`.
+optional path is relative or missing, `init` raises. For a new procedure, the
+override is merged into the new persistent procedure default. For an existing
+procedure, the override applies only to the current run. The merged result is
+always a complete config and is written to `<date>/config.toml`; the archive
+writes to `<date>/data`.
 
 The date folder format is `YYYYMMDD_HHMM`. If a session already exists for that
 minute, `_01`, `_02`, ... is appended. `init` returns the absolute date folder so

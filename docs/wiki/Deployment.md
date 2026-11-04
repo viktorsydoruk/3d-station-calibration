@@ -81,7 +81,8 @@ than replayability.
 ## Several procedures on one server
 
 Use one server process when only one procedure is calibrated at a time. Each
-procedure still has its own default configuration and session folders:
+procedure still has its own default configuration and session folders. A missing
+procedure folder/config is created on its first `init`:
 
 ```text
 C:\ProgramData\3DSC\
@@ -115,10 +116,12 @@ Then start the server with only that config:
   --endpoint "tcp -h 0.0.0.0 -p 10000"
 ```
 
-Each procedure `config.toml` is a complete TOML replacement, so copy the
-packaged `config.toml` and adjust the camera-specific values. Procedure IDs are
-integers; the folder name is the decimal value without zero padding, so
-`procedureId = 1` maps to `<procedures-root>/1/`.
+If a procedure `config.toml` is missing, `init` creates the procedure folder and
+copies the packaged default there. Pre-create the folder and copy the packaged
+`config.toml` when you want camera-specific defaults before the first run. Each
+procedure config is a complete TOML replacement. Procedure IDs are integers; the
+folder name is the decimal value without zero padding, so `procedureId = 1` maps
+to `<procedures-root>/1/`.
 
 The client tells the server which procedure is active and may supply an
 absolute server-side override config for that run:
@@ -134,7 +137,9 @@ getDistortion()
 
 `init` returns the date folder. The optional override is recursively merged over
 the procedure default: tables merge recursively; scalar values and arrays are
-replaced. The merged result is written to `<date>/config.toml`.
+replaced. For a procedure created by that `init`, the override is also stored in
+the new procedure default. For an existing procedure, it applies only to that
+run. The merged result is written to `<date>/config.toml`.
 
 The server rejects `init(2)` while procedure `1` has received images and is not
 ready. Once the session is ready, or before any image has arrived, the next
@@ -174,7 +179,11 @@ Create the writable root that will contain the procedure folders, for example
 is not an image input folder: images and robot positions arrive over Ice. The
 server creates each session's date folder below the selected procedure folder.
 
-Create one folder per procedure and copy the packaged config into each:
+You do not have to create procedure folders in advance: the first `init` for a
+procedure creates `<procedures-root>/<procedure-id>/` and copies the packaged
+default config there. Auto-created files use the packaged defaults, so pre-create
+and edit them if you want production or camera-specific values before the first
+run:
 
 ```text
 C:\ProgramData\3DSC\procedures\1\config.toml
@@ -207,7 +216,9 @@ procedures_root = "C:/ProgramData/3DSC/procedures"
 
 The server only reads `procedures_root` from this file. The same file can also
 serve as the complete runtime configuration for the folder workflow. Each
-procedure default config is a separate complete TOML file. At minimum set:
+procedure default config is a separate complete TOML file. Auto-created procedure
+configs start from the packaged defaults; pre-create and edit them if you need
+the production values below. At minimum set:
 
 ```toml
 [general]
@@ -321,22 +332,22 @@ C:\3DSC\.venv\Scripts\3dsc-ice-server.exe --help
 
 ```powershell
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\logs | Out-Null
-New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\procedures\1 | Out-Null
+New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\procedures | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\output | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\debug | Out-Null
 
 Copy-Item `
   C:\3DSC\app\src\station_calibration\resources\config.toml `
   C:\3DSC\config.toml
-Copy-Item `
-  C:\3DSC\app\src\station_calibration\resources\config.toml `
-  C:\ProgramData\3DSC\procedures\1\config.toml
 ```
 
 Edit `C:\3DSC\config.toml` as described in
 [Common preparation](#common-preparation). Set
-`procedures_root = "C:/ProgramData/3DSC/procedures"`. Edit the procedure config
-for the camera-specific values. Use forward slashes in TOML paths.
+`procedures_root = "C:/ProgramData/3DSC/procedures"`. The first `init` creates
+`C:\ProgramData\3DSC\procedures\<procedure-id>\config.toml` from the packaged
+default. To set camera-specific values before first use, create that procedure
+folder, copy the packaged config there, and edit it. Use forward slashes in TOML
+paths.
 
 ### 5. Run manually once
 
@@ -579,11 +590,10 @@ Verify:
 sudo useradd --system --home-dir /opt/3dsc --shell /usr/sbin/nologin 3dsc
 sudo chown -R 3dsc:3dsc /opt/3dsc
 
-sudo mkdir -p /var/lib/3dsc/output /var/lib/3dsc/debug /var/lib/3dsc/procedures/1 /etc/3dsc
+sudo mkdir -p /var/lib/3dsc/output /var/lib/3dsc/debug /var/lib/3dsc/procedures /etc/3dsc
 sudo chown -R 3dsc:3dsc /var/lib/3dsc
 
 sudo cp /opt/3dsc/app/src/station_calibration/resources/config.toml /etc/3dsc/config.toml
-sudo cp /opt/3dsc/app/src/station_calibration/resources/config.toml /var/lib/3dsc/procedures/1/config.toml
 sudo chown root:3dsc /etc/3dsc/config.toml
 sudo chmod 640 /etc/3dsc/config.toml
 ```
@@ -591,14 +601,18 @@ sudo chmod 640 /etc/3dsc/config.toml
 Edit `/etc/3dsc/config.toml` as described in
 [Common preparation](#common-preparation). Set
 `procedures_root = "/var/lib/3dsc/procedures"` and use the Linux output/debug
-paths, for example `/var/lib/3dsc/output` and `/var/lib/3dsc/debug`. Edit the
-procedure config for the camera-specific values.
+paths, for example `/var/lib/3dsc/output` and `/var/lib/3dsc/debug`. The first
+`init` creates `/var/lib/3dsc/procedures/<procedure-id>/config.toml` from the
+packaged default. To set camera-specific values before first use, create the
+procedure folder, copy the packaged config there, and edit it as the `3dsc`
+service account.
 
 ### 5. Prepare the procedures root
 
 The Ice server creates each session's date folder below the selected procedure
 folder. The `/var/lib/3dsc/procedures` folder created above is the procedures
-root for this example; `/var/lib/3dsc/procedures/1` is procedure 1.
+root for this example; procedure 1 uses `/var/lib/3dsc/procedures/1`, which is
+created on the first `init` if it does not exist.
 
 The archived `Calibration3DPositions.csv` and TIFF frames are written below
 `/var/lib/3dsc/procedures/1/<date>/data`. Images and robot positions arrive over
@@ -1048,7 +1062,7 @@ with CalibrationIceClient.connect(proxy) as client:
 | `server config file not found` | Wrong `--config` path | Use an absolute path. |
 | `missing required setting 'procedures_root'` | Server config lacks the procedures root | Add `procedures_root = "<absolute path>"` under `[general]`. |
 | `procedures root does not exist` | Typo or missing directory | Create the directory or correct `[general] procedures_root`. |
-| `procedure 1 has no default configuration` | Procedure folder/config missing | Create `<procedures-root>/1/config.toml` from the packaged default. |
+| Cannot create the procedure folder/config | The service account cannot write under the procedures root | Give it write access to `<procedures-root>` and restart the server. |
 | `Missing config section '[...]'` | A runtime TOML file is partial | Copy the full packaged config and edit the copy. |
 | `Permission denied` for `output` or `debug` | Relative paths under a read-only share | Set absolute writable paths in `[general.files]`. |
 | `Access is denied` during a Windows update | Jupyter, an IDE, or another process still uses the venv | Close it, then rerun the pip install. |

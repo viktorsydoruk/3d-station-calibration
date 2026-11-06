@@ -151,6 +151,7 @@ Ranges: `n_move_aver >= 1`, `0 <= sphere_center_to_nozzle_part <= 1`,
 | `n_distortion_coefs` | `4` | Number of active OpenCV distortion coefficients |
 | `focal_length_initial` | `2000.0` | Initial `fx`/`fy` in pixels |
 | `camera_distance_initial` | `80.0` | Initial translation `t_z` in millimetres |
+| `loss_f_scale` | `5.0` | Pixel scale where the `soft_l1` robust loss starts downweighting residuals; must be positive and finite |
 
 `n_distortion_coefs` must be one of `0, 4, 5, 8, 12, 14`:
 

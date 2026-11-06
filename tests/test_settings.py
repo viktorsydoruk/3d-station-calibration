@@ -53,6 +53,7 @@ BASE_CONFIG: dict[str, dict[str, Any]] = {
         "n_distortion_coefs": 4,
         "focal_length_initial": 1800.0,
         "camera_distance_initial": 95.0,
+        "loss_f_scale": 6.5,
     },
 }
 
@@ -155,6 +156,7 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.n_distortion_coefs == 4
     assert settings.focal_length_initial == 1800.0
     assert settings.camera_distance_initial == 95.0
+    assert settings.loss_f_scale == 6.5
     assert settings.target_observations == 500
     assert settings.max_observations is None
 
@@ -319,6 +321,7 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
         n_distortion_coefs=8,
         focal_length_initial=1500.0,
         camera_distance_initial=120.0,
+        loss_f_scale=2.5,
         fix_cx_cy=False,
         debug=True,
         store_debug_images=True,
@@ -337,6 +340,7 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
     assert settings.n_distortion_coefs == 8
     assert settings.focal_length_initial == 1500.0
     assert settings.camera_distance_initial == 120.0
+    assert settings.loss_f_scale == 2.5
     assert settings.fix_cx_cy is False
     assert settings.debug is True
     assert settings.store_debug_images is True
@@ -368,6 +372,7 @@ def test_optional_settings_use_defaults(context: ConfigContext) -> None:
         "n_distortion_coefs",
         "focal_length_initial",
         "camera_distance_initial",
+        "loss_f_scale",
     ):
         context.config["analysis.fit"].pop(key)
     context.write()
@@ -385,6 +390,7 @@ def test_optional_settings_use_defaults(context: ConfigContext) -> None:
     assert settings.n_distortion_coefs == 0
     assert settings.focal_length_initial == 2000.0
     assert settings.camera_distance_initial == 80.0
+    assert settings.loss_f_scale == 5.0
 
 
 # ----------------------------------------------------------------------
@@ -516,6 +522,10 @@ def test_n_distortion_coefs_rejects_unsupported_values(
             float("nan"),
             "camera_distance_initial",
         ),
+        ("analysis.fit", "loss_f_scale", 0, "loss_f_scale"),
+        ("analysis.fit", "loss_f_scale", -1, "loss_f_scale"),
+        ("analysis.fit", "loss_f_scale", float("inf"), "loss_f_scale"),
+        ("analysis.fit", "loss_f_scale", float("nan"), "loss_f_scale"),
     ],
 )
 def test_invalid_values_raise(

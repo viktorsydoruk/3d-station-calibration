@@ -20,6 +20,7 @@ from typing import Any
 from typing import TypedDict
 from typing import Unpack
 
+from .models import DEFAULT_LOSS_F_SCALE
 from .stop import DEFAULT_TARGET_OBSERVATIONS
 
 
@@ -65,6 +66,7 @@ class PossibleOptions(TypedDict, total=False):
     n_distortion_coefs: int
     focal_length_initial: float
     camera_distance_initial: float
+    loss_f_scale: float
     n_iterations: int
     allowed_outliers: float
     target_observations: int
@@ -105,6 +107,7 @@ class Settings:
     _n_distortion_coefs: int
     focal_length_initial: float
     camera_distance_initial: float
+    loss_f_scale: float
 
     n_iterations: int
     allowed_outliers: float
@@ -337,6 +340,10 @@ class Settings:
             self._get(fit, "camera_distance_initial", 80.0),
             "camera_distance_initial",
         )
+        self.loss_f_scale = _finite_float(
+            self._get(fit, "loss_f_scale", DEFAULT_LOSS_F_SCALE),
+            "loss_f_scale",
+        )
 
         if self.focal_length_initial <= 0:
             raise ValueError(
@@ -347,6 +354,10 @@ class Settings:
             raise ValueError(
                 "camera_distance_initial must be positive, got "
                 f"{self.camera_distance_initial}"
+            )
+        if self.loss_f_scale <= 0:
+            raise ValueError(
+                f"loss_f_scale must be positive, got {self.loss_f_scale}"
             )
 
     def _init_stop(self) -> None:

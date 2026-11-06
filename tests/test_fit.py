@@ -80,3 +80,17 @@ def test_calibrate_camera_rejects_too_few_measurements() -> None:
             sigmas,
             n_distortion_coefs=5,
         )
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, float("inf"), float("nan")])
+def test_calibrate_camera_rejects_invalid_loss_f_scale(value: float) -> None:
+    robot_positions, image_center_points, radii, sigmas = _arrays()
+
+    with pytest.raises(ValueError, match="loss_f_scale"):
+        calibrate_camera(
+            robot_positions,
+            image_center_points,
+            radii,
+            sigmas,
+            loss_f_scale=value,
+        )

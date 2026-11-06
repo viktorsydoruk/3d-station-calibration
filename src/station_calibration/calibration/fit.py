@@ -10,7 +10,7 @@ __all__ = [
 import numpy as np
 from scipy.optimize import OptimizeResult, least_squares
 
-from ..models import SIGMA_OFFSET
+from ..models import DEFAULT_LOSS_F_SCALE, SIGMA_OFFSET
 from .initialization import estimate_r_initial, make_initial_parameters
 from .model import residuals
 
@@ -23,7 +23,8 @@ def calibrate_camera(robot_positions: np.ndarray,
                      camera_distance_initial: float = 80.0,
                      image_size_xy: tuple[int, int] = (2500, 2000),
                      fix_cx_cy: bool = False,
-                     n_distortion_coefs: int = 5) -> OptimizeResult:
+                     n_distortion_coefs: int = 5,
+                     loss_f_scale: float = DEFAULT_LOSS_F_SCALE) -> OptimizeResult:
     """
         Estimate camera intrinsics and extrinsics.
 
@@ -36,8 +37,15 @@ def calibrate_camera(robot_positions: np.ndarray,
     :param image_size_xy: shape of the images taken
     :param fix_cx_cy: whether to fix the principal point (cx, cy) in the intrinsic matrix to be a half of image size
     :param n_distortion_coefs: number of distortion coefficients
+    :param loss_f_scale: pixel scale at which the soft_l1 loss starts downweighting residuals
     :return: optimized results from least_squares of scipy module
     """
+
+    loss_f_scale = float(loss_f_scale)
+    if not np.isfinite(loss_f_scale) or loss_f_scale <= 0:
+        raise ValueError(
+            f"loss_f_scale must be positive and finite, got {loss_f_scale}"
+        )
 
     sigmas = np.asarray(sigmas, dtype=np.float64) + SIGMA_OFFSET
 
@@ -90,6 +98,7 @@ def calibrate_camera(robot_positions: np.ndarray,
         },
 
         loss="soft_l1",
+        f_scale=loss_f_scale,
         x_scale="jac",
     )
 

@@ -56,6 +56,7 @@ def _fit_camera(rel_robot_positions: np.ndarray,
         image_size_xy=image_size_xy,
         fix_cx_cy=settings.fix_cx_cy,
         n_distortion_coefs=n_distortion_coefs,
+        loss_f_scale=settings.loss_f_scale,
     )
     intrinsic_matrix, distortion, _, extrinsic_matrix = get_calibration(
         result.x,

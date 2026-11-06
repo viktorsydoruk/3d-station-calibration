@@ -8,6 +8,7 @@ __all__ = [
     "ObservationRejection",
     "CalibrationResult",
     "SIGMA_OFFSET",
+    "DEFAULT_LOSS_F_SCALE",
 ]
 
 from dataclasses import dataclass
@@ -20,6 +21,12 @@ from scipy.optimize import OptimizeResult
 # constant offset keeps zero sigmas usable and reflects the sub-pixel uncertainty
 # that is not captured by the edge-profile fit.
 SIGMA_OFFSET = 0.5
+
+# Pixel scale at which scipy's soft_l1 loss starts downweighting residuals.  A
+# value of 1.0 treats ordinary reprojection errors of several pixels as
+# outliers; 5 px keeps the robust transition for gross outliers while leaving
+# normal residuals close to the quadratic regime.
+DEFAULT_LOSS_F_SCALE = 5.0
 
 
 @dataclass(frozen=True)

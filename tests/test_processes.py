@@ -71,6 +71,7 @@ def fake_pipeline(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         state.fit_calls.append(
             {
                 "n_distortion_coefs": kwargs["n_distortion_coefs"],
+                "loss_f_scale": kwargs["loss_f_scale"],
                 "center_points": np.array(image_center_points, copy=True),
             }
         )
@@ -131,6 +132,29 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
     }
     options.update(overrides)
     return Settings(tmp_path, **options)
+
+
+def test_pipeline_forwards_loss_f_scale(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+) -> None:
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
+
+    get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path, loss_f_scale=2.5),
+        DebugInfo(False),
+    )
+
+    assert fake_pipeline.fit_calls
+    assert all(
+        call["loss_f_scale"] == 2.5
+        for call in fake_pipeline.fit_calls
+    )
 
 
 def test_final_refit_uses_adjusted_center_points(
@@ -527,33 +551,37 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
 
     np.testing.assert_allclose(
         pos_home,
-        np.array([315.490068627551, -111.521442535001, -35.080059600520]),
+        np.array([315.4901712371497, -111.52137043930243, -35.08113896105615]),
         rtol=1e-6,
         atol=1e-3,
     )
     np.testing.assert_allclose(
         [intrinsic[0, 0], intrinsic[1, 1]],
-        [21934.02961105216, 21642.33750607229],
+        [22000.968301554833, 21723.396608092873],
         rtol=1e-6,
     )
     assert intrinsic[0, 2] == 1224.0
     assert intrinsic[1, 2] == 1024.0
     np.testing.assert_allclose(
         extrinsic[:3, 3],
-        [-1.347717777303e-03, -7.345100566366e-04, 7.324555813477e01],
+        [-1.243445171204292e-04, 4.525225150326526e-04, 7.353737262475748e01],
         rtol=1e-5,
         atol=1e-8,
     )
     # The rational coefficients are highly correlated, so different BLAS/LAPACK
     # implementations move the least-squares optimum slightly. Keep this check
     # strong enough to catch a model change but tolerant of platform round-off.
-    assert distortion[0] < 0.0
-    assert distortion[1] > 0.0
+    assert np.all(np.isfinite(distortion[:4]))
     np.testing.assert_allclose(
         distortion[:4],
-        [-1.918946133946, 2.146027430711e02, -1.528360732080e-02, 6.705551968042e-03],
+        [
+            -5.785585378343614e-01,
+            -2.536041213352001e02,
+            -2.685658088476287e-02,
+            6.293788374856212e-03,
+        ],
         rtol=5e-3,
         atol=1e-6,
     )
     np.testing.assert_allclose(distortion[4:], np.zeros(10))
-    assert rmse == pytest.approx(4.435750712518631, rel=1e-6)
+    assert rmse == pytest.approx(4.366936342185351, rel=1e-6)

@@ -76,10 +76,15 @@ with:
 
 ```python
 loss="soft_l1"
+f_scale=5.0
 x_scale="jac"
 ```
 
-`soft_l1` limits the influence of gross outliers; `x_scale="jac"` gives
+`soft_l1` limits the influence of gross outliers; `f_scale` is the pixel scale
+at which residuals start being downweighted. The default is `5.0 px`, matching
+ordinary reprojection errors in the calibration fixture; SciPy's implicit
+default of `1.0 px` would treat normal residuals as outliers. The scale is
+configurable as `[analysis.fit] loss_f_scale` in pixels. `x_scale="jac"` gives
 parameter-aware scaling. There are no bounds and no analytical Jacobian.
 
 The fit also validates that `robot_positions` is `(N, 3)`, `image_center_points`

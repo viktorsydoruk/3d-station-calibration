@@ -94,6 +94,10 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - `intrinsic_std[2,2]` is now `0.0` because it is not a fitted parameter.
 - `bg_height_pxs` now requires at least 10 rows, and numeric settings reject
   `NaN`/infinity during configuration loading.
+- The `soft_l1` robust loss now uses an explicit `5 px` transition scale
+  (`[analysis.fit] loss_f_scale`) instead of SciPy's implicit `1 px` default, so
+  ordinary reprojection residuals are not downweighted as gross outliers. The
+  stored regression fixture's calibration values were updated accordingly.
 
 ### Fixed
 

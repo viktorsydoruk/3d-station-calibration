@@ -66,6 +66,9 @@ n_distortion_coefs = 4
 focal_length_initial = 2000.0
 # initial camera distance in mm used for the first calibration fit
 camera_distance_initial = 80.0
+# soft_l1 transition scale in pixels; residual magnitudes above this are
+# downweighted while ordinary reprojection errors stay near quadratic
+loss_f_scale = 5.0
 
 [analysis.stop]
 # readiness target: report ready once this many valid observations are collected

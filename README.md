@@ -227,3 +227,6 @@ python -m pytest -q
 The suite covers settings, stop policy, the fitting pipeline, the stored-point
 regression fixture, single-image analysis, the session, the folder source, and
 the optional Ice adapter/client when ZeroC Ice is installed.
+
+For the full local quality gate (Ruff, mypy, branch coverage, pre-commit, and
+packaging), see [Testing and Build](docs/wiki/Testing-and-Build.md#local-quality-gate).

@@ -1,12 +1,28 @@
 # Testing and Build
 
+## Local quality gate
+
+Run this sequence before pushing or creating a release:
+
+```powershell
+uv lock --check
+uv run ruff check .
+uv run mypy
+uv run pre-commit run --all-files
+uv run pytest -q --cov=station_calibration --cov-report=term-missing
+uv build
+```
+
+`uv build` is only required for release candidates, but running it before a tag
+catches packaging problems early. The sections below describe each check.
+
 ## Tests
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The suite currently collects **236 tests** when the optional Ice package is
+The suite currently collects **237 tests** when the optional Ice package is
 installed. Without `zeroc-ice`, `test_ice_adapter.py` is skipped. The tests run
 without network access.
 
@@ -104,7 +120,7 @@ uv lock --check
 ```
 
 Verifies that `uv.lock` matches `pyproject.toml`. The repository currently locks
-63 packages.
+68 packages.
 
 > The project version is generated from Git, so it is not stored in `uv.lock`.
 > Run `uv lock` when dependencies or build requirements change; version changes
@@ -201,8 +217,10 @@ python -c "import station_calibration; print(station_calibration.__version__)"
 
 ### Create a release
 
-Use the release helper from a clean checkout. It fetches tags, refuses a dirty
-working tree or an unpushed commit, and creates an annotated tag:
+Run the [local quality gate](#local-quality-gate) and confirm the GitLab
+pipeline is green before tagging. Use the release helper from a clean checkout.
+It fetches tags, refuses a dirty working tree or an unpushed commit, and creates
+an annotated tag:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\release.py --dry-run

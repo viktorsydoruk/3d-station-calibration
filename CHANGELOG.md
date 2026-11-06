@@ -82,6 +82,8 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - Dead-code cleanup: removed the no-op `visualize_diff_new_old_center_points`
   plotting export and renamed unused callback arguments and fit locals. No
   numerical or runtime behavior changed.
+- Contributor documentation now includes a single local quality-gate sequence
+  for lock checks, Ruff, mypy, pre-commit, coverage, and release builds.
 
 ### Fixed
 

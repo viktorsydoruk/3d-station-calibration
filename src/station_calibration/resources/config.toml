@@ -65,7 +65,7 @@ focal_length_initial = 2000.0
 camera_distance_initial = 80.0
 
 [analysis.stop]
-# stop accepting new data once this many valid observations are collected
+# readiness target: report ready once this many valid observations are collected
 target_observations = 500
-# optional hard cap (leave unset to disable)
+# optional earlier readiness threshold (leave unset to disable)
 # max_observations = 600

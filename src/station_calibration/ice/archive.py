@@ -5,10 +5,10 @@
 
 Each procedure session has a timestamped folder created by the server. The
 archive writes directly into that folder's ``data`` directory so it stays
-compatible with the folder workflow: 8-bit TIFF frames plus a semicolon-separated
-``Calibration3DPositions.csv``. The latest fit is also written as
-``calibration_result.yaml`` so the matrices returned over Ice remain available
-later.
+compatible with the folder workflow: TIFF frames at their source bit depth plus
+a semicolon-separated ``Calibration3DPositions.csv``. The latest fit is also
+written as ``calibration_result.yaml`` so the matrices returned over Ice remain
+available later.
 """
 
 from __future__ import annotations
@@ -29,6 +29,22 @@ __all__ = ["SessionArchive"]
 CSV_FILENAME = "Calibration3DPositions.csv"
 RESULT_FILENAME = "calibration_result.yaml"
 METADATA_FILENAME = "session.yaml"
+
+# Adobe Deflate is smaller than LZW for noisy 16-bit frames and is understood
+# by OpenCV, Pillow, ImageMagick, and the usual scientific TIFF readers.
+TIFF_COMPRESSION = cv2.IMWRITE_TIFF_COMPRESSION_ADOBE_DEFLATE
+
+# OpenCV silently falls back to 8-bit for dtypes it cannot encode, so reject
+# anything outside the explicitly supported TIFF sample formats.
+_TIFF_DTYPES = frozenset({
+    np.dtype(np.uint8),
+    np.dtype(np.uint16),
+    np.dtype(np.int16),
+    np.dtype(np.int32),
+    np.dtype(np.uint32),
+    np.dtype(np.float32),
+    np.dtype(np.float64),
+})
 
 
 class SessionArchive:
@@ -109,8 +125,9 @@ class SessionArchive:
     def record(self, image: np.ndarray, robot_position: np.ndarray) -> Path | None:
         """Archive one frame and its robot position.
 
-        Images are converted to 8-bit TIFF and named in the CSV, so the data
-        folder can be re-analyzed later with ``3dsc <data-folder>``.
+        Images are written as compressed TIFF at their source bit depth and
+        named in the CSV, so the data folder can be re-analyzed later with
+        ``3dsc <data-folder>``.
         """
         session_dir = self.start()
         if session_dir is None:
@@ -122,7 +139,11 @@ class SessionArchive:
         image_name = f"image_{self._image_index:04d}.tif"
         image_path = session_dir / image_name
         array = _tiff_array(image)
-        if not cv2.imwrite(str(image_path), array):
+        if not cv2.imwrite(
+            str(image_path),
+            array,
+            [cv2.IMWRITE_TIFF_COMPRESSION, TIFF_COMPRESSION],
+        ):
             raise OSError(f"could not write archived image: {image_path}")
 
         position = np.asarray(robot_position, dtype=np.float64).reshape(3)
@@ -238,37 +259,22 @@ class SessionArchive:
 
 
 def _tiff_array(image: np.ndarray) -> np.ndarray:
-    """Normalize an incoming frame to an 8-bit TIFF-writable array.
+    """Return a TIFF-writable array without discarding the source precision.
 
-    Frames that are already 8-bit are kept as-is. Wider integer or floating
-    point frames are scaled to the full 0-255 range using the frame minimum and
-    maximum. This retains visible contrast when the camera uses, for example, a
-    12-bit range inside a 16-bit container.
+    Integer and floating-point frames keep their original dtype and bit depth.
+    Boolean frames are stored as uint8 because TIFF has no boolean sample type.
     """
     array = np.asarray(image)
     if array.dtype == np.bool_:
         array = array.astype(np.uint8) * 255
-    elif array.dtype != np.uint8:
-        array = _to_uint8(array)
+    elif array.dtype not in _TIFF_DTYPES:
+        raise TypeError(f"unsupported archived image dtype: {array.dtype}")
 
     if array.ndim not in (2, 3):
         raise ValueError(f"unsupported archived image shape: {array.shape}")
     if array.ndim == 3 and array.shape[2] not in (1, 3, 4):
         raise ValueError(f"unsupported archived image shape: {array.shape}")
     return np.ascontiguousarray(array)
-
-
-def _to_uint8(array: np.ndarray) -> np.ndarray:
-    """Scale a non-8-bit frame to 8 bits while preserving its contrast."""
-    data = array.astype(np.float32)
-    if np.isnan(data).any():
-        data = np.nan_to_num(data, nan=0.0, posinf=255.0, neginf=0.0)
-    low = float(np.min(data))
-    high = float(np.max(data))
-    if not np.isfinite(low) or not np.isfinite(high) or high <= low:
-        return np.zeros(data.shape, dtype=np.uint8)
-    scaled = (data - low) * (255.0 / (high - low))
-    return np.clip(np.rint(scaled), 0, 255).astype(np.uint8)
 
 
 def _array_list(value: Any) -> list[Any]:

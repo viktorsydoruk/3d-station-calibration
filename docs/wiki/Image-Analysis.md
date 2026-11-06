@@ -107,8 +107,10 @@ edge:
    differentiate along the radius.
 4. Fit a Gaussian to the derivative; its standard deviation is `sigma`.
 
-`sigma` is used by the home-shift estimation, not as a residual weight in the
-camera fit.
+`sigma` is used by the home-shift and nozzle estimators, not as a residual
+weight in the camera fit. The stored value is the raw edge-profile estimate;
+those estimators add `SIGMA_OFFSET = 0.5 px` before use so a zero sigma remains
+numerically safe.
 
 ## Rejections
 

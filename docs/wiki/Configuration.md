@@ -163,7 +163,7 @@ is weakly constrained by a small or poorly distributed dataset.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `target_observations` | `500` | Readiness target for valid observations |
-| `max_observations` | unset | Optional hard cap |
+| `max_observations` | unset | Optional earlier readiness threshold |
 
 Both values must be positive. If either is smaller than `min_observations`
 (`10 + n_distortion_coefs`), session construction raises `ValueError`.

@@ -9,7 +9,9 @@ separate geometric steps recover the physical robot quantities:
    diameter and the nozzle direction.
 
 The home shift is iterated with the camera fit inside `get_calibration_data`;
-the nozzle position is computed from the final fit.
+the nozzle position is computed from the final fit. Both estimators use the
+stored blur sigmas plus `SIGMA_OFFSET = 0.5 px`; see
+[Calibration Model](Calibration-Model#initialization).
 
 ## Sphere home shift
 

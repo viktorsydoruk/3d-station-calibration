@@ -56,6 +56,13 @@ returns the exact names for the current configuration.
    image centre when free, distortion zeros, `rvec` from the rotation, and
    `t = (0, 0, camera_distance_initial)`.
 
+> **Sigma offset.** The stored and cached blur sigmas remain the raw
+> edge-profile estimates. Every numerical consumer (`calibrate_camera`,
+> `find_robot_home_pos_shift`, and `get_nozzle_end_home_position`) adds
+> `SIGMA_OFFSET = 0.5 px` before using them. The offset keeps a zero sigma
+> usable as a weight and accounts for sub-pixel uncertainty not captured by the
+> edge fit. Freshly analyzed and cached observations therefore behave the same.
+
 ## Residuals and loss
 
 `residuals` projects all robot points with `cv2.projectPoints` and returns

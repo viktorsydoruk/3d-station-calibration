@@ -18,9 +18,12 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - GitLab CI checks for tests, wheel/sdist builds, and shell syntax.
 - Deployment, manual update, rollback, and troubleshooting documentation for
   Windows and Raspberry Pi.
-- Optional Ice-session archiving: each session writes 8-bit TIFF frames,
-  `Calibration3DPositions.csv`, the latest `calibration_result.yaml`, and
-  `session.yaml` directly into its date folder's `data` directory.
+- Optional Ice-session archiving: each session writes compressed TIFF frames at
+  the source dtype and bit depth, `Calibration3DPositions.csv`, the latest
+  `calibration_result.yaml`, and `session.yaml` directly into its date folder's
+  `data` directory. TIFF frames use Adobe Deflate compression; wider frames are
+  no longer rescaled to 8 bit per frame, and boolean frames are stored as
+  `uint8`.
 - Procedure-based Ice sessions: `init(int procedureId, optional string
   configurationfilepath)` resolves `<procedures-root>/<procedure-id>/config.toml`,
   creates `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged
@@ -56,6 +59,14 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - A procedure that cannot reach its `target_observations` no longer locks out
   other procedures; call `finish()` to keep the result or `abort()` to discard
   the live session.
+- Failed or non-converged fits are no longer published or archived; the previous
+  successful result is retained and `last_fit_error` explains the failure.
+- Nozzle and sphere-diameter estimation now use only the observations that
+  survived the calibration outlier filter.
+- Blur sigmas accept zero and receive a `0.5 px` offset inside the numerical
+  estimators, preventing division-by-zero weights without changing cached data.
+- Re-initializing an Ice procedure while its session has unfinalized data now
+  raises a clear error asking the client to call `finish()` or `abort()` first.
 
 <!--
 When the first release tag is created, rename [Unreleased] to the release

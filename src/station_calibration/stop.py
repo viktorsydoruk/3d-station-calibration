@@ -18,7 +18,7 @@ DEFAULT_TARGET_OBSERVATIONS = 500
 
 
 class StopReason(StrEnum):
-    """Why an incremental calibration session has or has not stopped."""
+    """Why an incremental calibration session is or is not ready."""
 
     NOT_READY = "not_ready"
     TARGET_OBSERVATIONS = "target_observations"
@@ -40,10 +40,11 @@ class StopPolicy:
     """
         Readiness rule for a calibration session.
 
-        ``target_observations`` is the normal completion target. ``max_observations``
-        is an optional hard cap that can stop the session earlier. Set either field to
-        ``None`` to disable it. An explicit stop request is handled by the session and
-        takes precedence over both counters.
+        ``target_observations`` is the normal readiness target. ``max_observations``
+        is an optional earlier readiness threshold. Set either field to ``None`` to
+        disable it. An explicit stop request is handled by the session and takes
+        precedence over both counters. Readiness is advisory: the session keeps
+        accepting observations until the caller calls ``finish()`` or aborts.
     """
 
     target_observations: int | None = DEFAULT_TARGET_OBSERVATIONS

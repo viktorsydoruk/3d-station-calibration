@@ -64,6 +64,9 @@ def fake_fit(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         calls=[],
         mask=None,
         fail=None,
+        success=True,
+        intrinsic=np.eye(3, dtype=np.float64),
+        rmse=0.0,
     )
 
     def fake_get_calibration_data(
@@ -97,17 +100,17 @@ def fake_fit(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         return (
             np.mean(robot_positions, axis=0),
             np.array(center_points, copy=True),
-            np.eye(3),
+            np.array(state.intrinsic, copy=True),
             np.eye(4),
             np.zeros(14),
             OptimizeResult(
                 x=np.zeros(8),
                 fun=np.zeros(2 * n_points),
-                success=True,
+                success=state.success,
                 cost=0.0,
                 message="fake",
             ),
-            0.0,
+            state.rmse,
             mask,
             int(settings.n_distortion_coefs),
         )
@@ -361,6 +364,15 @@ def test_observation_requires_valid_direction() -> None:
         _observation(0, direction=0)
 
 
+def test_observation_accepts_zero_sigma_but_not_negative() -> None:
+    observation = _observation(0, sigma=0.0)
+
+    assert observation.sigma == 0.0
+
+    with pytest.raises(ValueError, match="sigma"):
+        _observation(0, sigma=-0.1)
+
+
 def test_session_records_fit_failure_and_can_retry(
     tmp_path: Path,
     fake_fit: SimpleNamespace,
@@ -384,6 +396,77 @@ def test_session_records_fit_failure_and_can_retry(
     assert result.observation_count == 14
     assert session.fit_count == 1
     assert session.last_fit_error is None
+
+
+def test_session_rejects_non_converged_fit_and_keeps_previous_result(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    first_result = session.finish()
+    session.add_observation(_observation(14))
+
+    fake_fit.success = False
+    with pytest.raises(ValueError, match="did not converge"):
+        session.finish()
+
+    assert session.last_result is first_result
+    assert session.fit_count == 1
+    assert session.last_fit_error is not None
+    assert "did not converge" in session.last_fit_error
+
+    fake_fit.success = True
+    final_result = session.finish()
+
+    assert final_result is not first_result
+    assert session.fit_count == 2
+    assert session.last_fit_error is None
+
+
+def test_session_rejects_non_finite_fit_output(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    fake_fit.intrinsic = np.array(
+        [
+            [np.nan, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+
+    with pytest.raises(ValueError, match="non-finite intrinsic_matrix"):
+        session.finish()
+
+    assert session.last_result is None
+    assert session.fit_count == 0
+    assert session.last_fit_error is not None
+
+
+def test_session_rejects_fit_that_drops_all_observations(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.mask = np.zeros(14, dtype=bool)
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    with pytest.raises(ValueError, match="rejected all observations"):
+        session.finish()
+
+    assert session.last_result is None
+    assert session.fit_count == 0
 
 
 def test_session_default_stop_policy_uses_settings(tmp_path: Path) -> None:

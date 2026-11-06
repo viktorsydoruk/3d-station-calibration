@@ -7,12 +7,19 @@ __all__ = [
     "CalibrationObservation",
     "ObservationRejection",
     "CalibrationResult",
+    "SIGMA_OFFSET",
 ]
 
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import OptimizeResult
+
+
+# Blur sigmas are used as weights and as a radius-bias correction.  A small
+# constant offset keeps zero sigmas usable and reflects the sub-pixel uncertainty
+# that is not captured by the edge-profile fit.
+SIGMA_OFFSET = 0.5
 
 
 @dataclass(frozen=True)

@@ -61,12 +61,15 @@ after radius filtering, not before.
 3. Requires at least `min_observations` points after filtering.
 4. Requires a known image size.
 5. Calls `get_calibration_data` with the filtered arrays.
-6. Maps the returned outlier mask back onto all stored observations.
-7. Stores a `CalibrationResult`.
+6. Rejects a fit that did not converge, or that produced non-finite
+   parameters, non-positive focal lengths, or an invalid RMSE.
+7. Maps the returned outlier mask back onto all stored observations.
+8. Stores a `CalibrationResult`.
 
-If anything fails, `last_fit_error` is set to `"TypeName: message"` and the
-exception is re-raised. A successful fit clears the error, increments
-`fit_count`, and resets `new_observations_since_fit`.
+If anything fails, `last_fit_error` is set to `"TypeName: message"`, the
+exception is re-raised, and the previous successful `last_result` is kept. A
+successful fit clears the error, increments `fit_count`, and resets
+`new_observations_since_fit`.
 
 `finish()` guarantees the result is up to date:
 
@@ -99,8 +102,12 @@ checks in this order:
 `request_stop()` sets the explicit flag; it still requires the minimum number of
 observations before `is_ready` becomes true.
 
-> `is_ready` only says that no more data is needed. Call `finish()` (or
-> `finish_if_ready()`) before reading calibration values.
+Readiness is advisory: reaching the target does not make the session reject
+later observations. The caller decides when to stop sending data, then calls
+`finish()` (or `finish_if_ready()`) before reading calibration values. If the
+caller instead starts a new session, the Ice adapter refuses while the current
+one has data but has not been finished, and tells the client to call `finish()`
+or `abort()` first. Ready alone is not enough to discard the live session.
 
 ## Radius filtering
 

@@ -327,19 +327,23 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         return str(profile.session_dir)
 
     def _guard_procedure_switch(self, procedure_id: int) -> None:
-        """Reject switching away from a procedure with an unfinished session."""
+        """Reject a new init while an unfinished calibration still has data."""
         if self._active_procedure_id is None:
-            return
-        if procedure_id == self._active_procedure_id:
             return
         if self._service is None or not self._session_has_data:
             return
-        if self._session_finished or self._service.is_ready:
+        if self._session_finished:
             return
 
+        if procedure_id == self._active_procedure_id:
+            target = f"initializing procedure {procedure_id!r} again"
+        else:
+            target = f"selecting procedure {procedure_id!r}"
+
         raise RuntimeError(
-            f"procedure {self._active_procedure_id!r} has an active "
-            f"calibration; finish it before selecting {procedure_id!r}"
+            f"procedure {self._active_procedure_id!r} has an active calibration "
+            "session that is not finished; call finish() to keep the current "
+            f"result or abort() to discard it before {target}"
         )
 
     def close(self) -> None:
@@ -419,6 +423,34 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         if not fit_observations:
             raise RuntimeError("No fit observations are available")
 
+        center_points_adjusted = np.asarray(
+            result.center_points_adjusted,
+            dtype=np.float64,
+        )
+        fit_mask = getattr(result, "fit_mask", None)
+        if fit_mask is not None:
+            fit_mask = np.asarray(fit_mask, dtype=bool)
+            if fit_mask.shape != (len(fit_observations),):
+                raise ValueError(
+                    "Calibration result fit_mask has an unexpected shape: "
+                    f"{fit_mask.shape} vs ({len(fit_observations)},)"
+                )
+            fit_observations = tuple(
+                observation
+                for observation, used in zip(fit_observations, fit_mask)
+                if used
+            )
+            center_points_adjusted = center_points_adjusted[fit_mask]
+
+        if not fit_observations:
+            raise RuntimeError("No inlier observations are available for the nozzle fit")
+        if center_points_adjusted.shape != (len(fit_observations), 2):
+            raise ValueError(
+                "Calibration result center_points_adjusted has an unexpected shape: "
+                f"{center_points_adjusted.shape} vs "
+                f"({len(fit_observations)}, 2)"
+            )
+
         (
             robot_positions,
             _center_points,
@@ -431,7 +463,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         nozzle_position, _, _ = get_nozzle_end_home_position(
             sphere_home_position=result.pos_home,
             robot_positions=relative_robot_positions,
-            image_center_points=result.center_points_adjusted,
+            image_center_points=center_points_adjusted,
             intrinsic_matrix=result.intrinsic_matrix,
             extrinsic_matrix=result.extrinsic_matrix,
             distortion=result.distortion,

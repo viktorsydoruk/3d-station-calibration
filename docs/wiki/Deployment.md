@@ -29,8 +29,9 @@ the production client.
   `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged
   `config.toml` and a `data` folder.
 - When `archive_sessions = true` (the default), every Ice session is archived
-  directly in `<date>/data`. The archive contains 8-bit TIFF frames,
-  `Calibration3DPositions.csv`, `calibration_result.yaml`, and `session.yaml`.
+  directly in `<date>/data`. The archive contains TIFF frames at the source
+  dtype and bit depth, `Calibration3DPositions.csv`,
+  `calibration_result.yaml`, and `session.yaml`.
 - The production TOML configuration is supplied with the required `--config`;
   it is not part of the Ice wire contract.
 - The default endpoint is `tcp -h 127.0.0.1 -p 10000`. Use
@@ -68,8 +69,10 @@ starts in the same minute, `_01`, `_02`, and so on are appended:
 The CSV uses the folder-workflow format `Xr;Yr;Zr;image_name`, so an archived
 session can be re-analyzed later with an updated fitting procedure. The date
 `config.toml` is a complete copy of the settings used for that run. Archived
-frames are 8-bit TIFF; wider input frames are scaled to the 0-255 range per frame
-to preserve contrast. For example:
+frames keep the dtype and bit depth received over Ice and are written with Adobe
+Deflate compression; wider frames are no longer rescaled to 8 bit per frame.
+Boolean frames are stored as `uint8` because TIFF has no boolean sample type.
+For example:
 
 ```powershell
 3dsc "C:\ProgramData\3DSC\procedures\1\20261103_1542\data" `
@@ -79,11 +82,13 @@ to preserve contrast. For example:
 Set `archive_sessions = false` in `[general]` if disk space is more important
 than replayability.
 
-> **Disk use.** Archived frames are 8-bit TIFF. A 500-frame session from a 5 MP
-> camera is roughly 2.5 GB before TIFF compression. Monitor free space on the
-> procedures root for the TIFF archive and on the local disk for `output` and
-> `debug` when they are redirected. Adjust `target_observations` or disable
-> archiving if necessary.
+> **Disk use.** With Adobe Deflate, a 500-frame 5 MP 8-bit session is about
+> 0.9-1.0 GB on disk. A 16-bit session is data-dependent: roughly 2.7 GB when
+> the signal uses 12 bits and sensor noise is modest, up to about 3.9 GB for
+> full 16-bit noise, and about 5 GB if the pixels are incompressible. Monitor
+> free space on the procedures root for the TIFF archive and on the local disk
+> for `output` and `debug` when they are redirected. Adjust
+> `target_observations` or disable archiving if necessary.
 
 ### Network archive with local output and debug
 

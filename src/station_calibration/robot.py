@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 from typing import Any
 
+from .models import SIGMA_OFFSET
+
 
 def find_robot_home_pos_shift(robot_positions: np.ndarray,
                               image_center_points: np.ndarray,
@@ -14,6 +16,8 @@ def find_robot_home_pos_shift(robot_positions: np.ndarray,
                               distortion: np.ndarray,
                               sigmas: np.ndarray) -> np.ndarray:
     """Estimation of the shift of the robotic arm home position based on sigma, cx and cy"""
+    sigmas = np.asarray(sigmas, dtype=np.float64) + SIGMA_OFFSET
+
     # converting the robotic arm positions into the camera coordinate system
     coords = np.dot(extrinsic_matrix[None, :3, :3], robot_positions[:, :, None])[0, :, :, 0]
     # taking the distortion into account for the images center points
@@ -55,6 +59,7 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
                                  all_directions: np.ndarray) -> tuple[np.ndarray, float, dict[str, dict[str, Any]]]:
     """Estimation of the shift of the robotic arm home position based on sigma, cx and cy"""
     debug_info = {}
+    sigmas = np.asarray(sigmas, dtype=np.float64) + SIGMA_OFFSET
 
     # converting the robotic arm positions into the camera coordinate system
     robot_camera_coords = np.dot(extrinsic_matrix[None, :3, :3], robot_positions[:, :, None])[0, :, :, 0]

@@ -296,7 +296,10 @@ def test_main_stores_nozzle_end_home_position(
         distortion=np.zeros(14),
         optimize_result=optimize_result,
         rmse=0.0,
-        fit_mask=np.ones(len(robot_positions), dtype=bool),
+        fit_mask=np.array(
+            [True] * (len(robot_positions) - 1) + [False],
+            dtype=bool,
+        ),
         n_distortion_coefs=0,
         image_size_xy=image_size_xy,
         observation_count=len(robot_positions),
@@ -339,6 +342,7 @@ def test_main_stores_nozzle_end_home_position(
             return calibration_result
 
     def fake_get_nozzle_end_home_position(**kwargs):
+        captured["nozzle_kwargs"] = kwargs
         return nozzle_home_position, 24.0, {}
 
     def fake_calculate_errors(result):
@@ -371,6 +375,16 @@ def test_main_stores_nozzle_end_home_position(
     assert captured["partial_fits"] == 1
     np.testing.assert_allclose(
         captured["nozzle_home_position"], nozzle_home_position
+    )
+
+    nozzle_kwargs = captured["nozzle_kwargs"]
+    assert len(nozzle_kwargs["radii"]) == len(observations) - 1
+    assert len(nozzle_kwargs["sigmas"]) == len(observations) - 1
+    assert nozzle_kwargs["robot_positions"].shape == (len(observations) - 1, 3)
+    assert nozzle_kwargs["image_center_points"].shape == (len(observations) - 1, 2)
+    np.testing.assert_allclose(
+        nozzle_kwargs["image_center_points"],
+        center_points[:-1],
     )
 
 
@@ -421,22 +435,22 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
 
     np.testing.assert_allclose(
         pos_home,
-        np.array([315.48918219, -111.5215453, -35.07897907]),
+        np.array([315.48895294587, -111.521548050948, -35.078792718634]),
         rtol=1e-6,
         atol=1e-3,
     )
     np.testing.assert_allclose(
         [intrinsic[0, 0], intrinsic[1, 1]],
-        [22035.562419332404, 21758.638645674593],
+        [22035.562261969855, 21758.63848965278],
         rtol=1e-6,
     )
     assert intrinsic[0, 2] == 1224.0
     assert intrinsic[1, 2] == 1024.0
     np.testing.assert_allclose(
         extrinsic[:3, 3],
-        [-1.01945150e-03, -1.16662416e-03, 7.37520854e01],
+        [-1.249423445098e-03, -9.811540156638e-04, 7.375208485173e01],
         rtol=1e-5,
         atol=1e-8,
     )
     np.testing.assert_allclose(distortion, np.zeros(14))
-    assert rmse == pytest.approx(4.478405201332729, rel=1e-6)
+    assert rmse == pytest.approx(4.478405201550551, rel=1e-6)

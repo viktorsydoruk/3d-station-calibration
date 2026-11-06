@@ -150,12 +150,11 @@ the client can derive `<returned>/config.toml` and `<returned>/data`.
 Every accepted `init` creates a fresh settings object, service, and archive
 session, clearing the nozzle and error caches.
 
-A switch to a different procedure is rejected with an Ice exception while the
-current session has received images, is not ready, and has not been finished.
-Call `finish()` to keep the result or `abort()` to abandon the session, then
-select the next procedure. After `isReady()` becomes true, the next procedure may
-also be selected. Retrieve the results first because the live session is reset,
-although the archive remains on disk.
+A new `init` (for the same or a different procedure) is rejected with an Ice
+exception while the current session has received images and has not been
+finished. Readiness alone is not enough: the client must call `finish()` to keep
+the result or `abort()` to discard the live session, then call `init` again.
+Retrieve the results before finishing if needed; the archive remains on disk.
 
 ### `finish` and `abort`
 
@@ -170,7 +169,8 @@ although the archive remains on disk.
 
 Adding data after a successful `finish()` reopens the session: `isReady()` falls
 back to the normal stop policy until `finish()` is called again. Re-selecting the
-same procedure still resets it and starts a new date folder.
+same procedure after `finish()` or `abort()` starts a new date folder; without
+one of those calls it is rejected.
 
 ### Thread safety and caching
 

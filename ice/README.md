@@ -132,9 +132,10 @@ session state. Archived images and results stay on disk; only the in-memory
 calibration is discarded. After `abort`, any procedure may be selected. Calling
 `abort` before `init` is a no-op.
 
-The server rejects switching to a different procedure while the active session
-has received images, is not ready, and has not been finished. Call `finish` to
-keep the result or `abort` to abandon the session before switching.
+The server rejects a new `init` (same or different procedure) while the active
+session has received images and has not been finished. Readiness alone does not
+finalize it: call `finish` to keep the result or `abort` to abandon the session
+before selecting a procedure again.
 
 ## Return conventions
 

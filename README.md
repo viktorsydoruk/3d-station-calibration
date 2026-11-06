@@ -132,7 +132,9 @@ if service.is_ready:
 
 `add_image_bytes` and `add_image_array` perform the same single-image analysis as
 folder mode and feed the result into the shared session. Rejected images are
-recorded but do not count toward the 500-observation stop target.
+recorded but do not count toward the 500-observation readiness target. Readiness
+is advisory: the session keeps accepting observations until the caller calls
+`finish()` (or aborts).
 
 ## Ice frontend (optional)
 
@@ -189,9 +191,10 @@ final result) or `abort()` (discard the live session).
 
 The server receives images and robot positions over Ice; it does not read them
 from the procedure folder. With `archive_sessions = true` (the default), each
-session writes 8-bit TIFF frames, `Calibration3DPositions.csv`,
-`calibration_result.yaml`, and `session.yaml` directly into `<date>/data`, so it
-can be re-analyzed with an updated fitting procedure later.
+session writes compressed TIFF frames at their source dtype and bit depth,
+`Calibration3DPositions.csv`, `calibration_result.yaml`, and `session.yaml`
+directly into `<date>/data`, so it can be re-analyzed with an updated fitting
+procedure later.
 
 See `ice/README.md` for generation details and the wire type layout, and
 [`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for Windows/Raspberry Pi

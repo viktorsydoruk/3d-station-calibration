@@ -35,6 +35,7 @@ __all__ = [
     "CalibrationObservation",
     "ObservationRejection",
     "CalibrationResult",
+    "SIGMA_OFFSET",
     "CalibrationSession",
     "CalibrationService",
     # Sources
@@ -108,6 +109,7 @@ from .calibration import (
 )
 from .debug import DebugInfo
 from .models import (
+    SIGMA_OFFSET,
     CalibrationObservation,
     CalibrationResult,
     ObservationRejection,

@@ -10,6 +10,7 @@ __all__ = [
 import numpy as np
 from scipy.optimize import OptimizeResult, least_squares
 
+from ..models import SIGMA_OFFSET
 from .initialization import estimate_r_initial, make_initial_parameters
 from .model import residuals
 
@@ -37,6 +38,8 @@ def calibrate_camera(robot_positions: np.ndarray,
     :param n_distortion_coefs: number of distortion coefficients
     :return: optimized results from least_squares of scipy module
     """
+
+    sigmas = np.asarray(sigmas, dtype=np.float64) + SIGMA_OFFSET
 
     # estimate robot -> camera initial rotation
     r_initial = estimate_r_initial(robot_positions, image_center_points, radii, sigmas)

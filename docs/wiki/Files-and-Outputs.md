@@ -52,9 +52,13 @@ the date folder name. `init` returns the date folder, so a client can derive
 `<returned>/config.toml` and `<returned>/data`.
 
 `Calibration3DPositions.csv` uses the same semicolon-separated
-`Xr;Yr;Zr;image_name` format as the folder workflow. The TIFF files are 8-bit
-frames scaled to 0-255 per frame from the frames received over Ice. This makes
-the archived data folder replayable with the exact session config:
+`Xr;Yr;Zr;image_name` format as the folder workflow. The TIFF files keep the
+dtype and bit depth of the frames received over Ice instead of rescaling wider
+frames to 8 bit; boolean frames are stored as `uint8` because TIFF has no
+boolean sample type. TIFF compression is set explicitly to Adobe Deflate.
+Archived 8-bit and unsigned 16-bit data folders remain replayable with the
+exact session config; wider or floating-point frames keep their precision for
+later tooling:
 
 ```powershell
 3dsc "<procedures-root>\1\20261103_1542\data" `

@@ -93,23 +93,29 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
         extrinsic_matrix = result.extrinsic_matrix
         distortion = result.distortion
         optimize_result = result.optimize_result
-        mask = result.fit_mask
+        mask = np.asarray(result.fit_mask, dtype=bool)
         n_dist_coef = result.n_distortion_coefs
 
         rel_robot_positions = robot_positions - pos_home
+        inlier_robot_positions = rel_robot_positions[mask]
+        inlier_center_points = center_points_adjusted[mask]
+        inlier_radii = radii[mask]
+        inlier_sigmas = sigmas[mask]
+        inlier_directions = all_directions[mask]
 
-        # calculating the nozzle home position
+        # Calculating the nozzle home position. Outliers removed by the fit must
+        # not influence the sphere diameter or its lateral offset.
         nozzle_end_home_pos, sphere_diam_mm, debug_nozzle_and_home_pos = (
             get_nozzle_end_home_position(
                 sphere_home_position=pos_home,
-                robot_positions=rel_robot_positions,
-                image_center_points=center_points_adjusted,
+                robot_positions=inlier_robot_positions,
+                image_center_points=inlier_center_points,
                 intrinsic_matrix=intrinsic_matrix,
                 extrinsic_matrix=extrinsic_matrix,
                 distortion=distortion,
-                sigmas=sigmas,
-                radii=radii,
-                all_directions=all_directions,
+                sigmas=inlier_sigmas,
+                radii=inlier_radii,
+                all_directions=inlier_directions,
             )
         )
         intrinsic_std, distortion_std, rot_vec_std, tra_vec_std = calculate_calibration_errors(
@@ -135,7 +141,7 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
             print_debug(f"Sphere center home position: {pos_home}, estimated sphere diameter: {sphere_diam_mm: 0.3f} mm")
             print_debug(f"Nozzle center home position: {nozzle_end_home_pos}")
 
-            closest_image_arg = int(np.argmin(np.sqrt(np.sum((robot_positions[mask]-nozzle_end_home_pos[None, :])**2, axis=1))))
+            closest_image_arg = int(np.argmin(np.sqrt(np.sum((inlier_robot_positions-nozzle_end_home_pos[None, :])**2, axis=1))))
 
             print_debug(f"Closest to the center image: {closest_image_arg}")
             print_calibration(
@@ -153,12 +159,12 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
             print_debug(back_projected_home_pos)
 
             visualize_results(
-                rel_robot_positions=rel_robot_positions[mask],
-                center_points_adjusted=center_points_adjusted[mask],
+                rel_robot_positions=inlier_robot_positions,
+                center_points_adjusted=inlier_center_points,
                 extrinsic_matrix=extrinsic_matrix,
                 intrinsic_matrix=intrinsic_matrix,
-                radii=radii[mask],
-                sigmas=sigmas[mask],
+                radii=inlier_radii,
+                sigmas=inlier_sigmas,
                 image_size_xy=image_size_xy,
                 back_projected_home_pos=back_projected_home_pos,
                 closest_image_arg=closest_image_arg,

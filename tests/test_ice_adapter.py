@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import re
 import shutil
+import struct
 import tomllib
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +24,10 @@ Ice = pytest.importorskip("Ice")
 import station_calibration.ice.adapter as adapter_module  # noqa: E402
 import station_calibration.service as service_module  # noqa: E402
 from station_calibration.ice.adapter import CalibrationIceServant  # noqa: E402
-from station_calibration.ice.archive import SessionArchive  # noqa: E402
+from station_calibration.ice.archive import (  # noqa: E402
+    TIFF_COMPRESSION,
+    SessionArchive,
+)
 from station_calibration.ice import server as ice_server  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
 from station_calibration.ice.procedures import (  # noqa: E402
@@ -104,6 +108,7 @@ def _fake_result():
         image_size_xy=(3, 2),
         observation_count=1,
         n_used=1,
+        fit_mask=np.ones(1, dtype=bool),
         rmse=0.25,
     )
 
@@ -236,6 +241,51 @@ def test_adapter_maps_results_to_ice_types(tmp_path, monkeypatch) -> None:
     assert source == "ice"
 
 
+def test_adapter_nozzle_estimation_uses_fit_inliers(tmp_path, monkeypatch) -> None:
+    servant, service = _make_servant(tmp_path, monkeypatch)
+    result = _fake_result()
+    result.fit_mask = np.array([True, False, True], dtype=bool)
+    result.center_points_adjusted = np.array(
+        [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+        dtype=np.float64,
+    )
+    service.session.fit_observations = [object(), object(), object()]
+
+    captured: dict[str, object] = {}
+
+    def fake_observations(observations):
+        observations = tuple(observations)
+        captured["n_observations"] = len(observations)
+        n = len(observations)
+        return (
+            np.zeros((n, 3), dtype=np.float64),
+            np.zeros((n, 2), dtype=np.float64),
+            np.ones(n, dtype=np.float64),
+            np.ones(n, dtype=np.float64),
+            np.ones(n, dtype=np.int8),
+        )
+
+    def fake_nozzle(**kwargs):
+        captured["kwargs"] = kwargs
+        return np.array([1.0, 2.0, 3.0]), 2.0, {}
+
+    monkeypatch.setattr(adapter_module, "observations_to_arrays", fake_observations)
+    monkeypatch.setattr(adapter_module, "get_nozzle_end_home_position", fake_nozzle)
+
+    nozzle = servant._estimate_nozzle_position(service, result)
+
+    np.testing.assert_allclose(nozzle, [1.0, 2.0, 3.0])
+    assert captured["n_observations"] == 2
+    kwargs = captured["kwargs"]
+    assert kwargs["image_center_points"].shape == (2, 2)
+    np.testing.assert_allclose(
+        kwargs["image_center_points"],
+        [[1.0, 2.0], [5.0, 6.0]],
+    )
+    assert kwargs["radii"].shape == (2,)
+    assert kwargs["sigmas"].shape == (2,)
+
+
 def test_adapter_archives_session_images_csv_and_result(
     tmp_path,
     monkeypatch,
@@ -293,16 +343,16 @@ def test_adapter_archives_session_images_csv_and_result(
     assert metadata["session"]["config_file"] == str(session / "config.toml")
 
 
-def test_session_archive_converts_wide_frames_to_8_bit(tmp_path) -> None:
+@pytest.mark.parametrize(
+    "frame",
+    [
+        np.array([[1000, 2000], [3000, 4000]], dtype=np.uint16),
+        np.array([[1000, 2000], [3000, 4000]], dtype=np.int16),
+        np.array([[1.5, 2.5], [3.5, 4.5]], dtype=np.float32),
+    ],
+)
+def test_session_archive_preserves_wide_frame_dtype(tmp_path, frame) -> None:
     archive = SessionArchive(tmp_path)
-    frame = np.array(
-        [
-            [1000, 2000],
-            [3000, 4000],
-        ],
-        dtype=np.uint16,
-    )
-
     archive.record(frame, np.zeros(3, dtype=np.float64))
     session_dir = archive.session_dir
     assert session_dir == tmp_path
@@ -312,9 +362,53 @@ def test_session_archive_converts_wide_frames_to_8_bit(tmp_path) -> None:
         str(session_dir / "image_0001.tif"),
         cv2.IMREAD_UNCHANGED,
     )
+    assert saved.dtype == frame.dtype
+    np.testing.assert_array_equal(saved, frame)
+
+
+def test_session_archive_compresses_tiff(tmp_path) -> None:
+    archive = SessionArchive(tmp_path)
+    frame = np.zeros((256, 256), dtype=np.uint16)
+    frame[::2, ::2] = 4000
+    archive.record(frame, np.zeros(3, dtype=np.float64))
+    archive.close()
+
+    image_path = tmp_path / "image_0001.tif"
+    assert _tiff_compression(image_path) == TIFF_COMPRESSION
+    assert image_path.stat().st_size < frame.nbytes // 4
+
+
+def test_session_archive_stores_boolean_frames_as_uint8(tmp_path) -> None:
+    archive = SessionArchive(tmp_path)
+    frame = np.array([[True, False], [False, True]])
+    archive.record(frame, np.zeros(3, dtype=np.float64))
+    archive.close()
+
+    saved = cv2.imread(
+        str(tmp_path / "image_0001.tif"),
+        cv2.IMREAD_UNCHANGED,
+    )
     assert saved.dtype == np.uint8
-    assert saved[0, 0] == 0
-    assert saved[1, 1] == 255
+    np.testing.assert_array_equal(saved, frame.astype(np.uint8) * 255)
+
+
+def _tiff_compression(path: Path) -> int:
+    """Read the TIFF Compression tag (259) from a single-image file."""
+    payload = path.read_bytes()
+    endian = "<" if payload[:2] == b"II" else ">"
+    ifd_offset = struct.unpack_from(f"{endian}I", payload, 4)[0]
+    entry_count = struct.unpack_from(f"{endian}H", payload, ifd_offset)[0]
+    for index in range(entry_count):
+        entry_offset = ifd_offset + 2 + index * 12
+        tag, kind, count, value = struct.unpack_from(
+            f"{endian}HHI4s",
+            payload,
+            entry_offset,
+        )
+        if tag == 259:
+            assert kind == 3 and count == 1
+            return struct.unpack(f"{endian}H", value[:2])[0]
+    return 1
 
 
 def test_adapter_add_data_turns_analysis_failure_into_rejection(
@@ -706,8 +800,45 @@ def test_adapter_rejects_procedure_switch_during_active_calibration(
         servant.init(2)
 
     service.ready = True
+    with pytest.raises(RuntimeError, match="active calibration"):
+        servant.init(2)
+
+    assert servant.finish() is True
     servant.init(2)
     assert servant.active_procedure_id == 2
+
+
+def test_adapter_rejects_same_procedure_init_until_finish_or_abort(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    servant, service = _make_servant(tmp_path, monkeypatch)
+    servant.init(1)
+    service.ready = False
+    frame = np.zeros((2, 3), dtype=np.uint8)
+    servant.addData(
+        Point(x=1.0, y=2.0, z=3.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        servant.init(1)
+
+    message = str(exc_info.value)
+    assert "active calibration" in message
+    assert "finish()" in message
+    assert "abort()" in message
+
+    assert servant.finish() is True
+    servant.init(1)
+    assert servant.active_procedure_id == 1
 
 
 def test_adapter_finish_forces_result_and_allows_switch(

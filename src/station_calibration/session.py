@@ -27,6 +27,61 @@ from .stop import StopPolicy, StopReason, StopStatus
 from .vision import ImageAnalysisResult, get_radius_outlier_mask
 
 
+def _validate_fit_output(*,
+                         pos_home: np.ndarray,
+                         center_points_adjusted: np.ndarray,
+                         intrinsic_matrix: np.ndarray,
+                         extrinsic_matrix: np.ndarray,
+                         distortion: np.ndarray,
+                         optimize_result,
+                         rmse: float,
+                         n_fit_points: int) -> None:
+    """Reject non-converged or non-finite numerical results before publication."""
+    if not bool(getattr(optimize_result, "success", False)):
+        message = getattr(optimize_result, "message", "no convergence information")
+        raise ValueError(f"Calibration did not converge: {message}")
+
+    def _finite(name: str, value, shape: tuple[int, ...] | None = None) -> np.ndarray:
+        array = np.asarray(value, dtype=np.float64)
+        if shape is not None and array.shape != shape:
+            raise ValueError(
+                f"Calibration returned {name} with shape {array.shape}, expected {shape}"
+            )
+        if not np.all(np.isfinite(array)):
+            raise ValueError(f"Calibration returned non-finite {name}")
+        return array
+
+    _finite("pos_home", pos_home, (3,))
+    _finite(
+        "center_points_adjusted",
+        center_points_adjusted,
+        (n_fit_points, 2),
+    )
+    intrinsic = _finite("intrinsic_matrix", intrinsic_matrix, (3, 3))
+    _finite("extrinsic_matrix", extrinsic_matrix, (4, 4))
+    _finite("distortion", distortion)
+
+    if intrinsic[0, 0] <= 0 or intrinsic[1, 1] <= 0:
+        raise ValueError(
+            "Calibration returned a non-positive focal length: "
+            f"fx={intrinsic[0, 0]}, fy={intrinsic[1, 1]}"
+        )
+
+    rmse_value = float(rmse)
+    if not np.isfinite(rmse_value) or rmse_value < 0:
+        raise ValueError(f"Calibration returned an invalid RMSE: {rmse_value}")
+
+    params = getattr(optimize_result, "x", None)
+    if params is not None:
+        _finite("parameter vector", params)
+    residuals = getattr(optimize_result, "fun", None)
+    if residuals is not None:
+        _finite("residual vector", residuals)
+    cost = getattr(optimize_result, "cost", None)
+    if cost is not None and not np.isfinite(np.asarray(cost, dtype=np.float64)).all():
+        raise ValueError(f"Calibration returned a non-finite cost: {cost}")
+
+
 class CalibrationSession:
     """
         Accumulate observations and refit the camera model as new data arrives.
@@ -45,10 +100,13 @@ class CalibrationSession:
         ``apply_radius_filter=False`` when the source already filtered its data, for
         example when loading a previously stored point cache.
 
-        Readiness is controlled by ``StopPolicy``. By default the session stops
-        accepting new data once 500 valid observations have been collected. The
-        policy can also enforce a hard cap, or the caller can request an explicit
-        stop.
+        Readiness is controlled by ``StopPolicy``. By default the session reports
+        readiness once 500 valid observations have been collected. Readiness is
+        advisory: observations added after that point are still accepted and are
+        included in the next fit. The caller decides when to stop sending data
+        and then calls :meth:`finish` to publish a result, or aborts the session
+        in the frontend. The policy can also set an earlier readiness threshold,
+        or the caller can request an explicit stop.
     """
 
     def __init__(self,
@@ -344,7 +402,9 @@ class CalibrationSession:
             Fit the camera model to all currently valid observations.
 
             Radius outliers and calibration outliers are excluded from the resulting
-            camera model, but remain stored in the session.
+            camera model, but remain stored in the session. A fit that does not
+            converge, or that produces non-finite parameters, raises ``ValueError``
+            and leaves the previous successful result unchanged.
         """
         try:
             if not self.can_fit:
@@ -403,12 +463,25 @@ class CalibrationSession:
                 self.print_debug,
             )
 
+            _validate_fit_output(
+                pos_home=pos_home,
+                center_points_adjusted=center_points_adjusted,
+                intrinsic_matrix=intrinsic_matrix,
+                extrinsic_matrix=extrinsic_matrix,
+                distortion=distortion,
+                optimize_result=optimize_result,
+                rmse=rmse,
+                n_fit_points=len(fit_observation_indices),
+            )
+
             fit_mask = np.asarray(fit_mask, dtype=bool)
             if fit_mask.shape != fit_observation_indices.shape:
                 raise ValueError(
                     "Calibration returned an outlier mask with an unexpected shape: "
                     f"{fit_mask.shape} vs {fit_observation_indices.shape}"
                 )
+            if not np.any(fit_mask):
+                raise ValueError("Calibration rejected all observations")
 
             used_mask = np.zeros(self.n_observations, dtype=bool)
             used_mask[fit_observation_indices[fit_mask]] = True

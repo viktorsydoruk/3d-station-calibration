@@ -132,10 +132,12 @@ output then reflect the fallback value, even if the configured value was larger.
       correspond to the returned centres.
    3. Compute residual vectors `(dx, dy)` per point.
    4. Record the candidate if its RMSE is better than the previous best.
-   5. Flag points with `|dx| > 2·std(dx)` or `|dy| > 2·std(dy)`.
-   6. If any are flagged and another removal is allowed, remove the point with
-      the largest squared flagged residual (provided more than `min_points`
-      remain).
+   5. Compute the leverage-corrected squared Mahalanobis distance for every
+      residual vector (see [Outlier test](#outlier-test)).
+   6. Candidates are points above the 2D chi-square threshold set by
+      `outlier_confidence`. If the candidates form a compact spatial cluster,
+      keep them and stop removing. Otherwise remove the point with the largest
+      score, provided more than `min_points` remain.
    7. Repeat with the reduced mask.
 4. Return the best candidate: home, adjusted centres, `K`, `E`, distortion,
    `OptimizeResult`, RMSE, outlier mask, and the effective distortion count. The
@@ -152,6 +154,38 @@ output then reflect the fallback value, even if the configured value was larger.
 The count is capped at `N - min_points`. Removal also requires strictly more than
 `min_points` active points. The pipeline always performs one initial fit pass,
 then evaluates at most that many additional removal candidates.
+
+### Outlier test
+
+For an ordinary least-squares fit, the residual covariance of point `i` is
+approximately `Cov(r_i) = σ² (I - H_ii)`, where
+`H = J (JᵀJ)⁻¹ Jᵀ` is the hat matrix and `J` is the fit Jacobian. The pipeline
+uses the robust scale `σ = 1.4826 · MAD(r)`, falling back to the standard
+`SSE / (m - p)` estimate when the median is degenerate. The score is
+
+`d_i² = r_iᵀ Cov(r_i)⁻¹ r_i`.
+
+Under the model, `d_i²` follows a chi-square distribution with two degrees of
+freedom. A point is a candidate when `d_i² > χ²₂(outlier_confidence)`. The
+default `outlier_confidence = 0.999` flags roughly one point in a thousand. The
+previous rule (`|dx| > 2σ` or `|dy| > 2σ`) flagged about 9% of Gaussian points
+and was not a calibrated statistical test.
+
+**Spatial-cluster guard.** A group of high-score points is not removed when it
+is packed into a small region of the robot workspace. The guard compares the
+RMS spread of the candidates with 200 random subsets of the same size; a spread
+below the 5th percentile is treated as a systematic robot or camera-model
+effect rather than independent blunders. Set `outlier_cluster_guard = false` to
+disable this guard. The guard matters for a regular robot raster, where a
+contiguous block has the same nearest-neighbour spacing as the rest of the
+grid but a much smaller overall spread.
+
+The scores are diagnostic approximations when the fit uses the `soft_l1`
+robust loss: the covariance formula assumes ordinary least squares. The robust
+scale keeps a few gross blunders from inflating the covariance and masking
+themselves. Real station data also contains model error, so the candidate count
+can exceed the nominal `0.1 %` rate; `max_outliers` (packaged default `10`) caps
+the number of removals.
 
 ### Apparent-centre correction
 

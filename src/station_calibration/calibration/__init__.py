@@ -11,6 +11,9 @@ __all__ = [
     "back_projected_point",
     "calculate_RMSE",
     "calculate_calibration_errors",
+    "calculate_outlier_scores",
+    "chi_square_threshold",
+    "is_spatially_clustered",
 ]
 
 from .fit import calibrate_camera
@@ -20,5 +23,10 @@ from .metrics import (
     calculate_calibration_errors,
     check_distortion_monotonicity,
     print_calibration,
+)
+from .outliers import (
+    calculate_outlier_scores,
+    chi_square_threshold,
+    is_spatially_clustered,
 )
 from .model import get_calibration

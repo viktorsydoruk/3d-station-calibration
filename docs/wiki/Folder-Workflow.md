@@ -87,7 +87,7 @@ packaged defaults. See [Configuration](Configuration).
    and do not become observations.
 4. Valid observations are fed **one at a time** into a single
    `CalibrationSession` with the configured `[analysis] fit_every_n` (default
-   `1`). The session refits as data arrives once the minimum count is reached;
+   `5`). The session refits as data arrives once the minimum count is reached;
    `0` waits for the final `finish()`.
 5. `session.finish()` guarantees a final fit that includes all observations.
 6. The nozzle-end home position, sphere diameter, uncertainties, YAML result,

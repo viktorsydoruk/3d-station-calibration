@@ -199,6 +199,8 @@ Notes:
   `0.0`.
 - `rot_vec_std` and `tra_vec_std` each contain three one-sigma values.
 - `distortion_std` has 14 entries; inactive ones are zero.
+- The example above uses four distortion coefficients; the packaged default is
+  `n_distortion_coefs = 0`, so all distortion entries are zero.
 - The numbers above are illustrative; use the values from your own run.
 - Result YAML and `session.yaml` are written through a temporary file in the same
   folder and atomically replaced, so a crash cannot leave a truncated document.

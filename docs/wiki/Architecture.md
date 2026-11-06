@@ -98,7 +98,7 @@ robot CSV ──► CalibrationObservation ────────────�
 
 `cli.main()` uses `FolderCalibrationSource` to load either a point cache or all
 images. It feeds every observation into `CalibrationSession` with the configured
-`fit_every_n` (default `1`; `0` disables intermediate fits), then calls
+`fit_every_n` (default `5`; `0` disables intermediate fits), then calls
 `finish()` once. The final result is converted into the YAML file and optional
 plots.
 

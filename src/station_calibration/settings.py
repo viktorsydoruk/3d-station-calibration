@@ -69,6 +69,8 @@ class PossibleOptions(TypedDict, total=False):
     loss_f_scale: float
     n_iterations: int
     allowed_outliers: float
+    outlier_confidence: float
+    outlier_cluster_guard: bool
     target_observations: int
     max_observations: int | None
     fit_every_n: int | None
@@ -111,6 +113,8 @@ class Settings:
 
     n_iterations: int
     allowed_outliers: float
+    outlier_confidence: float
+    outlier_cluster_guard: bool
     target_observations: int
     max_observations: int | None
     fit_every_n: int | None
@@ -261,6 +265,13 @@ class Settings:
             self._get(analysis, "max_outliers", override="allowed_outliers"),
             "allowed_outliers (max_outliers)",
         )
+        self.outlier_confidence = _finite_float(
+            self._get(analysis, "outlier_confidence", 0.999),
+            "outlier_confidence",
+        )
+        self.outlier_cluster_guard = bool(
+            self._get(analysis, "outlier_cluster_guard", True)
+        )
         fit_every_n = int(self._get(analysis, "fit_every_n", 1))
 
         if self.n_iterations < 1:
@@ -268,6 +279,11 @@ class Settings:
         if self.allowed_outliers < 0:
             raise ValueError(
                 f"allowed_outliers (max_outliers) must be non-negative, got {self.allowed_outliers}"
+            )
+        if not 0.0 < self.outlier_confidence < 1.0:
+            raise ValueError(
+                "outlier_confidence must be strictly between 0 and 1, got "
+                f"{self.outlier_confidence}"
             )
         if fit_every_n < 0:
             raise ValueError(

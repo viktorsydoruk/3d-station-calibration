@@ -10,8 +10,8 @@ from station_calibration import CalibrationSession, Settings
 
 session = CalibrationSession(
     settings,
-    min_observations=14,   # optional
-    fit_every_n=1,         # default
+    min_observations=10,   # optional
+    fit_every_n=1,         # constructor default
     apply_radius_filter=True,
     stop_policy=None,      # default from Settings
 )
@@ -52,9 +52,9 @@ never change the valid-observation count or the fit count.
   observations survive the radius filter; after that, refit when
   `new_observations_since_fit >= fit_every_n`.
 
-The first automatic fit is not delayed by a large `fit_every_n`. On the
-regression fixture with the default minimum of 14 observations, it runs as soon
-as 14 observations survive filtering, even if `fit_every_n` is 20 or more.
+The first automatic fit is not delayed by a large `fit_every_n`. With the
+packaged minimum of 10 observations, it runs as soon as 10 observations survive
+filtering, even if `fit_every_n` is 20 or more.
 
 ## Fitting
 

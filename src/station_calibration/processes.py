@@ -10,9 +10,12 @@ from scipy.optimize import OptimizeResult
 
 from .calibration import (
     calculate_RMSE,
+    calculate_outlier_scores,
     calibrate_camera,
     check_distortion_monotonicity,
+    chi_square_threshold,
     get_calibration,
+    is_spatially_clustered,
 )
 from .debug import DebugInfo
 from .vision import adjust_image_center_points
@@ -150,6 +153,7 @@ def get_calibration_data(robot_positions: np.ndarray,
 
     # Removing outliers is only possible while min_points measurements remain.
     max_removals = min(max_removals, n_points - min_points)
+    outlier_threshold = chi_square_threshold(settings.outlier_confidence)
     best: _FitState | None = None
 
     for removal_index in range(max_removals + 1):
@@ -236,18 +240,35 @@ def get_calibration_data(robot_positions: np.ndarray,
         if removal_index == max_removals:
             break
 
-        pos_shifts = result.fun.reshape(-1, 2)
-        pos_shifts_std = np.std(pos_shifts, axis=0)
-        possible_outliers = np.abs(pos_shifts) > 2*pos_shifts_std[None, :]
-        if not np.any(possible_outliers):
-            break
-
         if np.count_nonzero(mask) <= min_points:
             break
 
-        max_arg = np.argmax(np.sum((pos_shifts*possible_outliers)**2, axis=1))
-        dmax_arg = np.cumsum(~mask)[mask][max_arg]
-        mask[max_arg + dmax_arg] = False
+        # Chi-square test on the leverage-corrected 2D residuals. A high score
+        # means the point is inconsistent with the fitted model; ordinary robot
+        # positioning scatter is handled by the robust loss, not by removal.
+        scores = calculate_outlier_scores(result)
+        finite_scores = np.isfinite(scores)
+        if not np.any(finite_scores):
+            break
+
+        active_indices = np.flatnonzero(mask)
+        candidates = np.flatnonzero(finite_scores & (scores > outlier_threshold))
+        if candidates.size == 0:
+            break
+
+        # A tight group of high-score points is usually a systematic robot or
+        # camera-model effect. Removing it would bias the fit and reduce
+        # coverage, so keep the points and report the cluster instead.
+        if settings.outlier_cluster_guard and is_spatially_clustered(
+            rel_robot_positions[mask], candidates
+        ):
+            print_debug(
+                "outlier candidates form a spatial cluster; keeping them"
+            )
+            break
+
+        remove_candidate = int(candidates[np.argmax(scores[candidates])])
+        mask[active_indices[remove_candidate]] = False
 
     if best is None:
         raise RuntimeError("Camera calibration did not run")

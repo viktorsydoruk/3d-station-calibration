@@ -31,10 +31,16 @@ sort_image_names_by_mtime = true
 # number of iterations to perform for camera calibrations (includes adjustments of center points and robotic arm home pos)
 n_iterations = 3
 # maximum allowed outliers (0 - not allowed outlier detection, < 1 - part of number of points, >=1 - allowed number of outliers
-max_outliers = 0
+max_outliers = 10
+# confidence level of the 2D chi-square outlier test; points above this
+# threshold are candidate blunders
+outlier_confidence = 0.999
+# keep candidate outliers that form a tight spatial cluster; such a group is
+# more likely a systematic robot or camera-model effect than a blunder
+outlier_cluster_guard = true
 # refit after this many new valid observations; 0 fits only on an explicit
 # finish() call. Larger values reduce CPU use during long acquisitions.
-fit_every_n = 1
+fit_every_n = 5
 
 [analysis.background]
 # fixed threshold value for the background (0 estimation will be done automatically based on 2 next params
@@ -61,7 +67,7 @@ blur_est_border_thickness = 2
 # whether to fix principal point of the camera
 fix_cx_cy = true
 # number of distortion coefficients to be taken into account (can be 0, 4, 5, 8, 12, or 14)
-n_distortion_coefs = 4
+n_distortion_coefs = 0
 # initial focal length in pixels used for the first calibration fit
 focal_length_initial = 2000.0
 # initial camera distance in mm used for the first calibration fit

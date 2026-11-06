@@ -80,7 +80,7 @@ normal; many usually indicate a detection or background problem.
 
 ### Not enough observations
 
-The minimum is `10 + n_distortion_coefs` (14 with the default `4`). The error
+The minimum is `10 + n_distortion_coefs` (10 with the default `0`). The error
 message reports the count after radius filtering. Rejected images never count.
 
 ### Distortion fallback
@@ -96,7 +96,7 @@ the point distribution.
 
 ### Fit time
 
-Folder and Ice modes refit according to `[analysis] fit_every_n` (default `1`).
+Folder and Ice modes refit according to `[analysis] fit_every_n` (default `5`).
 For quick experiments set `fit_every_n = 0` to fit only in `finish()`, or use a
 larger value to reduce intermediate fits.
 

@@ -35,6 +35,8 @@ BASE_CONFIG: dict[str, dict[str, Any]] = {
     "analysis": {
         "n_iterations": 3,
         "max_outliers": 0.25,
+        "outlier_confidence": 0.9995,
+        "outlier_cluster_guard": False,
         "fit_every_n": 3,
     },
     "analysis.background": {
@@ -144,6 +146,8 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
 
     assert settings.n_iterations == 3
     assert settings.allowed_outliers == 0.25
+    assert settings.outlier_confidence == 0.9995
+    assert settings.outlier_cluster_guard is False
     assert settings.fit_every_n == 3
     assert settings.fixed_bg_threshold == 30.0
     assert settings.bg_height_pxs == 200
@@ -177,7 +181,11 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
     assert settings.config_file_path == Settings.DEFAULT_CONFIG_FILE
     assert settings.config_file_path.is_absolute()
     assert settings.debug is False
-    assert settings.fit_every_n == 1
+    assert settings.allowed_outliers == 10
+    assert settings.outlier_confidence == 0.999
+    assert settings.outlier_cluster_guard is True
+    assert settings.fit_every_n == 5
+    assert settings.n_distortion_coefs == 0
     assert settings.target_observations == 500
 
 
@@ -314,6 +322,8 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
         robot_pos_file="override.csv",
         all_center_points_file="override.dat",
         allowed_outliers=2,
+        outlier_confidence=0.99,
+        outlier_cluster_guard=False,
         sort_imagenames_by_mtime=False,
         n_iterations=5,
         fit_every_n=7,
@@ -333,6 +343,8 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
     assert settings.robot_pos_file == context.main_folder / "override.csv"
     assert settings.all_center_points_file == settings.output_folder / "override.dat"
     assert settings.allowed_outliers == 2.0
+    assert settings.outlier_confidence == 0.99
+    assert settings.outlier_cluster_guard is False
     assert settings.sort_imagenames_by_mtime is False
     assert settings.n_iterations == 5
     assert settings.fit_every_n == 7
@@ -367,6 +379,8 @@ def test_optional_settings_use_defaults(context: ConfigContext) -> None:
     for key in ("image_name_patterns", "sort_image_names_by_mtime"):
         context.config["general.files"].pop(key)
     context.config["analysis"].pop("fit_every_n")
+    context.config["analysis"].pop("outlier_confidence")
+    context.config["analysis"].pop("outlier_cluster_guard")
     for key in (
         "fix_cx_cy",
         "n_distortion_coefs",
@@ -386,6 +400,8 @@ def test_optional_settings_use_defaults(context: ConfigContext) -> None:
     assert settings.image_name_patterns == ("*.tif", "*.tiff")
     assert settings.sort_imagenames_by_mtime is True
     assert settings.fit_every_n == 1
+    assert settings.outlier_confidence == 0.999
+    assert settings.outlier_cluster_guard is True
     assert settings.fix_cx_cy is True
     assert settings.n_distortion_coefs == 0
     assert settings.focal_length_initial == 2000.0
@@ -473,6 +489,11 @@ def test_n_distortion_coefs_rejects_unsupported_values(
         ("analysis", "n_iterations", 0, "n_iterations"),
         ("analysis", "max_outliers", -0.1, "allowed_outliers"),
         ("analysis", "max_outliers", float("nan"), "allowed_outliers"),
+        ("analysis", "outlier_confidence", 0.0, "outlier_confidence"),
+        ("analysis", "outlier_confidence", 1.0, "outlier_confidence"),
+        ("analysis", "outlier_confidence", -0.1, "outlier_confidence"),
+        ("analysis", "outlier_confidence", float("nan"), "outlier_confidence"),
+        ("analysis", "outlier_confidence", float("inf"), "outlier_confidence"),
         ("analysis", "fit_every_n", -1, "fit_every_n"),
         ("analysis.background", "fixed_bg_threshold", -1, "fixed_bg_threshold"),
         ("analysis.background", "fixed_bg_threshold", float("inf"), "fixed_bg_threshold"),

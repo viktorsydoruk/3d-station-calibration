@@ -97,8 +97,10 @@ Python attribute aliases differ where the TOML name is more descriptive:
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `n_iterations` | `3` | Inner camera/home/centre adjustment iterations (must be ≥ 1) |
-| `max_outliers` | `0` | Outlier policy, see below (must be ≥ 0) |
-| `fit_every_n` | `1` | Refit after this many new valid observations; `0` disables intermediate fits and waits for `finish()` (must be ≥ 0) |
+| `max_outliers` | `10` | Outlier policy, see below (must be ≥ 0) |
+| `outlier_confidence` | `0.999` | Confidence level of the 2D chi-square outlier test (must be in `(0, 1)`) |
+| `outlier_cluster_guard` | `true` | Keep high-score candidates that form a compact spatial cluster |
+| `fit_every_n` | `5` | Refit after this many new valid observations; `0` disables intermediate fits and waits for `finish()` (must be ≥ 0) |
 
 The first automatic fit is not delayed by `fit_every_n`: it runs as soon as
 enough observations survive radius filtering. Later refits use the configured
@@ -110,6 +112,14 @@ cadence.
 - `0 < x < 1` — at most `int(N * x)` removals, minimum one iteration.
 - `x >= 1` — at most `int(x)` removals.
 - Iterations are capped at `N - min_points + 1` so that enough points remain.
+
+The removal decision itself uses a leverage-corrected 2D Mahalanobis score and
+a chi-square threshold; see
+[Calibration model · Outlier test](Calibration-Model.md#outlier-test).
+`outlier_confidence` controls that threshold. `outlier_cluster_guard` keeps a
+compact group of high-score points instead of removing it, because such a group
+usually reflects a systematic robot or camera-model effect rather than isolated
+blunders.
 
 `fit_every_n` controls how often a running session refits while observations are
 still arriving. The final `finish()` call always performs a fit, so larger values
@@ -148,7 +158,7 @@ Ranges: `n_move_aver >= 1`, `0 <= sphere_center_to_nozzle_part <= 1`,
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `fix_cx_cy` | `true` | Fix the principal point at the image centre |
-| `n_distortion_coefs` | `4` | Number of active OpenCV distortion coefficients |
+| `n_distortion_coefs` | `0` | Number of active OpenCV distortion coefficients |
 | `focal_length_initial` | `2000.0` | Initial `fx`/`fy` in pixels |
 | `camera_distance_initial` | `80.0` | Initial translation `t_z` in millimetres |
 | `loss_f_scale` | `5.0` | Pixel scale where the `soft_l1` robust loss starts downweighting residuals; must be positive and finite |
@@ -164,8 +174,8 @@ Ranges: `n_move_aver >= 1`, `0 <= sphere_center_to_nozzle_part <= 1`,
 | `12` | + `s1, s2, s3, s4` |
 | `14` | + `τx, τy` |
 
-The minimum observation count is `10 + n_distortion_coefs`, so the default `4`
-requires at least 14 observations.
+The minimum observation count is `10 + n_distortion_coefs`, so the default `0`
+requires at least 10 observations.
 
 When `fix_cx_cy = true`, `cx` and `cy` are set to `width / 2` and
 `height / 2`. Set it to `false` to estimate the principal point; that parameter
@@ -197,6 +207,8 @@ debug_folder = "diagnostics"
 [analysis]
 n_iterations = 4
 max_outliers = 0.02
+outlier_confidence = 0.999
+outlier_cluster_guard = true
 
 [analysis.background]
 fixed_bg_threshold = 0

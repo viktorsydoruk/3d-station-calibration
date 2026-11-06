@@ -91,6 +91,16 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - Outlier removal treats `max_outliers` as a maximum number of removals, runs
   one initial fit plus at most that many removal candidates, and returns the
   best-RMSE candidate with a mask that matches its fit.
+- Outlier selection now uses a leverage-corrected 2D Mahalanobis score and a
+  configurable chi-square threshold (`[analysis] outlier_confidence`, default
+  `0.999`) instead of a per-axis `2σ` rule that flagged about 9% of Gaussian
+  points. A spatial-cluster guard (`outlier_cluster_guard`, default `true`)
+  keeps compact groups of high-score points, which usually indicate a
+  systematic robot or camera-model effect rather than isolated blunders.
+- The packaged defaults now use `n_distortion_coefs = 0`, `fit_every_n = 5`,
+  and `max_outliers = 10`. The no-distortion model is adequate for the loose
+  nozzle-position requirement, and refitting every five observations reduces
+  acquisition-time CPU use.
 - `intrinsic_std[2,2]` is now `0.0` because it is not a fitted parameter.
 - `bg_height_pxs` now requires at least 10 rows, and numeric settings reject
   `NaN`/infinity during configuration loading.

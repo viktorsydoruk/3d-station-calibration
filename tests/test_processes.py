@@ -19,6 +19,7 @@ from station_calibration import (
     DebugInfo,
     Settings,
     get_calibration_data,
+    get_nozzle_end_home_position,
     load_all_points,
     store_calibration,
 )
@@ -119,6 +120,21 @@ def fake_pipeline(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     )
 
     return state
+
+
+def _make_grid_data(side: int = 8) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, np.ndarray, tuple[int, int]
+]:
+    x, y = np.meshgrid(np.arange(side), np.arange(side))
+    robot_positions = np.column_stack(
+        [x.ravel() * 10.0, y.ravel() * 10.0, np.zeros(side * side)]
+    )
+    center_points = np.column_stack(
+        [1000.0 + x.ravel() * 50.0, 700.0 + y.ravel() * 50.0]
+    )
+    radii = np.full(side * side, 12.0)
+    sigmas = np.full(side * side, 1.5)
+    return robot_positions, center_points, radii, sigmas, (2448, 2048)
 
 
 def _settings(tmp_path: Path, **overrides) -> Settings:
@@ -222,6 +238,7 @@ def _install_scripted_outlier_fit(
         return OptimizeResult(
             x=np.zeros(2),
             fun=residuals,
+            jac=np.zeros((2 * n_points, 2)),
             success=True,
             cost=0.0,
             message="fake",
@@ -278,6 +295,126 @@ def test_outlier_removal_keeps_initial_fit_when_refit_is_worse(
 
     assert result[6] == pytest.approx(4.0)
     assert result[7].all()
+
+
+def _install_clustered_outlier_fit(
+    monkeypatch: pytest.MonkeyPatch,
+    cluster: np.ndarray,
+) -> None:
+    rng = np.random.default_rng(0)
+
+    def fake_calibrate(robot_positions, image_center_points, radii, sigmas, **kwargs):
+        n_points = len(robot_positions)
+        residuals = rng.normal(0.0, 0.5, 2 * n_points)
+        for index in cluster:
+            if index < n_points:
+                residuals[2 * index] += 20.0
+                residuals[2 * index + 1] += 20.0
+        return OptimizeResult(
+            x=np.zeros(2),
+            fun=residuals,
+            jac=np.zeros((2 * n_points, 2)),
+            success=True,
+            cost=0.0,
+            message="fake",
+        )
+
+    monkeypatch.setattr(processes, "calibrate_camera", fake_calibrate)
+
+
+def test_no_outlier_candidates_keeps_all_points(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_grid_data()
+    rng = np.random.default_rng(1)
+
+    def fake_calibrate(robot_positions, image_center_points, radii, sigmas, **kwargs):
+        n_points = len(robot_positions)
+        residuals = rng.normal(0.0, 0.5, 2 * n_points)
+        return OptimizeResult(
+            x=np.zeros(2),
+            fun=residuals,
+            jac=np.zeros((2 * n_points, 2)),
+            success=True,
+            cost=0.0,
+            message="fake",
+        )
+
+    monkeypatch.setattr(processes, "calibrate_camera", fake_calibrate)
+    monkeypatch.setattr(
+        processes, "calculate_RMSE", lambda result, standardized=True: 2.0
+    )
+
+    result = get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path, allowed_outliers=1),
+        DebugInfo(False),
+    )
+
+    assert result[7].all()
+    assert result[6] == pytest.approx(2.0)
+
+
+def test_clustered_outlier_candidates_are_kept(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_grid_data()
+    _install_clustered_outlier_fit(monkeypatch, np.array([0, 1, 8, 9]))
+    monkeypatch.setattr(
+        processes, "calculate_RMSE", lambda result, standardized=True: 2.0
+    )
+
+    result = get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path, allowed_outliers=1),
+        DebugInfo(False),
+    )
+
+    assert result[7].all()
+
+
+def test_clustered_outlier_candidates_are_removed_when_guard_is_disabled(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_grid_data()
+    _install_clustered_outlier_fit(monkeypatch, np.array([0, 1, 8, 9]))
+    rmse_values = iter([2.0, 1.0])
+    monkeypatch.setattr(
+        processes,
+        "calculate_RMSE",
+        lambda result, standardized=True: next(rmse_values),
+    )
+
+    result = get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(
+            tmp_path,
+            allowed_outliers=1,
+            outlier_cluster_guard=False,
+        ),
+        DebugInfo(False),
+    )
+
+    assert result[7].sum() == len(robot_positions) - 1
+    assert result[6] == pytest.approx(1.0)
 
 
 def test_nonmonotonic_distortion_refits_without_distortion(
@@ -585,3 +722,85 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
     )
     np.testing.assert_allclose(distortion[4:], np.zeros(10))
     assert rmse == pytest.approx(4.366936342185351, rel=1e-6)
+
+
+def test_stored_point_cloud_regression_without_distortion(tmp_path: Path) -> None:
+    robot_positions, center_points, radii, sigmas, image_sizes, directions = (
+        load_all_points(DATA_FILE)
+    )
+    valid = np.logical_and(~np.isnan(sigmas), ~np.isnan(radii))
+    image_size_xy = np.flip(np.nanmax(image_sizes, axis=0)).astype(int).tolist()
+
+    result = get_calibration_data(
+        robot_positions[valid],
+        center_points[valid],
+        radii[valid],
+        sigmas[valid],
+        image_size_xy,
+        _settings(
+            tmp_path,
+            n_iterations=3,
+            n_distortion_coefs=0,
+            allowed_outliers=0,
+        ),
+        DebugInfo(False),
+    )
+
+    (
+        pos_home,
+        center_points_adjusted,
+        intrinsic,
+        extrinsic,
+        distortion,
+        optimize_result,
+        rmse,
+        mask,
+        n_dist,
+    ) = result
+
+    assert int(mask.sum()) == 492
+    assert n_dist == 0
+    assert optimize_result.success
+    assert len(optimize_result.x) == 8
+
+    np.testing.assert_allclose(
+        pos_home,
+        np.array([315.489041106484, -111.521397991757, -35.078776266548]),
+        rtol=1e-6,
+        atol=1e-3,
+    )
+    np.testing.assert_allclose(
+        [intrinsic[0, 0], intrinsic[1, 1]],
+        [22065.319832167293, 21806.32838038982],
+        rtol=1e-6,
+    )
+    assert intrinsic[0, 2] == 1224.0
+    assert intrinsic[1, 2] == 1024.0
+    np.testing.assert_allclose(
+        extrinsic[:3, 3],
+        [-4.78315063e-05, 1.17921331e-05, 7.38537308e01],
+        rtol=1e-5,
+        atol=1e-8,
+    )
+    np.testing.assert_allclose(distortion, np.zeros(14))
+    assert rmse == pytest.approx(4.433681338406652, rel=1e-6)
+
+    relative_positions = robot_positions[valid] - pos_home
+    nozzle, diameter, _ = get_nozzle_end_home_position(
+        sphere_home_position=pos_home,
+        robot_positions=relative_positions[mask],
+        image_center_points=center_points_adjusted[mask],
+        intrinsic_matrix=intrinsic,
+        extrinsic_matrix=extrinsic,
+        distortion=distortion,
+        sigmas=sigmas[valid][mask],
+        radii=radii[valid][mask],
+        all_directions=directions[valid][mask],
+    )
+    np.testing.assert_allclose(
+        nozzle,
+        [315.48702179488004, -111.52066057167386, -35.571846869526745],
+        rtol=1e-6,
+        atol=1e-6,
+    )
+    assert diameter == pytest.approx(0.9861505814222078, rel=1e-6)

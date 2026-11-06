@@ -69,6 +69,9 @@ __all__ = [
     "back_projected_point",
     "calculate_RMSE",
     "calculate_calibration_errors",
+    "calculate_outlier_scores",
+    "chi_square_threshold",
+    "is_spatially_clustered",
     # Robot and geometry helpers
     "find_robot_home_pos_shift",
     "get_nozzle_end_home_position",
@@ -103,9 +106,12 @@ from .calibration import (
     back_projected_point,
     calculate_RMSE,
     calculate_calibration_errors,
+    calculate_outlier_scores,
     calibrate_camera,
     check_distortion_monotonicity,
+    chi_square_threshold,
     get_calibration,
+    is_spatially_clustered,
     print_calibration,
 )
 from .debug import DebugInfo

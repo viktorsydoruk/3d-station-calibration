@@ -352,7 +352,10 @@ class CalibrationSession:
         if fit is None:
             fit = (
                 self.fit_every_n is not None
-                and self._new_since_fit >= self.fit_every_n
+                and (
+                    self._last_result is None
+                    or self._new_since_fit >= self.fit_every_n
+                )
                 and self.can_auto_fit
             )
         if fit:

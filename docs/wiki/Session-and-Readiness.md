@@ -48,12 +48,13 @@ never change the valid-observation count or the fit count.
 
 - `True` — fit immediately (still subject to `can_fit`),
 - `False` — store only,
-- `None` — use the session policy: fit when
-  `new_observations_since_fit >= fit_every_n` **and** enough observations
-  survive the radius filter.
+- `None` — use the session policy: the first fit happens as soon as enough
+  observations survive the radius filter; after that, refit when
+  `new_observations_since_fit >= fit_every_n`.
 
-The first automatic fit therefore happens once the minimum count is reached
-after radius filtering, not before.
+The first automatic fit is not delayed by a large `fit_every_n`. On the
+regression fixture with the default minimum of 14 observations, it runs as soon
+as 14 observations survive filtering, even if `fit_every_n` is 20 or more.
 
 ## Fitting
 

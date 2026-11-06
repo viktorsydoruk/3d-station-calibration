@@ -100,6 +100,10 @@ Python attribute aliases differ where the TOML name is more descriptive:
 | `max_outliers` | `0` | Outlier policy, see below (must be ≥ 0) |
 | `fit_every_n` | `1` | Refit after this many new valid observations; `0` disables intermediate fits and waits for `finish()` (must be ≥ 0) |
 
+The first automatic fit is not delayed by `fit_every_n`: it runs as soon as
+enough observations survive radius filtering. Later refits use the configured
+cadence.
+
 `max_outliers` (Python: `allowed_outliers`):
 
 - `0` — no outlier-removal iterations, one fit pass.

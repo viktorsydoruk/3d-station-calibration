@@ -558,6 +558,45 @@ def test_procedure_registry_auto_creates_missing_procedure(tmp_path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "../outside",
+        "nested/../../outside",
+        "absolute-outside",
+    ],
+)
+def test_procedure_registry_rejects_escaping_override_paths(
+    tmp_path,
+    value,
+) -> None:
+    root = _make_procedure_root(tmp_path)
+    if value == "absolute-outside":
+        value = str(tmp_path / "outside")
+    override_file = tmp_path / "override.toml"
+    override_file.write_text(
+        dumps_toml({"general": {"files": {"debug_folder": value}}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="debug_folder"):
+        ProcedureRegistry(root).create_session(1, override_file)
+
+
+def test_procedure_registry_accepts_relative_override_paths(tmp_path) -> None:
+    root = _make_procedure_root(tmp_path)
+    override_file = tmp_path / "override.toml"
+    override_file.write_text(
+        dumps_toml({"general": {"files": {"debug_folder": "diagnostics"}}}),
+        encoding="utf-8",
+    )
+
+    session = ProcedureRegistry(root).create_session(1, override_file)
+    merged = tomllib.loads(session.config_file.read_text(encoding="utf-8"))
+
+    assert merged["general"]["files"]["debug_folder"] == "diagnostics"
+
+
 def test_procedure_registry_new_procedure_persists_override(tmp_path) -> None:
     root = tmp_path / "procedures"
     root.mkdir()

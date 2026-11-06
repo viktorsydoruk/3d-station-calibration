@@ -214,6 +214,30 @@ def test_session_fit_every_n_and_final_fit(
     assert len(fake_fit.calls[-1]["radii"]) == 17
 
 
+def test_session_first_auto_fit_ignores_large_fit_every_n(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=20)
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    assert session.fit_count == 1
+    assert session.last_result is not None
+    assert session.last_result.observation_count == 14
+
+    for index in range(14, 33):
+        assert session.add_observation(_observation(index)) is None
+    assert session.fit_count == 1
+
+    result = session.add_observation(_observation(33))
+
+    assert result is not None
+    assert session.fit_count == 2
+    assert result.observation_count == 34
+
+
 def test_session_finish_forces_final_fit(
     tmp_path: Path,
     fake_fit: SimpleNamespace,

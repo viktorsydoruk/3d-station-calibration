@@ -122,6 +122,12 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   procedure switch.
 - Mixed nozzle directions and non-positive sphere radii are rejected instead of
   silently producing an averaged offset.
+- Client-supplied Ice configuration overrides can no longer set absolute or
+  parent-traversing session file paths; server-owned procedure defaults may
+  still use absolute paths.
+- The first automatic fit now runs as soon as the minimum observations survive
+  radius filtering, even when `fit_every_n` is larger; later refits still use
+  the configured cadence.
 
 <!--
 When the first release tag is created, rename [Unreleased] to the release

@@ -43,6 +43,12 @@ DATA_DIRNAME = "data"
 _DATE_FORMAT = "%Y%m%d_%H%M"
 
 _BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_OVERRIDE_PATH_KEYS = (
+    ("general", "files", "output_folder"),
+    ("general", "files", "debug_folder"),
+    ("general", "files", "robot_pos_filename"),
+    ("general", "files", "all_center_points_filename"),
+)
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,36 @@ def load_procedures_root(config_file: str | Path) -> Path:
     return root.resolve()
 
 
+def _validate_override_paths(override: dict[str, Any]) -> None:
+    """Keep client-supplied path overrides inside the new session folder.
+
+    The procedure default configuration is server-owned and may contain absolute
+    paths. A client-supplied override is not, so its path-valued settings must
+    stay relative and may not traverse upwards.
+    """
+    for keys in _OVERRIDE_PATH_KEYS:
+        value: Any = override
+        for key in keys:
+            if not isinstance(value, dict) or key not in value:
+                break
+            value = value[key]
+        else:
+            if not isinstance(value, (str, Path)):
+                raise TypeError(
+                    f"{'.'.join(keys)} override must be a string or path"
+                )
+            path = Path(value)
+            if (
+                path.is_absolute()
+                or bool(path.drive)
+                or any(part == ".." for part in path.parts)
+            ):
+                raise ValueError(
+                    f"{'.'.join(keys)} override must stay inside the session "
+                    f"folder, got {value!r}"
+                )
+
+
 class ProcedureRegistry:
     """Create timestamped sessions below a deployment-owned procedures root."""
 
@@ -123,6 +159,7 @@ class ProcedureRegistry:
                     f"configuration override file not found: {override_config}"
                 )
             override_data = _load_toml(override_config)
+            _validate_override_paths(override_data)
 
         try:
             procedure_dir.mkdir(parents=True, exist_ok=True)

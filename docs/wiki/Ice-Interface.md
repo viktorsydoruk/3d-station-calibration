@@ -137,6 +137,12 @@ servant constructs a `CalibrationService` with the procedure's configured
 | `procedureId` | Select `<procedures-root>/<str(procedureId)>/config.toml`, creating the procedure folder/config from the packaged default if needed |
 | `configurationfilepath` | Optional absolute server-side TOML recursively merged over the procedure default |
 
+Path-valued keys in a client override (`output_folder`, `debug_folder`,
+`robot_pos_filename`, and `all_center_points_filename`) must stay relative and
+may not contain `..`. Absolute paths remain valid in the server-owned procedure
+default, but a remote client cannot use an override to redirect session writes
+outside `<date>/data`.
+
 The folder name is exactly `str(procedureId)`, with no zero padding. If the
 optional path is relative or missing, `init` raises. For a new procedure, the
 override is merged into the new persistent procedure default. For an existing

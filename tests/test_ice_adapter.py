@@ -60,7 +60,10 @@ class FakeService:
         self.error_calls: list[int] = []
         self.finish_calls = 0
         self.finish_error: Exception | None = None
-        self.session = SimpleNamespace(fit_observations=[object()])
+        self.session = SimpleNamespace(
+            fit_observations=[object()],
+            n_observations=1,
+        )
 
     @property
     def is_ready(self) -> bool:
@@ -925,6 +928,37 @@ def test_adapter_rejects_same_procedure_init_until_finish_or_abort(
     assert servant.active_procedure_id == 1
 
 
+def test_adapter_rejected_only_frame_does_not_block_switch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = _make_procedure_root(tmp_path, procedure_ids=(1, 2))
+    servant, service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        procedures_root=root,
+    )
+    servant.init(1)
+    service.session.n_observations = 0
+    service.finish_error = ValueError("too few observations")
+    frame = np.zeros((2, 3), dtype=np.uint8)
+    servant.addData(
+        Point(x=1.0, y=2.0, z=3.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+
+    assert servant.finish() is False
+    servant.init(2)
+    assert servant.active_procedure_id == 2
+
+
 def test_adapter_finish_forces_result_and_allows_switch(
     tmp_path,
     monkeypatch,
@@ -1053,6 +1087,39 @@ def test_ice_package_exposes_lazy_client_and_servant() -> None:
     assert ice_package.CalibrationIceClient is CalibrationIceClient
     with pytest.raises(AttributeError, match="has no attribute"):
         ice_package.MissingTransport
+
+
+def test_ice_client_connect_sets_message_size_limit(monkeypatch) -> None:
+    captured = {}
+
+    class FakeCommunicator:
+        def stringToProxy(self, proxy):
+            raise RuntimeError("stop after initialization")
+
+        def destroy(self):
+            captured["destroyed"] = True
+
+    def fake_initialize(args):
+        captured["args"] = args
+        return FakeCommunicator()
+
+    monkeypatch.setattr(client_module.Ice, "initialize", fake_initialize)
+
+    with pytest.raises(RuntimeError, match="stop after initialization"):
+        CalibrationIceClient.connect(proxy="test", message_size_max_kb=12345)
+
+    assert "--Ice.MessageSizeMax=12345" in captured["args"]
+    assert captured["destroyed"] is True
+
+
+def test_ice_client_connect_rejects_invalid_message_size(monkeypatch) -> None:
+    def fail_initialize(args):
+        raise AssertionError("Ice.initialize must not be called")
+
+    monkeypatch.setattr(client_module.Ice, "initialize", fail_initialize)
+
+    with pytest.raises(ValueError, match="message_size_max_kb"):
+        CalibrationIceClient.connect(message_size_max_kb=0)
 
 
 def test_decode_image_rejects_empty_and_invalid_bytes() -> None:

@@ -77,7 +77,8 @@ paths, session start and end times, package version, and image count.
 ## Point cache
 
 `output/CalibrationAllPoints.dat` is a tab-separated table with one row per
-analyzed image, including rejected rows.
+analyzed image, including rejected rows. The file is replaced atomically, so a
+failed run leaves the previous cache intact.
 
 Header:
 
@@ -194,7 +195,8 @@ Notes:
 - `distortion_coefficients` always has 14 entries; inactive ones are zero.
 - `intrinsic_std[0][2]` and `[1][2]` are populated only when
   `fix_cx_cy = false`.
-- `intrinsic_std[2][2]` is `1.0` by convention.
+- Structurally fixed intrinsic entries, including `intrinsic_std[2][2]`, are
+  `0.0`.
 - `rot_vec_std` and `tra_vec_std` each contain three one-sigma values.
 - `distortion_std` has 14 entries; inactive ones are zero.
 - The numbers above are illustrative; use the values from your own run.

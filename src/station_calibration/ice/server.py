@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .. import __version__
+from . import DEFAULT_MESSAGE_SIZE_MAX_KB
 
 __all__ = [
     "DEFAULT_ENDPOINT",
@@ -22,10 +23,6 @@ __all__ = [
 
 DEFAULT_ENDPOINT = "tcp -h 127.0.0.1 -p 10000"
 DEFAULT_IDENTITY = "CalibrationPhenoseederIcing"
-# Camera frames are sent as raw pixels. A 2048x2448 8-bit frame is about 5 MB,
-# which exceeds Ice's 1 MB default incoming-message limit. Keep this comfortably
-# above the largest expected frame.
-DEFAULT_MESSAGE_SIZE_MAX_KB = 65536
 
 
 def _install_shutdown_handlers(communicator: Any) -> dict[int, Any]:

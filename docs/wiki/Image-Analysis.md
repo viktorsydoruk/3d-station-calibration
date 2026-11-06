@@ -22,6 +22,11 @@ direction +1 (nozzle at the top) or -1 (nozzle at the bottom)
 `analyze_image` never touches the filesystem. Optional debug images are written
 only when a target path and a colour image are supplied.
 
+The batch helpers keep one result per input path. A corrupt, missing, or
+unsupported frame is recorded as a rejection with its filename position intact
+instead of aborting the whole folder. Debug rendering never mutates the caller's
+image array, so read-only Ice frames are safe.
+
 ## Pipeline
 
 ### 1. Decode and split

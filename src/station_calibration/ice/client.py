@@ -12,6 +12,7 @@ from typing import Iterable
 import numpy as np
 
 from .. import __version__
+from . import DEFAULT_MESSAGE_SIZE_MAX_KB
 
 from ._generated import ensure_generated_on_path
 
@@ -55,9 +56,21 @@ class CalibrationIceClient:
     def connect(cls,
                 proxy: str = DEFAULT_PROXY,
                 *,
-                ice_config: str | Path | None = None) -> "CalibrationIceClient":
-        """Create a communicator and connect to an Ice calibration server."""
-        init_args: list[str] = []
+                ice_config: str | Path | None = None,
+                message_size_max_kb: int = DEFAULT_MESSAGE_SIZE_MAX_KB,
+                ) -> "CalibrationIceClient":
+        """Create a communicator and connect to an Ice calibration server.
+
+        The incoming message limit must match the server's value because camera
+        frames are transported as raw pixels.
+        """
+        if message_size_max_kb < 1:
+            raise ValueError(
+                f"message_size_max_kb must be positive, got {message_size_max_kb}"
+            )
+        init_args: list[str] = [
+            f"--Ice.MessageSizeMax={int(message_size_max_kb)}",
+        ]
         if ice_config is not None:
             init_args.append(f"--Ice.Config={Path(ice_config).expanduser()}")
         communicator = Ice.initialize(init_args)

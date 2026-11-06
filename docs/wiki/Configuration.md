@@ -120,8 +120,10 @@ folder workflow and the Ice server both read this setting.
 | `bg_height_pxs` | `200` | Height of the background band at the top/bottom |
 | `bg_color_est_perc` | `99.999` | Percentile of the band used as the threshold |
 
-`bg_height_pxs` must be at least 1 in `Settings`; the analysis path additionally
-requires at least 10 rows because the background estimator starts at row 10.
+`bg_height_pxs` must be at least 10 because the background estimator starts at
+row 10. Numeric settings must be finite; `NaN` and infinity are rejected during
+configuration loading.
+
 `bg_color_est_perc` must be in `(0, 100]`. Raise the percentile when the
 background contains bright reflections; lower it when the sphere is dim.
 

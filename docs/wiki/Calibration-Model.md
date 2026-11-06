@@ -91,15 +91,20 @@ is `(N, 2)`, the lengths match, and `N >= 10 + n_distortion_coefs`.
 
 ## Distortion fallback
 
-After each fit `check_distortion_monotonicity` evaluates the radial scale
+After each fit `check_distortion_monotonicity` evaluates OpenCV's rational
+radial scale
 
 ```text
-1 + k1·r² + k2·r⁴ + k3·r⁶ + k4·r⁸ + k5·r¹⁰ + k6·r¹²
+scale = (1 + k1·r² + k2·r⁴ + k3·r⁶) /
+        (1 + k4·r² + k5·r⁴ + k6·r⁶)
 ```
 
-for `r` from 0 to `hypot(width/2, height/2) / fx`. The model is accepted only if
-the scale stays positive and its derivative does not change sign over the image
-domain.
+and the distorted radius `r · scale`. It samples `r` from 0 to the largest
+normalized radius over the four image corners, computed with the fitted `fx`,
+`fy`, `cx`, and `cy`. The model is accepted only if both the scale and distorted
+radius stay positive and `r · scale` increases monotonically over that domain.
+Checking the scale alone is insufficient because a positive but decreasing scale
+can still fold the radial mapping.
 
 If the check fails, `get_calibration_data` refits with
 `n_distortion_coefs = 0`. The `CalibrationResult.n_distortion_coefs` and the YAML
@@ -121,25 +126,27 @@ output then reflect the fallback value, even if the configured value was larger.
    2. Refit once after the last centre adjustment, so the returned matrices
       correspond to the returned centres.
    3. Compute residual vectors `(dx, dy)` per point.
-   4. Flag points with `|dx| > 2·std(dx)` or `|dy| > 2·std(dy)`.
-   5. If any are flagged and another removal iteration is allowed, remove the
-      point with the largest squared flagged residual (provided more than
-      `min_points` remain).
-   6. If the new RMSE is worse than the previous one, re-enable the previously
-      removed point.
-4. Return the home, adjusted centres, `K`, `E`, distortion, `OptimizeResult`,
-   RMSE, outlier mask, and the effective distortion count.
+   4. Record the candidate if its RMSE is better than the previous best.
+   5. Flag points with `|dx| > 2·std(dx)` or `|dy| > 2·std(dy)`.
+   6. If any are flagged and another removal is allowed, remove the point with
+      the largest squared flagged residual (provided more than `min_points`
+      remain).
+   7. Repeat with the reduced mask.
+4. Return the best candidate: home, adjusted centres, `K`, `E`, distortion,
+   `OptimizeResult`, RMSE, outlier mask, and the effective distortion count. The
+   returned mask and result therefore always describe the same point set.
 
 ### `max_outliers` semantics
 
-| Value | Iterations |
+| Value | Maximum removals |
 | --- | --- |
-| `0` | One iteration; no removal |
-| `0 < x < 1` | `max(1, int(N·x))` |
-| `x >= 1` | `max(1, int(x))` |
+| `0` | One fit pass; no removal |
+| `0 < x < 1` | `int(N·x)` |
+| `x >= 1` | `int(x)` |
 
-The count is capped at `N - min_points + 1`. Removal also requires strictly more
-than `min_points` active points.
+The count is capped at `N - min_points`. Removal also requires strictly more than
+`min_points` active points. The pipeline always performs one initial fit pass,
+then evaluates at most that many additional removal candidates.
 
 ### Apparent-centre correction
 
@@ -167,14 +174,15 @@ pipeline adjusts centres after every fit and refits.
 2. Computes `sigma² = SSE / (m - n)`.
 3. Uses the Moore–Penrose pseudoinverse of the Jacobian:
    `cov = sigma² · pinv(J) · pinv(J)ᵀ`.
-4. Returns `sqrt(diag(cov))`, or `NaN` when the problem is rank deficient or
-   the degrees of freedom are non-positive.
+4. Returns `sqrt(diag(cov))`. Rank-deficient problems use the pseudoinverse and
+   stay finite; `NaN` is returned when the degrees of freedom are non-positive
+   or the residuals/Jacobian are not finite.
 
 `calculate_calibration_errors` maps that flat vector onto the public shapes:
 
 | Output | Shape | Notes |
 | --- | --- | --- |
-| `intrinsic_std` | 3×3 | `[0,0] = σfx`, `[1,1] = σfy`; `[0,2]/[1,2]` only when `cx/cy` are free; `[2,2] = 1`; other entries 0 |
+| `intrinsic_std` | 3×3 | `[0,0] = σfx`, `[1,1] = σfy`; `[0,2]/[1,2]` only when `cx/cy` are free; structurally fixed entries, including `[2,2]`, are 0 |
 | `distortion_std` | 14 | First `n_distortion_coefs` entries populated |
 | `rot_vec_std` | 3 | Rotation-vector components |
 | `tra_vec_std` | 3 | Translation components |

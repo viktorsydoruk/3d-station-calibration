@@ -22,6 +22,7 @@ def debug_images_storing(filename: Path,
     target = Path(filename)
     target.parent.mkdir(parents=True, exist_ok=True)
 
+    canvas = result
     if (
         x_c_pos is not None
         and y_c_pos is not None
@@ -31,10 +32,13 @@ def debug_images_storing(filename: Path,
         and np.isfinite(radius)
         and radius >= 0
     ):
+        # Callers may hand us a read-only view (for example a frame received
+        # through Ice). Never mutate their array while drawing diagnostics.
+        canvas = np.array(result, copy=True)
         center = (int(round(float(x_c_pos))), int(round(float(y_c_pos))))
-        cv2.circle(result, center, int(round(float(radius))), (0, 255, 0), 2)
-        cv2.circle(result, center, 3, (0, 0, 255), -1)
-    cv2.imwrite(str(target), result)
+        cv2.circle(canvas, center, int(round(float(radius))), (0, 255, 0), 2)
+        cv2.circle(canvas, center, 3, (0, 0, 255), -1)
+    cv2.imwrite(str(target), canvas)
 
 
 def _store_debug_image(debug_imagefile: Path | None,

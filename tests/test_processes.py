@@ -183,6 +183,79 @@ def test_small_allowed_outlier_fraction_still_runs_a_fit(
     assert len(fake_pipeline.fit_calls) == 2
 
 
+def _install_scripted_outlier_fit(
+    monkeypatch: pytest.MonkeyPatch,
+    rmse_values: list[float],
+) -> None:
+    values = iter(rmse_values)
+
+    def fake_calibrate(robot_positions, image_center_points, radii, sigmas, **kwargs):
+        n_points = len(robot_positions)
+        residuals = np.zeros(2 * n_points)
+        if n_points == 20:
+            # One clearly flagged point in the initial fit.
+            residuals[2] = 100.0
+        return OptimizeResult(
+            x=np.zeros(2),
+            fun=residuals,
+            success=True,
+            cost=0.0,
+            message="fake",
+        )
+
+    monkeypatch.setattr(processes, "calibrate_camera", fake_calibrate)
+    monkeypatch.setattr(
+        processes,
+        "calculate_RMSE",
+        lambda result, standardized=True: next(values),
+    )
+
+
+def test_outlier_removal_returns_best_fit_and_matching_mask(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_scripted_outlier_fit(monkeypatch, [5.0, 4.0])
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
+
+    result = get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path, allowed_outliers=1),
+        DebugInfo(False),
+    )
+
+    assert result[6] == pytest.approx(4.0)
+    assert result[7].sum() == len(robot_positions) - 1
+    assert not result[7][1]
+
+
+def test_outlier_removal_keeps_initial_fit_when_refit_is_worse(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_scripted_outlier_fit(monkeypatch, [4.0, 5.0])
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
+
+    result = get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path, allowed_outliers=1),
+        DebugInfo(False),
+    )
+
+    assert result[6] == pytest.approx(4.0)
+    assert result[7].all()
+
+
 def test_nonmonotonic_distortion_refits_without_distortion(
     tmp_path: Path,
     fake_pipeline: SimpleNamespace,
@@ -448,28 +521,33 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
 
     pos_home, _, intrinsic, extrinsic, distortion, optimize_result, rmse, mask, n_dist = result
     assert int(mask.sum()) == 492
-    assert n_dist == 0
+    assert n_dist == 4
     assert optimize_result.success
-    assert len(optimize_result.x) == 8
+    assert len(optimize_result.x) == 12
 
     np.testing.assert_allclose(
         pos_home,
-        np.array([315.48895294587, -111.521548050948, -35.078792718634]),
+        np.array([315.490068627551, -111.521442535001, -35.080059600520]),
         rtol=1e-6,
         atol=1e-3,
     )
     np.testing.assert_allclose(
         [intrinsic[0, 0], intrinsic[1, 1]],
-        [22035.562261969855, 21758.63848965278],
+        [21934.02961105216, 21642.33750607229],
         rtol=1e-6,
     )
     assert intrinsic[0, 2] == 1224.0
     assert intrinsic[1, 2] == 1024.0
     np.testing.assert_allclose(
         extrinsic[:3, 3],
-        [-1.249423445098e-03, -9.811540156638e-04, 7.375208485173e01],
+        [-1.347717777303e-03, -7.345100566366e-04, 7.324555813477e01],
         rtol=1e-5,
         atol=1e-8,
     )
-    np.testing.assert_allclose(distortion, np.zeros(14))
-    assert rmse == pytest.approx(4.478405201550551, rel=1e-6)
+    np.testing.assert_allclose(
+        distortion[:4],
+        [-1.918946133946, 2.146027430711e02, -1.528360732080e-02, 6.705551968042e-03],
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(distortion[4:], np.zeros(10))
+    assert rmse == pytest.approx(4.435750712518631, rel=1e-6)

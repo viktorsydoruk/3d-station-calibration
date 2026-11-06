@@ -84,6 +84,16 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   numerical or runtime behavior changed.
 - Contributor documentation now includes a single local quality-gate sequence
   for lock checks, Ruff, mypy, pre-commit, coverage, and release builds.
+- Distortion acceptance now checks OpenCV's rational radial model and the actual
+  `r * scale` mapping over the true image corners. A valid 4-coefficient model
+  in the stored regression fixture is kept instead of falling back to zero
+  distortion, so that fixture's expected values were updated.
+- Outlier removal treats `max_outliers` as a maximum number of removals, runs
+  one initial fit plus at most that many removal candidates, and returns the
+  best-RMSE candidate with a mask that matches its fit.
+- `intrinsic_std[2,2]` is now `0.0` because it is not a fitted parameter.
+- `bg_height_pxs` now requires at least 10 rows, and numeric settings reject
+  `NaN`/infinity during configuration loading.
 
 ### Fixed
 
@@ -100,6 +110,18 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   estimators, preventing division-by-zero weights without changing cached data.
 - Re-initializing an Ice procedure while its session has unfinalized data now
   raises a clear error asking the client to call `finish()` or `abort()` first.
+- Folder batch analysis records missing, unreadable, or corrupt frames as
+  rejections and continues with the remaining images.
+- The point cache is written through an atomic temporary file, so a crash no
+  longer leaves a truncated `CalibrationAllPoints.dat`.
+- Debug rendering copies the source frame before drawing, so read-only Ice
+  frames are no longer mutated.
+- The Ice client sets `Ice.MessageSizeMax` to match the server by default,
+  avoiding connection loss on full-resolution raw frames.
+- A session that received only rejected frames no longer blocks a later
+  procedure switch.
+- Mixed nozzle directions and non-positive sphere radii are rejected instead of
+  silently producing an averaged offset.
 
 <!--
 When the first release tag is created, rename [Unreleased] to the release

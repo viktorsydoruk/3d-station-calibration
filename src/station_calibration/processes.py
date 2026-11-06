@@ -3,6 +3,8 @@
 
 """The complex processes are located here"""
 
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.optimize import OptimizeResult
 
@@ -16,6 +18,20 @@ from .debug import DebugInfo
 from .vision import adjust_image_center_points
 from .robot import find_robot_home_pos_shift
 from .settings import Settings
+
+
+@dataclass
+class _FitState:
+    """One candidate fit kept while the outlier loop evaluates removals."""
+    pos_home: np.ndarray
+    center_points_adjusted: np.ndarray
+    intrinsic_matrix: np.ndarray
+    extrinsic_matrix: np.ndarray
+    distortion: np.ndarray
+    result: OptimizeResult
+    rmse: float
+    mask: np.ndarray
+    n_dist_coefs: int
 
 
 def _fit_camera(rel_robot_positions: np.ndarray,
@@ -121,26 +137,21 @@ def get_calibration_data(robot_positions: np.ndarray,
     n_dist_coefs = settings.n_distortion_coefs
 
     mask = np.ones(n_points, dtype=bool)
-    last_rmse = np.inf
-    last_arg = 0
 
     if settings.allowed_outliers == 0:
-        n_out_iter = 1
+        max_removals = 0
     elif settings.allowed_outliers < 0:
         raise ValueError("allowed_outliers should be a positive number")
     elif settings.allowed_outliers < 1:
-        # Rounding down could give zero iterations for small fractions; the fit
-        # must always run at least once.
-        n_out_iter = max(1, int(n_points * settings.allowed_outliers))
+        max_removals = int(n_points * settings.allowed_outliers)
     else:
-        n_out_iter = max(1, int(settings.allowed_outliers))
+        max_removals = int(settings.allowed_outliers)
 
     # Removing outliers is only possible while min_points measurements remain.
-    n_out_iter = min(n_out_iter, n_points - min_points + 1)
+    max_removals = min(max_removals, n_points - min_points)
+    best: _FitState | None = None
 
-    result: OptimizeResult | None = None
-
-    for i in range(n_out_iter):
+    for removal_index in range(max_removals + 1):
         focal_length_initial = settings.focal_length_initial
         camera_distance_initial = settings.camera_distance_initial
         for _ in range(settings.n_iterations):
@@ -184,8 +195,6 @@ def get_calibration_data(robot_positions: np.ndarray,
             focal_length_initial = intrinsic_matrix[0, 0]
             camera_distance_initial = extrinsic_matrix[2, 3]
 
-            rmse = calculate_RMSE(result, standardized=False)
-
         # The loop above adjusts the center points after the last fit. Refit once
         # more so that the returned matrices and error correspond to the points
         # that are returned as well.
@@ -206,30 +215,53 @@ def get_calibration_data(robot_positions: np.ndarray,
         )
 
         rmse = calculate_RMSE(result, standardized=False)
+        if (
+            best is None
+            or rmse < best.rmse
+            or (np.isfinite(rmse) and not np.isfinite(best.rmse))
+        ):
+            best = _FitState(
+                pos_home=pos_home.copy(),
+                center_points_adjusted=center_points_adjusted.copy(),
+                intrinsic_matrix=intrinsic_matrix.copy(),
+                extrinsic_matrix=extrinsic_matrix.copy(),
+                distortion=distortion.copy(),
+                result=result,
+                rmse=rmse,
+                mask=mask.copy(),
+                n_dist_coefs=n_dist_coefs,
+            )
+
+        if removal_index == max_removals:
+            break
 
         pos_shifts = result.fun.reshape(-1, 2)
         pos_shifts_std = np.std(pos_shifts, axis=0)
         possible_outliers = np.abs(pos_shifts) > 2*pos_shifts_std[None, :]
-        are_there_outliers = np.any(possible_outliers)
-
-        if are_there_outliers and i < n_out_iter - 1:
-            max_arg = np.argmax(np.sum((pos_shifts*possible_outliers)**2, axis=1))
-            dmax_arg = np.cumsum(~mask)[mask][max_arg]
-            if rmse > last_rmse:
-                mask[last_arg] = True
-            last_arg = max_arg + dmax_arg
-            if np.count_nonzero(mask) > min_points:
-                mask[last_arg] = False
-            else:
-                break
-            last_rmse = rmse
-        else:
+        if not np.any(possible_outliers):
             break
 
-    if result is None:
+        if np.count_nonzero(mask) <= min_points:
+            break
+
+        max_arg = np.argmax(np.sum((pos_shifts*possible_outliers)**2, axis=1))
+        dmax_arg = np.cumsum(~mask)[mask][max_arg]
+        mask[max_arg + dmax_arg] = False
+
+    if best is None:
         raise RuntimeError("Camera calibration did not run")
 
-    return pos_home, center_points_adjusted, intrinsic_matrix, extrinsic_matrix, distortion, result, rmse, mask, n_dist_coefs
+    return (
+        best.pos_home,
+        best.center_points_adjusted,
+        best.intrinsic_matrix,
+        best.extrinsic_matrix,
+        best.distortion,
+        best.result,
+        best.rmse,
+        best.mask,
+        best.n_dist_coefs,
+    )
 
 
 def get_3D_and_2D_data(settings: Settings,

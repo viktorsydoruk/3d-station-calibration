@@ -109,8 +109,10 @@ Readiness is advisory: reaching the target does not make the session reject
 later observations. The caller decides when to stop sending data, then calls
 `finish()` (or `finish_if_ready()`) before reading calibration values. If the
 caller instead starts a new session, the Ice adapter refuses while the current
-one has data but has not been finished, and tells the client to call `finish()`
-or `abort()` first. Ready alone is not enough to discard the live session.
+one has accepted observations but has not been finished, and tells the client to
+call `finish()` or `abort()` first. Ready alone is not enough to discard the live
+session. A session that received only rejected frames does not lock the
+procedure.
 
 ## Radius filtering
 

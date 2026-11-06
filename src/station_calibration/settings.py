@@ -13,6 +13,7 @@
 
 __all__ = ['Settings', 'PossibleOptions']
 
+import math
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,14 @@ from .stop import DEFAULT_TARGET_OBSERVATIONS
 
 
 _MISSING = object()
+
+
+def _finite_float(value: Any, name: str) -> float:
+    """Convert a setting to float and reject NaN/infinity."""
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{name} must be finite, got {result}")
+    return result
 
 
 class PossibleOptions(TypedDict, total=False):
@@ -245,9 +254,10 @@ class Settings:
     def _init_analysis(self) -> None:
         analysis = self._section("analysis")
         self.n_iterations = int(self._get(analysis, "n_iterations"))
-        self.allowed_outliers = float(self._get(
-            analysis, "max_outliers", override="allowed_outliers"
-        ))
+        self.allowed_outliers = _finite_float(
+            self._get(analysis, "max_outliers", override="allowed_outliers"),
+            "allowed_outliers (max_outliers)",
+        )
         fit_every_n = int(self._get(analysis, "fit_every_n", 1))
 
         if self.n_iterations < 1:
@@ -264,16 +274,24 @@ class Settings:
 
     def _init_background(self) -> None:
         bg = self._section("analysis", "background")
-        self.fixed_bg_threshold = float(self._get(bg, "fixed_bg_threshold"))
+        self.fixed_bg_threshold = _finite_float(
+            self._get(bg, "fixed_bg_threshold"),
+            "fixed_bg_threshold",
+        )
         self.bg_height_pxs = int(self._get(bg, "bg_height_pxs"))
-        self.bg_color_est_perc = float(self._get(bg, "bg_color_est_perc"))
+        self.bg_color_est_perc = _finite_float(
+            self._get(bg, "bg_color_est_perc"),
+            "bg_color_est_perc",
+        )
 
         if self.fixed_bg_threshold < 0:
             raise ValueError(
                 f"fixed_bg_threshold must be non-negative, got {self.fixed_bg_threshold}"
             )
-        if self.bg_height_pxs < 1:
-            raise ValueError(f"bg_height_pxs must be at least 1, got {self.bg_height_pxs}")
+        if self.bg_height_pxs < 10:
+            raise ValueError(
+                f"bg_height_pxs must be at least 10, got {self.bg_height_pxs}"
+            )
         if not 0 < self.bg_color_est_perc <= 100:
             raise ValueError(
                 f"bg_color_est_perc must be in (0, 100], got {self.bg_color_est_perc}"
@@ -282,8 +300,9 @@ class Settings:
     def _init_sphere_projection(self) -> None:
         sphere = self._section("analysis", "sphere_projection")
         self.n_move_aver = int(self._get(sphere, "n_move_aver"))
-        self.sphere_center_to_nozzle_part = float(
-            self._get(sphere, "sphere_center_to_nozzle_part")
+        self.sphere_center_to_nozzle_part = _finite_float(
+            self._get(sphere, "sphere_center_to_nozzle_part"),
+            "sphere_center_to_nozzle_part",
         )
         self.min_bg_pixels_on_edges = int(self._get(sphere, "min_bg_pixels_on_edges"))
         self.blur_est_border_thickness = int(self._get(sphere, "blur_est_border_thickness"))
@@ -310,8 +329,14 @@ class Settings:
         fit = self._section("analysis", "fit")
         self.fix_cx_cy = bool(self._get(fit, "fix_cx_cy", True))
         self.n_distortion_coefs = self._get(fit, "n_distortion_coefs", 0)
-        self.focal_length_initial = float(self._get(fit, "focal_length_initial", 2000.0))
-        self.camera_distance_initial = float(self._get(fit, "camera_distance_initial", 80.0))
+        self.focal_length_initial = _finite_float(
+            self._get(fit, "focal_length_initial", 2000.0),
+            "focal_length_initial",
+        )
+        self.camera_distance_initial = _finite_float(
+            self._get(fit, "camera_distance_initial", 80.0),
+            "camera_distance_initial",
+        )
 
         if self.focal_length_initial <= 0:
             raise ValueError(

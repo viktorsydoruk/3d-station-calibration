@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from station_calibration import (
     find_robot_home_pos_shift,
@@ -99,3 +100,61 @@ def test_nozzle_end_home_position_returns_geometry_and_debug_data() -> None:
     scaling = debug_info["scaling_visualization"]
     assert scaling["z_pos"].shape == scaling["scale"].shape
     assert scaling["z_pos"].size > 3
+
+
+def _nozzle_inputs() -> dict:
+    n_points = 24
+    robot_positions = np.column_stack(
+        [
+            np.linspace(-40.0, 40.0, n_points),
+            np.linspace(-20.0, 20.0, n_points),
+            np.linspace(0.0, 80.0, n_points),
+        ]
+    )
+    image_center_points = np.column_stack(
+        [
+            1200.0 + 0.2 * robot_positions[:, 0],
+            1000.0 + 0.3 * robot_positions[:, 1],
+        ]
+    )
+    return {
+        "sphere_home_position": np.array([10.0, 20.0, 30.0]),
+        "robot_positions": robot_positions,
+        "image_center_points": image_center_points,
+        "intrinsic_matrix": np.array(
+            [
+                [2000.0, 0.0, 1224.0],
+                [0.0, 2000.0, 1024.0],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        "extrinsic_matrix": np.eye(4),
+        "distortion": np.zeros(5),
+        "sigmas": np.ones(n_points),
+        "radii": np.full(n_points, 100.0),
+        "all_directions": np.ones(n_points),
+    }
+
+
+def test_nozzle_end_home_position_rejects_mixed_directions() -> None:
+    inputs = _nozzle_inputs()
+    inputs["all_directions"] = np.array([1.0, -1.0] + [1.0] * 22)
+
+    with pytest.raises(ValueError, match="consistent"):
+        get_nozzle_end_home_position(**inputs)
+
+
+def test_nozzle_end_home_position_rejects_empty_directions() -> None:
+    inputs = _nozzle_inputs()
+    inputs["all_directions"] = np.array([], dtype=np.float64)
+
+    with pytest.raises(ValueError, match="at least one"):
+        get_nozzle_end_home_position(**inputs)
+
+
+def test_nozzle_end_home_position_rejects_nonpositive_sphere_radius() -> None:
+    inputs = _nozzle_inputs()
+    inputs["radii"] = np.zeros_like(inputs["radii"])
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        get_nozzle_end_home_position(**inputs)

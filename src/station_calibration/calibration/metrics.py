@@ -29,17 +29,21 @@ def _radial_distortion_coefficients(distortion: np.ndarray) -> np.ndarray:
 
 def check_distortion_monotonicity(distortion: np.ndarray,
                                   intrinsic_matrix: np.ndarray,
-                                  image_size_xy: tuple = (2500, 2000),
+                                  image_size_xy: tuple[int, int] = (2500, 2000),
                                   ) -> bool:
-    """Check that the radial distortion scale is positive and monotonic.
+    """Check that the radial distortion maps radius monotonically.
 
     OpenCV stores the radial coefficients as ``k1, k2, k3, k4, k5, k6`` at
-    indices 0, 1, 4, 5, 6, and 7. The radial scale is
+    indices 0, 1, 4, 5, 6, and 7. For the rational model used by OpenCV's
+    8/12/14-coefficient variants, the radial scale is
 
-    ``1 + k1*r**2 + k2*r**4 + ... + k6*r**12``.
+    ``(1 + k1*r**2 + k2*r**4 + k3*r**6) /
+    (1 + k4*r**2 + k5*r**4 + k6*r**6)``.
 
-    It must remain positive and have a consistent derivative sign over the
-    image domain. Tangential and tilt terms do not enter the radial scale.
+    The distorted radius is ``r * scale``. It must stay positive and increase
+    monotonically over the image domain; checking the scale alone is not enough
+    because a positive but decreasing scale can still fold the radial mapping.
+    Tangential and tilt terms do not enter this radial check.
 
     :param distortion: OpenCV distortion vector
     :param intrinsic_matrix: intrinsic matrix
@@ -56,12 +60,24 @@ def check_distortion_monotonicity(distortion: np.ndarray,
     if intrinsic_matrix.shape != (3, 3) or not np.all(np.isfinite(intrinsic_matrix)):
         return False
 
-    focal_length = abs(float(intrinsic_matrix[0, 0]))
-    width, height = image_size_xy
-    if focal_length == 0.0 or width <= 0 or height <= 0:
+    focal_x = abs(float(intrinsic_matrix[0, 0]))
+    focal_y = abs(float(intrinsic_matrix[1, 1]))
+    center_x = float(intrinsic_matrix[0, 2])
+    center_y = float(intrinsic_matrix[1, 2])
+    width, height = (float(value) for value in image_size_xy)
+    if (
+        focal_x == 0.0
+        or focal_y == 0.0
+        or width <= 0.0
+        or height <= 0.0
+    ):
         return False
 
-    r_max = float(np.hypot(width / 2.0, height / 2.0) / focal_length)
+    corner_radii = [
+        float(np.hypot((x - center_x) / focal_x, (y - center_y) / focal_y))
+        for x, y in ((0.0, 0.0), (width, 0.0), (0.0, height), (width, height))
+    ]
+    r_max = max(corner_radii)
     if not np.isfinite(r_max) or r_max <= 0.0:
         return False
 
@@ -69,31 +85,27 @@ def check_distortion_monotonicity(distortion: np.ndarray,
     r_val = np.linspace(0.0, r_max, 1001)
     r2 = r_val ** 2
 
-    scale = (
-        1.0
-        + k1 * r2
-        + k2 * r2 ** 2
-        + k3 * r2 ** 3
-        + k4 * r2 ** 4
-        + k5 * r2 ** 5
-        + k6 * r2 ** 6
-    )
-    if not np.all(np.isfinite(scale)) or np.any(scale <= 0.0):
+    numerator = 1.0 + k1 * r2 + k2 * r2 ** 2 + k3 * r2 ** 3
+    denominator = 1.0 + k4 * r2 + k5 * r2 ** 2 + k6 * r2 ** 3
+    if (
+        not np.all(np.isfinite(numerator))
+        or not np.all(np.isfinite(denominator))
+        or np.any(np.abs(denominator) < 1e-12)
+    ):
         return False
 
-    derivative = (
-        2.0 * k1 * r_val
-        + 4.0 * k2 * r_val ** 3
-        + 6.0 * k3 * r_val ** 5
-        + 8.0 * k4 * r_val ** 7
-        + 10.0 * k5 * r_val ** 9
-        + 12.0 * k6 * r_val ** 11
-    )
-    tolerance = max(1e-12, 1e-10 * float(np.max(np.abs(derivative))))
-    return bool(
-        np.all(derivative >= -tolerance)
-        or np.all(derivative <= tolerance)
-    )
+    scale = numerator / denominator
+    distorted_radius = r_val * scale
+    if (
+        not np.all(np.isfinite(scale))
+        or not np.all(np.isfinite(distorted_radius))
+        or np.any(scale <= 0.0)
+    ):
+        return False
+
+    delta = np.diff(distorted_radius)
+    tolerance = max(1e-12, 1e-10 * float(np.max(np.abs(distorted_radius))))
+    return bool(np.all(delta > -tolerance))
 
 
 def calculate_calibration_errors(result: OptimizeResult,
@@ -102,7 +114,6 @@ def calculate_calibration_errors(result: OptimizeResult,
     errors = np.asarray(calculate_errors(result), dtype=np.float64).reshape(-1)
 
     intrinsic_std = np.zeros((3, 3), dtype=np.float64)
-    intrinsic_std[2, 2] = 1.0
     intrinsic_std[0, 0] = errors[0]
     intrinsic_std[1, 1] = errors[1]
 

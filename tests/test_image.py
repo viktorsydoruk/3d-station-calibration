@@ -22,6 +22,7 @@ from station_calibration.vision import (
     load_image,
     split_image,
 )
+from station_calibration.vision.debug import debug_images_storing
 from station_calibration.vision.detection import get_bg_value, get_forground_mask
 
 SYNTHETIC_CENTER = (600.0, 650.0)
@@ -345,6 +346,48 @@ def test_batch_analysis_records_rejected_image(tmp_path: Path) -> None:
     assert np.isnan(radii[1])
     assert np.isnan(sigmas[1])
     assert image_sizes.tolist() == [[900.0, 1200.0], [300.0, 400.0]]
+
+
+def test_batch_analysis_reports_missing_image_without_aborting(
+    tmp_path: Path,
+) -> None:
+    _, color_image = _synthetic_image()
+    good_image_path = tmp_path / "synthetic_sphere.png"
+    missing_image_path = tmp_path / "missing.png"
+    assert cv2.imwrite(str(good_image_path), color_image)
+
+    centers, sigmas, radii, image_sizes, directions = (
+        get_sphere_centers_and_blur_sigmas(
+            [good_image_path, missing_image_path],
+            debug_folder=tmp_path,
+            **_analysis_kwargs(),
+        )
+    )
+
+    assert directions.tolist() == [1, 0]
+    np.testing.assert_allclose(centers[0], SYNTHETIC_CENTER, atol=2.0)
+    assert np.isnan(centers[1]).all()
+    assert np.isnan(radii[1])
+    assert np.isnan(sigmas[1])
+    assert image_sizes.tolist() == [[900.0, 1200.0], [0.0, 0.0]]
+
+
+def test_debug_rendering_does_not_mutate_read_only_frames(tmp_path: Path) -> None:
+    image = np.zeros((20, 30, 3), dtype=np.uint8)
+    image.setflags(write=False)
+    before = image.copy()
+    target = tmp_path / "debug.png"
+
+    debug_images_storing(
+        target,
+        image,
+        x_c_pos=15.0,
+        y_c_pos=10.0,
+        radius=5.0,
+    )
+
+    assert target.is_file()
+    np.testing.assert_array_equal(image, before)
 
 
 def test_split_image_converts_bgra_and_rejects_invalid_input() -> None:

@@ -40,10 +40,19 @@ def _result(fun: list[float], jac: np.ndarray) -> OptimizeResult:
 
 
 def _intrinsic(focal_length: float = 1000.0) -> np.ndarray:
+    return _intrinsic_at(focal_length, focal_length, 500.0, 500.0)
+
+
+def _intrinsic_at(
+    focal_x: float,
+    focal_y: float,
+    center_x: float,
+    center_y: float,
+) -> np.ndarray:
     return np.array(
         [
-            [focal_length, 0.0, 500.0],
-            [0.0, focal_length, 500.0],
+            [focal_x, 0.0, center_x],
+            [0.0, focal_y, center_y],
             [0.0, 0.0, 1.0],
         ],
         dtype=np.float64,
@@ -110,7 +119,7 @@ def test_calculate_calibration_errors_maps_free_principal_point(
 
     np.testing.assert_allclose(
         intrinsic_std,
-        [[0.0, 0.0, 2.0], [0.0, 1.0, 3.0], [0.0, 0.0, 1.0]],
+        [[0.0, 0.0, 2.0], [0.0, 1.0, 3.0], [0.0, 0.0, 0.0]],
     )
     np.testing.assert_allclose(distortion_std[:5], [4.0, 5.0, 6.0, 7.0, 8.0])
     np.testing.assert_allclose(distortion_std[5:], 0.0)
@@ -134,7 +143,7 @@ def test_calculate_calibration_errors_maps_fixed_principal_point(
 
     np.testing.assert_allclose(
         intrinsic_std,
-        [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
     )
     np.testing.assert_allclose(distortion_std[:4], [2.0, 3.0, 4.0, 5.0])
     np.testing.assert_allclose(distortion_std[4:], 0.0)
@@ -197,6 +206,51 @@ def test_distortion_monotonicity_rejects_negative_radial_scale() -> None:
 
     assert not check_distortion_monotonicity(
         distortion, _intrinsic(), (1000, 1000)
+    )
+
+
+def test_distortion_monotonicity_rejects_folding_numerator_mapping() -> None:
+    distortion = np.zeros(14)
+    distortion[0] = -1.2
+    intrinsic = _intrinsic_at(2000.0, 2000.0, 1250.0, 1000.0)
+
+    # The scale stays positive, but r * scale is already decreasing at the
+    # image corner.
+    assert not check_distortion_monotonicity(
+        distortion, intrinsic, (2500, 2000)
+    )
+
+
+def test_distortion_monotonicity_rejects_folding_denominator_mapping() -> None:
+    distortion = np.zeros(14)
+    distortion[5] = 2.0
+    intrinsic = _intrinsic_at(2000.0, 2000.0, 1250.0, 1000.0)
+
+    # k4 belongs to the rational denominator, not to the numerator polynomial.
+    assert not check_distortion_monotonicity(
+        distortion, intrinsic, (2500, 2000)
+    )
+
+
+def test_distortion_monotonicity_uses_all_image_corners() -> None:
+    distortion = np.zeros(14)
+    distortion[0] = -0.5
+    intrinsic = _intrinsic_at(1000.0, 1000.0, 0.0, 0.0)
+
+    # The old centered estimate used hypot(width/2, height/2) / fx, which
+    # missed the fold near the far corner for this off-centre principal point.
+    assert not check_distortion_monotonicity(
+        distortion, intrinsic, (1000, 1000)
+    )
+
+
+def test_distortion_monotonicity_accepts_mild_radial_models() -> None:
+    distortion = np.zeros(14)
+    distortion[0] = -0.1
+    intrinsic = _intrinsic_at(2000.0, 2000.0, 1250.0, 1000.0)
+
+    assert check_distortion_monotonicity(
+        distortion, intrinsic, (2500, 2000)
     )
 
 

@@ -112,8 +112,8 @@ intrinsic_std, distortion_std, rot_std, trans_std = calculate_calibration_errors
 )
 ```
 
-`intrinsic_std` is a 3×3 matrix with structurally fixed entries at zero and
-`[2, 2] = 1`.
+`intrinsic_std` is a 3×3 matrix; structurally fixed entries, including
+`[2, 2]`, are zero.
 
 ## Settings and overrides
 

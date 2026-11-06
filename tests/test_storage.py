@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import station_calibration.storage.points as points_module
 from station_calibration.storage import (
     RESULT_SCHEMA_VERSION,
     calibration_document,
@@ -64,6 +65,40 @@ def test_point_cache_round_trip_preserves_float64(tmp_path: Path) -> None:
     np.testing.assert_array_equal(loaded[3], sigmas)
     np.testing.assert_array_equal(loaded[4], image_sizes)
     np.testing.assert_array_equal(loaded[5], directions)
+
+
+def test_point_cache_failure_leaves_existing_file_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    point_file = tmp_path / "all_points.dat"
+    point_file.write_text("original\n", encoding="utf-8")
+
+    class FailingWriter:
+        def writerow(self, row):
+            return None
+
+        def writerows(self, rows):
+            raise RuntimeError("serialization failed")
+
+    monkeypatch.setattr(
+        points_module.csv,
+        "writer",
+        lambda *args, **kwargs: FailingWriter(),
+    )
+
+    with pytest.raises(RuntimeError, match="serialization failed"):
+        store_all_points(
+            point_file,
+            np.zeros((1, 3)),
+            np.zeros((1, 2)),
+            np.zeros(1),
+            np.zeros(1),
+            np.zeros((1, 2)),
+            np.zeros(1, dtype=np.int8),
+        )
+
+    assert point_file.read_text(encoding="utf-8") == "original\n"
 
 
 def test_load_robot_positions_skips_blank_and_comment_lines(tmp_path: Path) -> None:

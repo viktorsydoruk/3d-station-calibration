@@ -1449,7 +1449,7 @@ with CalibrationIceClient.connect(proxy) as client:
 | `--version` still shows the old version | pip skipped the reinstall or the service was not restarted | Reinstall with `--upgrade`, restart the service, and check again. |
 | `robot positions does not match ... images` | CSV names, patterns, or sorting | Check the CSV fourth column and `image_name_patterns`. |
 | Server starts, client times out | Firewall, bind address, or long fit | Check the endpoint, firewall, and `journalctl`; increase the client timeout if the fit is slow. |
-| `Ice.ConnectionLostException` while sending a full-resolution frame | The raw frame is larger than the server's default 1 MB Ice incoming-message limit | Start the server with `--message-size-max-kb 65536` (the default) or patch older servers to `Ice.initialize(["--Ice.MessageSizeMax=65536"])`, then restart the service. |
+| `Ice.ConnectionLostException` while sending a full-resolution frame | The raw frame is larger than the server's default 1 MB Ice incoming-message limit | Start the server with `--message-size-max-kb 65536` (the default) and use a current client, which sets the same `Ice.MessageSizeMax` by default. For older clients, patch them to `Ice.initialize(["--Ice.MessageSizeMax=65536"])` or pass `message_size_max_kb=65536` to `CalibrationIceClient.connect()`, then reconnect. |
 | `Ice.ObjectNotExistException` | Wrong identity or proxy | Use `CalibrationPhenoseederIcing` and the printed endpoint. |
 | `Proxy does not implement CalibrationPhenoseederIcing` | Contract revision mismatch | Rebuild the client and server from the same `.ice` files and regenerate stubs. |
 | Very slow on the Pi | Refit after every observation | Lower `target_observations` for tests; see the optimization recommendations. |

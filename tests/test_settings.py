@@ -466,12 +466,21 @@ def test_n_distortion_coefs_rejects_unsupported_values(
     [
         ("analysis", "n_iterations", 0, "n_iterations"),
         ("analysis", "max_outliers", -0.1, "allowed_outliers"),
+        ("analysis", "max_outliers", float("nan"), "allowed_outliers"),
         ("analysis", "fit_every_n", -1, "fit_every_n"),
         ("analysis.background", "fixed_bg_threshold", -1, "fixed_bg_threshold"),
-        ("analysis.background", "bg_height_pxs", 0, "bg_height_pxs"),
+        ("analysis.background", "fixed_bg_threshold", float("inf"), "fixed_bg_threshold"),
+        ("analysis.background", "bg_height_pxs", 9, "bg_height_pxs"),
         ("analysis.background", "bg_color_est_perc", 0, "bg_color_est_perc"),
         ("analysis.background", "bg_color_est_perc", 100.1, "bg_color_est_perc"),
+        ("analysis.background", "bg_color_est_perc", float("nan"), "bg_color_est_perc"),
         ("analysis.sphere_projection", "n_move_aver", 0, "n_move_aver"),
+        (
+            "analysis.sphere_projection",
+            "sphere_center_to_nozzle_part",
+            float("nan"),
+            "sphere_center_to_nozzle_part",
+        ),
         (
             "analysis.sphere_projection",
             "sphere_center_to_nozzle_part",
@@ -498,8 +507,15 @@ def test_n_distortion_coefs_rejects_unsupported_values(
         ),
         ("analysis.fit", "focal_length_initial", 0, "focal_length_initial"),
         ("analysis.fit", "focal_length_initial", -1, "focal_length_initial"),
+        ("analysis.fit", "focal_length_initial", float("inf"), "focal_length_initial"),
         ("analysis.fit", "camera_distance_initial", 0, "camera_distance_initial"),
         ("analysis.fit", "camera_distance_initial", -1, "camera_distance_initial"),
+        (
+            "analysis.fit",
+            "camera_distance_initial",
+            float("nan"),
+            "camera_distance_initial",
+        ),
     ],
 )
 def test_invalid_values_raise(

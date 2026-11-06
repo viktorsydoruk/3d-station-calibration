@@ -122,7 +122,6 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
                 raise ValueError("robotCoord must contain only finite values")
 
             image_array = array_from_image_data(image)
-            self._session_has_data = True
             self._session_finished = False
             if self._archive is not None:
                 self._archive.record(image_array, robot_position)
@@ -133,6 +132,9 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
                 source="ice",
             )
             self._remember_result(result)
+            # A frame that was rejected during analysis must not lock the
+            # procedure as if a calibration were in progress.
+            self._session_has_data = service.session.n_observations > 0
 
     def isReady(self, current: Any = None) -> bool:
         """Return whether results are available without forcing a final fit."""

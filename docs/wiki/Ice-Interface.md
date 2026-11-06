@@ -204,9 +204,11 @@ with CalibrationIceClient.connect("CalibrationPhenoseederIcing:tcp -h 127.0.0.1 
 ```
 
 `connect()` creates and owns a communicator; `close()` or the context manager
-destroys it. `add_image()` accepts a NumPy frame or encoded bytes; encoded bytes
-are decoded locally because the wire contract carries raw pixels.
-`add_image_file()` reads and decodes the file before sending.
+destroys it. It sets `--Ice.MessageSizeMax=65536` by default, matching the server,
+so full-resolution raw frames do not hit Ice's 1 MB incoming-message limit. Pass
+`message_size_max_kb=` to override it. `add_image()` accepts a NumPy frame or
+encoded bytes; encoded bytes are decoded locally because the wire contract
+carries raw pixels. `add_image_file()` reads and decodes the file before sending.
 
 ### Client CLI
 

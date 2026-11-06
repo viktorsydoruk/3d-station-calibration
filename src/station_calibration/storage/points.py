@@ -11,7 +11,11 @@ __all__ = [
 from pathlib import Path
 
 import csv
+import io
+
 import numpy as np
+
+from ..atomic import atomic_write_text
 
 
 def store_all_points(file: Path,
@@ -21,13 +25,14 @@ def store_all_points(file: Path,
                      sigmas: np.ndarray,
                      image_sizes: np.ndarray,
                      directions: np.ndarray) -> None:
-    """Store all extracted data"""
+    """Store all extracted data."""
     all_data = np.asarray([*robot_positions.T, *center_points.T, radii, sigmas, *image_sizes.T, directions]).T
-    with file.open(mode="w", newline="") as f:
-        writer = csv.writer(f, delimiter="\t")
-        writer.writerow(["Xr", "Yr", "Zr", "Xc", "Yc", "radius", "sigma border", "image height", "image width",
-                         "nozzle_direction"])
-        writer.writerows(all_data)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter="\t", lineterminator="\n")
+    writer.writerow(["Xr", "Yr", "Zr", "Xc", "Yc", "radius", "sigma border", "image height", "image width",
+                     "nozzle_direction"])
+    writer.writerows(all_data)
+    atomic_write_text(file, buffer.getvalue())
 
 
 def load_all_points(file: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

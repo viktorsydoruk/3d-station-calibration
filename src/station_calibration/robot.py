@@ -61,6 +61,17 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
     debug_info = {}
     sigmas = np.asarray(sigmas, dtype=np.float64) + SIGMA_OFFSET
 
+    directions = np.asarray(all_directions, dtype=np.float64).reshape(-1)
+    if directions.size == 0:
+        raise ValueError("all_directions must contain at least one nozzle direction")
+    if not np.all(np.isfinite(directions)):
+        raise ValueError("all_directions must contain only finite values")
+    unique_directions = np.unique(directions)
+    if unique_directions.size != 1 or unique_directions[0] not in (-1.0, 1.0):
+        raise ValueError(
+            "all_directions must contain a consistent +1 or -1 nozzle direction"
+        )
+
     # converting the robotic arm positions into the camera coordinate system
     robot_camera_coords = np.dot(extrinsic_matrix[None, :3, :3], robot_positions[:, :, None])[0, :, :, 0]
     # taking the distortion into account for the images center points
@@ -109,11 +120,19 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
 
     }
 
-    sign = np.sign(np.mean(all_directions.astype(float)))
+    sign = float(unique_directions[0])
     # getting the nozzle end home position in camera coordinate system
     nozzle_end_home_position = (np.dot(extrinsic_matrix[:3, :3], sphere_home_position[:, None]).T[0]
                                 + [0, sign*sphere_radius, 0])
 
     # converting the nozzle end home position to the robotic arm coordinate system
     nozzle_end_home_position = np.dot(extrinsic_matrix[:3, :3].T, nozzle_end_home_position[:, None]).T[0]
+    if (
+        not np.all(np.isfinite(nozzle_end_home_position))
+        or not np.isfinite(sphere_radius)
+        or sphere_radius <= 0.0
+    ):
+        raise ValueError(
+            "estimated nozzle position and sphere radius must be finite and positive"
+        )
     return nozzle_end_home_position, sphere_radius*2, debug_info

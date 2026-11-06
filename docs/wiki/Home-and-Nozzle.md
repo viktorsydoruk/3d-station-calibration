@@ -124,11 +124,14 @@ The nozzle is modelled as an offset from the sphere centre along the camera
 `±y` axis:
 
 ```python
-sign = sign(mean(directions))
-offset_cam = [0, sign * sphere_radius, 0]
+direction = unique(directions)  # exactly one of +1 or -1
+offset_cam = [0, direction * sphere_radius, 0]
 nozzle_cam = R @ sphere_home + offset_cam
 nozzle_robot = Rᵀ @ nozzle_cam
 ```
+
+Mixed or undefined directions are rejected instead of being averaged into a
+zero offset.
 
 Because `R` and `Rᵀ` cancel, this is equivalent to
 
@@ -142,9 +145,10 @@ The returned diameter is `2 * sphere_radius`.
 ## Assumptions
 
 - The sphere is centred on the nozzle axis.
-- The nozzle offset is along the camera's `±y` axis, selected by the mean image
+- The nozzle offset is along the camera's `±y` axis, selected by the common image
   direction (`+1` top, `-1` bottom).
-- All images use a consistent nozzle orientation.
+- All images use a consistent nozzle orientation; mixed directions raise an
+  error.
 - The quadratic mm/px fit is valid over the working depth range.
 - Enough points exist at varied depths for both the quartic sigma fit and the
   quadratic scale fit.

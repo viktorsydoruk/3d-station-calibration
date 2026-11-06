@@ -10,7 +10,13 @@ Importing this package itself does not require Ice. The generated stubs and the
 __all__ = [
     "CalibrationIceClient",
     "CalibrationIceServant",
+    "DEFAULT_MESSAGE_SIZE_MAX_KB",
 ]
+
+# Camera frames are sent as raw pixels. A 2048x2448 8-bit frame is about 5 MB,
+# which exceeds Ice's 1 MB default incoming-message limit. Keep this comfortably
+# above the largest expected frame and use it on both client and server.
+DEFAULT_MESSAGE_SIZE_MAX_KB = 65536
 
 
 def __getattr__(name: str):

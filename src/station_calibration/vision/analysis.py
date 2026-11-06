@@ -195,14 +195,22 @@ def filtering_data_by_radius(image_filenames: list[Path],
     bad_mask = get_radius_outlier_mask(radii, sigmas)
     if print_debug.debug and debug_folder is not None:
         for each_arg_bad_est in np.arange(len(radii))[bad_mask]:
-            _, image_color = load_image(image_filenames[each_arg_bad_est])
-            debug_images_storing(
-                debug_folder / f"result{each_arg_bad_est:>04d}.png",
-                image_color,
-                x_c_pos=sphere_centers[each_arg_bad_est, 0],
-                y_c_pos=sphere_centers[each_arg_bad_est, 1],
-                radius=radii[each_arg_bad_est]
-            )
+            try:
+                _, image_color = load_image(image_filenames[each_arg_bad_est])
+                debug_images_storing(
+                    debug_folder / f"result{each_arg_bad_est:>04d}.png",
+                    image_color,
+                    x_c_pos=sphere_centers[each_arg_bad_est, 0],
+                    y_c_pos=sphere_centers[each_arg_bad_est, 1],
+                    radius=radii[each_arg_bad_est]
+                )
+            except MemoryError:
+                raise
+            except Exception as exc:
+                print_debug(
+                    f"debug image failed for {image_filenames[each_arg_bad_est]}: "
+                    f"{type(exc).__name__}: {exc}"
+                )
     sigmas[bad_mask] = np.nan
     radii[bad_mask] = np.nan
 
@@ -217,18 +225,22 @@ def analyze_images(image_filenames: list[Path],
                    blur_est_border_thickness: int = 2,
                    print_debug: DebugInfo = DebugInfo(),
                    store_debug_images: bool = False,
-                   debug_folder: Path = Path(''),
+                   debug_folder: Path | None = None,
                    ) -> list[ImageAnalysisResult]:
     """Analyze a list of image files one by one and return each analysis result."""
     analyses = []
     for i, each_image in enumerate(image_filenames):
         # file to store debug image
-        debug_imagefile = debug_folder / f"result{i:>04d}.png"
+        debug_imagefile = (
+            None if debug_folder is None else debug_folder / f"result{i:>04d}.png"
+        )
+        image_shape = (0, 0)
 
-        # loading the image
-        image_gray, image_color = load_image(each_image)
-        analyses.append(
-            analyze_image(
+        try:
+            # loading the image
+            image_gray, image_color = load_image(each_image)
+            image_shape = (int(image_gray.shape[0]), int(image_gray.shape[1]))
+            analysis = analyze_image(
                 image_gray,
                 image_color,
                 bg_height_px=bg_height_px,
@@ -243,7 +255,23 @@ def analyze_images(image_filenames: list[Path],
                 debug_imagefile=debug_imagefile,
                 store_debug_images=store_debug_images,
             )
-        )
+        except MemoryError:
+            raise
+        except Exception as exc:
+            # A corrupt or unsupported frame must not abort the entire folder.
+            # Keep a rejection in its position so filenames and observations
+            # stay aligned.
+            print_debug(
+                f"image analysis failed for {each_image}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            analysis = ImageAnalysisResult(
+                observation=None,
+                direction=0,
+                image_shape=image_shape,
+                reason=f"image analysis failed: {type(exc).__name__}: {exc}",
+            )
+        analyses.append(analysis)
 
     return analyses
 
@@ -258,7 +286,7 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
                                        blur_est_border_thickness: int = 2,
                                        print_debug: DebugInfo = DebugInfo(),
                                        store_debug_images: bool = False,
-                                       debug_folder: Path = Path(''),
+                                       debug_folder: Path | None = None,
                                        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
         Getting found sphere parameters and bluring sigma at the border of the sphere

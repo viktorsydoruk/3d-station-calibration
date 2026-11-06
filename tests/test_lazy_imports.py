@@ -12,6 +12,9 @@ from pathlib import Path
 
 import pytest
 
+import station_calibration
+import station_calibration.plots
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -46,3 +49,12 @@ def test_import_does_not_load_matplotlib(module: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def test_lazy_plotting_attributes_are_exported() -> None:
+    assert (
+        station_calibration.visualize_radii
+        is station_calibration.plots.visualize_radii
+    )
+    with pytest.raises(AttributeError, match="has no attribute"):
+        station_calibration.not_a_plot

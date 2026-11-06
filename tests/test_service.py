@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -202,3 +203,22 @@ def test_service_delegates_readiness_and_stop_request(tmp_path: Path) -> None:
     assert service.is_ready is False  # minimum observations are still required
     assert service.stop_detail is not None
     assert "operator finished" in service.stop_detail
+
+
+def test_service_delegates_observation_and_result_accessors(
+    tmp_path: Path,
+) -> None:
+    service = CalibrationService(_settings(tmp_path), fit_every_n=None)
+    service.session = SimpleNamespace(
+        add_observation=lambda observation, fit=None: "observation-result",
+        stop_reason="ready",
+        last_result="last-result",
+        finish=lambda: "finished-result",
+        finish_if_ready=lambda: "ready-result",
+    )
+
+    assert service.add_observation(object()) == "observation-result"
+    assert service.stop_reason == "ready"
+    assert service.last_result == "last-result"
+    assert service.finish() == "finished-result"
+    assert service.finish_if_ready() == "ready-result"

@@ -19,6 +19,7 @@ from station_calibration.vision import (
     analyze_image_bytes,
     decode_image,
     get_sphere_centers_and_blur_sigmas,
+    load_image,
     split_image,
 )
 from station_calibration.vision.detection import get_bg_value, get_forground_mask
@@ -344,3 +345,28 @@ def test_batch_analysis_records_rejected_image(tmp_path: Path) -> None:
     assert np.isnan(radii[1])
     assert np.isnan(sigmas[1])
     assert image_sizes.tolist() == [[900.0, 1200.0], [300.0, 400.0]]
+
+
+def test_split_image_converts_bgra_and_rejects_invalid_input() -> None:
+    image = np.zeros((4, 5, 4), dtype=np.uint8)
+
+    image_gray, image_color = split_image(image)
+
+    assert image_gray.shape == (4, 5)
+    assert image_color.shape == (4, 5, 3)
+    with pytest.raises(ValueError, match="could not be loaded"):
+        split_image(None)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="Unsupported image shape"):
+        split_image(np.zeros((4,), dtype=np.uint8))
+
+
+def test_load_image_reports_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Could not read image file"):
+        load_image(tmp_path / "missing.png")
+
+
+def test_decode_image_rejects_empty_and_invalid_bytes() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        decode_image(b"")
+    with pytest.raises(ValueError, match="Could not decode image bytes"):
+        decode_image(b"not an image")

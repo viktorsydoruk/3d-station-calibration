@@ -46,8 +46,11 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   the Ice adapter/client test suite.
 - Ruff linting, a formatter configuration, and pre-commit hooks for Python
   checks and common file hygiene.
-- Branch coverage reporting with a baseline gate, published as `coverage.xml`
-  by GitLab CI.
+- Branch coverage reporting with a `90%` gate, published as `coverage.xml` by
+  GitLab CI.
+- Coverage-driven tests for camera-model packing, fit validation, reporting
+  plots, robot geometry, image/storage edge cases, CLI parsing, and the Ice wire
+  format.
 - A PEP 561 `py.typed` marker so downstream type checkers use the package's
   inline annotations.
 - A GitLab CI lint job and updated contributor documentation for the new

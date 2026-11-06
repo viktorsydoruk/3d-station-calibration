@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
 # SPDX-License-Identifier: Apache-2.0
 
-# Generated Ice stubs are intentionally excluded from all hooks.
-exclude: ^src/station_calibration/ice/generated/
+# Generated Ice stubs and the shared Slice contracts are intentionally excluded
+# from all hooks; the contracts are owned by the phenotyping stack.
+exclude: ^(src/station_calibration/ice/generated/|ice/)
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

@@ -29,6 +29,7 @@ from station_calibration.ice.archive import (  # noqa: E402
     SessionArchive,
 )
 from station_calibration.ice import server as ice_server  # noqa: E402
+import station_calibration.ice.client as client_module  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
 from station_calibration.ice.procedures import (  # noqa: E402
     ProcedureRegistry,
@@ -38,6 +39,7 @@ from station_calibration.ice.procedures import (  # noqa: E402
 )
 from station_calibration.ice.images import (  # noqa: E402
     array_from_image_data,
+    decode_image,
     image_data_from_array,
 )
 from Phenoseeder import Point  # noqa: E402
@@ -1044,6 +1046,195 @@ def test_image_wire_round_trip(dtype) -> None:
     np.testing.assert_array_equal(decoded, frame)
 
 
+def test_ice_package_exposes_lazy_client_and_servant() -> None:
+    import station_calibration.ice as ice_package
+
+    assert ice_package.CalibrationIceServant is CalibrationIceServant
+    assert ice_package.CalibrationIceClient is CalibrationIceClient
+    with pytest.raises(AttributeError, match="has no attribute"):
+        ice_package.MissingTransport
+
+
+def test_decode_image_rejects_empty_and_invalid_bytes() -> None:
+    with pytest.raises(ValueError, match="must not be empty"):
+        decode_image(b"")
+    with pytest.raises(ValueError, match="could not decode"):
+        decode_image(b"not an image")
+
+
+def test_image_wire_round_trip_color_and_float64() -> None:
+    color = np.arange(2 * 3 * 4, dtype=np.uint8).reshape(2, 3, 4)
+    decoded_color = array_from_image_data(image_data_from_array(color))
+    np.testing.assert_array_equal(decoded_color, color)
+
+    floats = np.array([[1.5, 2.5], [3.5, 4.5]], dtype=np.float64)
+    decoded_floats = array_from_image_data(image_data_from_array(floats))
+    assert decoded_floats.dtype == np.float32
+    np.testing.assert_allclose(decoded_floats, floats)
+
+
+def test_image_wire_round_trip_uint16_and_unknown_fallback() -> None:
+    frame = np.array([[1000, 2000], [3000, 4000]], dtype=np.uint16)
+    decoded = array_from_image_data(image_data_from_array(frame))
+    assert decoded.dtype == np.int16
+    np.testing.assert_array_equal(decoded, frame.astype(np.int16))
+
+    fallback = imageData(
+        height=2,
+        width=2,
+        spp=1,
+        imgDataType=IMAGEDATATYPE.IDTUNKNOWN,
+        bytePixels=frame.astype(np.uint8).tobytes(),
+    )
+    np.testing.assert_array_equal(
+        array_from_image_data(fallback),
+        frame.astype(np.uint8),
+    )
+
+
+def test_image_wire_rejects_overflow_unsupported_shape_and_dtype() -> None:
+    with pytest.raises(ValueError, match="exceed the signed 16-bit"):
+        image_data_from_array(np.array([[40000]], dtype=np.uint16))
+    with pytest.raises(ValueError, match="unsupported image shape"):
+        image_data_from_array(np.zeros((2, 2, 2), dtype=np.uint8))
+    with pytest.raises(TypeError, match="unsupported image dtype"):
+        image_data_from_array(np.zeros((2, 2), dtype=np.float16))
+
+
+def test_array_from_image_data_rejects_empty_or_mismatched_payload() -> None:
+    with pytest.raises(ValueError, match="must be positive"):
+        array_from_image_data(imageData(height=0, width=2, spp=1))
+    with pytest.raises(ValueError, match="does not contain any pixel data"):
+        array_from_image_data(imageData(height=2, width=2, spp=1))
+    with pytest.raises(ValueError, match="has 1 values"):
+        array_from_image_data(
+            imageData(
+                height=2,
+                width=2,
+                spp=1,
+                imgDataType=IMAGEDATATYPE.IDTBYTE,
+                bytePixels=b"\x00",
+            )
+        )
+
+
+def test_ice_client_cli_prints_ready_session(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def init(self, procedure_id, configurationfilepath=None):
+            return "/remote/session"
+
+        def add_image_file(self, image, robot_coord, *, imgformat=None):
+            return None
+
+        def is_ready(self):
+            return True
+
+        def get_intrinsic(self):
+            return (
+                SimpleNamespace(
+                    modelParams=[100.0, 0.0, 10.0, 0.0, 200.0, 20.0, 0.0, 0.0, 1.0]
+                ),
+                [0.0] * 9,
+            )
+
+        def get_extrinsic(self):
+            return (
+                SimpleNamespace(
+                    modelParams=[1.0, 2.0, 3.0, *np.eye(3).reshape(-1).tolist()]
+                ),
+                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+            )
+
+        def get_distortion(self):
+            return [0.0, 1.0, 2.0, 3.0], [0.0, 0.1, 0.2, 0.3]
+
+        def get_optimal_nozzle_position(self):
+            return Point(x=7.0, y=8.0, z=9.0)
+
+    class FakeClientClass:
+        @classmethod
+        def connect(cls, proxy):
+            return FakeClient()
+
+    monkeypatch.setattr(client_module, "CalibrationIceClient", FakeClientClass)
+
+    client_module.run_cli(
+        [
+            "--procedure-id",
+            "1",
+            str(tmp_path / "frame.png"),
+            "--x",
+            "1",
+            "--y",
+            "2",
+            "--z",
+            "3",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert "session: /remote/session" in output
+    assert "ready: True" in output
+    assert "nozzle: x=7.0 y=8.0 z=9.0" in output
+
+
+def test_ice_client_cli_returns_when_not_ready(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return None
+
+        def init(self, procedure_id, configurationfilepath=None):
+            return "/remote/session"
+
+        def add_image_file(self, image, robot_coord, *, imgformat=None):
+            return None
+
+        def is_ready(self):
+            return False
+
+    class FakeClientClass:
+        @classmethod
+        def connect(cls, proxy):
+            return FakeClient()
+
+    monkeypatch.setattr(client_module, "CalibrationIceClient", FakeClientClass)
+
+    client_module.run_cli(
+        [
+            "--procedure-id",
+            "1",
+            str(tmp_path / "frame.png"),
+            "--x",
+            "1",
+            "--y",
+            "2",
+            "--z",
+            "3",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert "ready: False" in output
+    assert "intrinsic:" not in output
+
+
 def test_ice_round_trip(tmp_path, monkeypatch) -> None:
     servant, service = _make_servant(tmp_path, monkeypatch)
 
@@ -1084,6 +1275,22 @@ def test_ice_round_trip(tmp_path, monkeypatch) -> None:
             assert encoded_ok
             client.add_image(encoded.tobytes(), (1.0, 2.0, 3.0))
             np.testing.assert_array_equal(service.images[-1][0], frame)
+
+            image_path = tmp_path / "round_trip.png"
+            assert cv2.imwrite(str(image_path), frame)
+            client.add_image_file(image_path, (1.0, 2.0, 3.0))
+            np.testing.assert_array_equal(service.images[-1][0], frame)
+
+            extrinsic, extrinsic_error = client.get_extrinsic()
+            assert extrinsic.modelId is EXTRINSICMODEL.EXTRINSICROTMATRIX
+            assert extrinsic.modelParams == pytest.approx(
+                [1.0, 2.0, 3.0, *np.eye(3).reshape(-1).tolist()]
+            )
+            assert extrinsic_error == pytest.approx([0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+
+            distortion, distortion_error = client.get_distortion()
+            assert distortion == pytest.approx([0.0, 1.0, 2.0, 3.0])
+            assert distortion_error == pytest.approx([0.0, 0.1, 0.2, 0.3])
 
             nozzle = client.get_optimal_nozzle_position()
             assert (nozzle.x, nozzle.y, nozzle.z) == pytest.approx((7.0, 8.0, 9.0))

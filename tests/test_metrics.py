@@ -11,14 +11,19 @@ import pytest
 from scipy.optimize import OptimizeResult
 
 from station_calibration import (
+    back_projected_point,
     calculate_RMSE,
     calculate_calibration_errors,
     calculate_errors,
     check_distortion_monotonicity,
+    print_calibration,
 )
+import station_calibration.calibration.initialization as initialization_module
 import station_calibration.calibration.metrics as metrics_module
 from station_calibration.calibration.initialization import (
+    _orthonormalize_rotation,
     estimate_r_initial,
+    extract_z_lines,
     make_initial_parameters,
 )
 
@@ -254,3 +259,166 @@ def test_make_initial_parameters_orthonormalizes_rotation() -> None:
     rotation, _ = cv2.Rodrigues(params[2:5])
 
     _assert_proper_rotation(rotation)
+
+
+def test_make_initial_parameters_keeps_free_principal_point() -> None:
+    params = make_initial_parameters(
+        focal_length=1000.0,
+        camera_distance=80.0,
+        image_size=(1000, 800),
+        fix_cx_cy=False,
+        n_distortion_coefs=5,
+        r_initial=np.eye(3),
+    )
+
+    assert len(params) == 15
+    np.testing.assert_allclose(params[:4], [1000.0, 1000.0, 500.0, 400.0])
+    np.testing.assert_allclose(params[4:9], 0.0)
+
+
+def test_distortion_monotonicity_accepts_empty_and_short_vectors() -> None:
+    assert check_distortion_monotonicity(
+        np.array([]), _intrinsic(), (1000, 1000)
+    )
+    assert check_distortion_monotonicity(
+        np.array([0.0]), _intrinsic(), (1000, 1000)
+    )
+
+
+def test_distortion_monotonicity_rejects_bad_intrinsic_and_image_size() -> None:
+    assert not check_distortion_monotonicity(
+        np.zeros(14), np.eye(2), (1000, 1000)
+    )
+    assert not check_distortion_monotonicity(
+        np.zeros(14), _intrinsic(), (float("inf"), 1000)
+    )
+
+
+def test_calculate_RMSE_handles_empty_and_mismatched_residuals() -> None:
+    empty = OptimizeResult(
+        fun=np.array([]),
+        jac=np.empty((0, 0), dtype=np.float64),
+    )
+    assert np.isnan(calculate_RMSE(empty, standardized=False))
+
+    mismatched = OptimizeResult(
+        fun=np.array([1.0, 2.0]),
+        jac=np.ones((3, 1), dtype=np.float64),
+    )
+    with pytest.raises(ValueError, match="one row per residual"):
+        calculate_RMSE(mismatched)
+
+
+def test_print_calibration_reports_parameter_uncertainties(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    params = make_initial_parameters(
+        focal_length=1000.0,
+        camera_distance=80.0,
+        image_size=(1000, 800),
+        fix_cx_cy=True,
+        n_distortion_coefs=0,
+        r_initial=np.eye(3),
+    )
+    result = OptimizeResult(
+        x=params,
+        fun=np.zeros(4),
+        jac=np.ones((4, len(params))),
+        success=True,
+        message="ok",
+        cost=0.0,
+    )
+    monkeypatch.setattr(
+        metrics_module,
+        "calculate_errors",
+        lambda result: np.zeros(len(result.x)),
+    )
+
+    print_calibration(
+        result,
+        image_size_xy=(1000, 800),
+        fix_cx_cy=True,
+        n_distortion_coefs=0,
+    )
+
+    output = capsys.readouterr().out
+    assert "CALIBRATION RESULT" in output
+    assert "fx" in output
+    assert "t3" in output
+
+
+def test_back_projected_point_projects_to_principal_point() -> None:
+    intrinsic = _intrinsic()
+    extrinsic = np.eye(4)
+    extrinsic[2, 3] = 80.0
+
+    point = back_projected_point(
+        np.array([[0.0, 0.0, 0.0]]),
+        intrinsic,
+        extrinsic,
+        np.zeros(5),
+    )
+
+    np.testing.assert_allclose(point, [[500.0, 500.0]], atol=1e-9)
+
+
+def test_orthonormalize_rotation_handles_invalid_inputs_and_reflections() -> None:
+    np.testing.assert_allclose(
+        _orthonormalize_rotation(np.zeros((2, 2))),
+        np.eye(3),
+    )
+    np.testing.assert_allclose(
+        _orthonormalize_rotation(
+            np.array(
+                [
+                    [np.nan, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ]
+            )
+        ),
+        np.eye(3),
+    )
+
+    rotation = _orthonormalize_rotation(np.diag([-1.0, 1.0, 1.0]))
+
+    _assert_proper_rotation(rotation)
+
+
+def test_orthonormalize_rotation_falls_back_when_svd_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_svd(matrix):
+        raise np.linalg.LinAlgError("singular")
+
+    monkeypatch.setattr(initialization_module.np.linalg, "svd", fail_svd)
+
+    np.testing.assert_allclose(
+        _orthonormalize_rotation(np.eye(3)),
+        np.eye(3),
+    )
+
+
+def test_extract_z_lines_intersects_image_lines() -> None:
+    z = np.array([0.0, 10.0, 20.0, 30.0])
+    robot_positions = np.vstack(
+        [
+            np.column_stack([np.zeros_like(z), np.zeros_like(z), z]),
+            np.column_stack([np.full_like(z, 10.0), np.full_like(z, 10.0), z]),
+        ]
+    )
+    image_center_points = np.vstack(
+        [
+            np.column_stack([100.0 + z, 200.0 + 2.0 * z]),
+            np.column_stack([1000.0 - z, 200.0 + 3.0 * z]),
+        ]
+    )
+
+    intersection = extract_z_lines(
+        robot_positions,
+        image_center_points,
+        np.eye(3),
+    )
+
+    np.testing.assert_allclose(intersection, [640.0, 1280.0], atol=1e-6)

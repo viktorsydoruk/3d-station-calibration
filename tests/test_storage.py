@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ import pytest
 from station_calibration.storage import (
     load_all_points,
     load_robot_positions,
+    search_images,
     store_all_points,
 )
 
@@ -89,3 +91,47 @@ def test_load_robot_positions_reports_malformed_row(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="line 1"):
         load_robot_positions(position_file)
+
+
+def test_load_robot_positions_handles_empty_and_invalid_values(tmp_path: Path) -> None:
+    empty_file = tmp_path / "empty.csv"
+    empty_file.write_text("\n   \n", encoding="utf-8")
+
+    positions, image_names = load_robot_positions(empty_file)
+
+    assert positions.shape == (0, 3)
+    assert image_names == []
+
+    invalid_file = tmp_path / "invalid.csv"
+    invalid_file.write_text("1.0;2.0;not-a-number\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="first three fields must be numeric"):
+        load_robot_positions(invalid_file)
+
+    no_image_file = tmp_path / "no-image.csv"
+    no_image_file.write_text("1.0;2.0;3.0\n", encoding="utf-8")
+    positions, image_names = load_robot_positions(no_image_file)
+    np.testing.assert_allclose(positions, [[1.0, 2.0, 3.0]])
+    assert image_names == []
+
+
+def test_load_robot_positions_reports_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        load_robot_positions(tmp_path / "missing.csv")
+
+
+def test_search_images_uses_names_and_modified_time(tmp_path: Path) -> None:
+    first = tmp_path / "first.tif"
+    second = tmp_path / "second.tif"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    os.utime(first, (100.0, 100.0))
+    os.utime(second, (200.0, 200.0))
+
+    by_time = search_images(tmp_path, [])
+    assert by_time == [first, second]
+
+    unsorted = search_images(tmp_path, [], sort_by_mtime=False)
+    assert set(unsorted) == {first, second}
+
+    named = search_images(tmp_path, ["missing.tif", "first.tif"])
+    assert named == [tmp_path / "missing.tif", first]

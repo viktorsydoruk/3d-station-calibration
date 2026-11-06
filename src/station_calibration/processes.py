@@ -255,4 +255,3 @@ def get_3D_and_2D_data(settings: Settings,
         all_directions,
         dataset.image_size_xy,
     )
-

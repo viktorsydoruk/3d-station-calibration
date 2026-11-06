@@ -102,8 +102,8 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
-# Baseline floor; raise it as the remaining gaps in plots/metrics are covered.
-fail_under = 70
+# Coverage floor; raise it as the remaining gaps close.
+fail_under = 90
 exclude_also = [
     "if TYPE_CHECKING:",
     "if __name__ == [\"']__main__[\"']:",

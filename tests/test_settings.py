@@ -400,6 +400,27 @@ def test_missing_section_raises_clear_error(context: ConfigContext) -> None:
         context.make()
 
 
+def test_non_table_nested_section_raises_clear_error(
+    context: ConfigContext,
+) -> None:
+    del context.config["analysis.background"]
+    context.config["analysis"]["background"] = "not-a-table"
+    context.write()
+
+    with pytest.raises(TypeError, match=r"analysis\.background.*not a table"):
+        context.make()
+
+
+def test_non_table_stop_section_raises_clear_error(
+    context: ConfigContext,
+) -> None:
+    context.config["analysis"]["stop"] = "not-a-table"
+    context.write()
+
+    with pytest.raises(TypeError, match=r"analysis\.stop.*not a table"):
+        context.make()
+
+
 def test_missing_required_setting_raises_clear_error(
     context: ConfigContext,
 ) -> None:

@@ -6,7 +6,7 @@
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The suite currently collects **185 tests** when the optional Ice package is
+The suite currently collects **236 tests** when the optional Ice package is
 installed. Without `zeroc-ice`, `test_ice_adapter.py` is skipped. The tests run
 without network access.
 
@@ -19,7 +19,7 @@ Run the suite with branch coverage and a per-file missing-line report:
 uv run pytest -q --cov=station_calibration --cov-report=term-missing
 ```
 
-Coverage omits the generated Ice stubs and currently enforces a `70%` floor.
+Coverage omits the generated Ice stubs and currently enforces a `90%` floor.
 The generated `coverage.xml` is published by CI as an artifact.
 
 | Test module | Coverage |
@@ -27,16 +27,22 @@ The generated `coverage.xml` is published by CI as an artifact.
 | `test_settings.py` | Defaults, overrides, path resolution, validation |
 | `test_stop.py` | Stop policy ordering and details |
 | `test_session.py` | Add/fit/finish, radius filter, readiness, masks |
-| `test_service.py` | Bytes/array service path and rejections |
+| `test_service.py` | Bytes/array service path, delegation, rejections |
 | `test_folder.py` | Folder source, cache loading, rejections |
 | `test_processes.py` | Iterative pipeline and fit behaviour |
-| `test_image.py` | Background, sphere detection, blur sigma |
-| `test_metrics.py` | Uncertainty mapping and RMSE |
-| `test_storage.py` | Point cache and YAML round-trips |
+| `test_image.py` | Image IO, background, sphere detection, blur sigma |
+| `test_metrics.py` | Uncertainty mapping, RMSE, reporting, initial rotation |
+| `test_model.py` | Parameter packing, projection, residuals |
+| `test_fit.py` | Calibration input validation |
+| `test_support.py` | Line fitting, intersections, uncertainty helpers |
+| `test_robot.py` | Robot-home shift and nozzle-end geometry |
+| `test_storage.py` | Point cache, robot CSV parsing, image discovery |
 | `test_atomic.py` | Atomic result-file replacement and failure cleanup |
-| `test_lazy_imports.py` | CLI/plots import without loading Matplotlib |
-| `test_debug.py` | Debug image writing |
-| `test_ice_adapter.py` | Servant mapping, caches, archive schema, shutdown, loopback when Ice is installed |
+| `test_lazy_imports.py` | CLI/plots import and lazy plotting exports |
+| `test_plots.py` | Agg smoke coverage for reporting plots |
+| `test_debug.py` | Debug image writing and overlay rendering |
+| `test_cli.py` | CLI parsing, interrupt handling, module entry point |
+| `test_ice_adapter.py` | Servant/client mapping, wire conversion, archive, shutdown, loopback |
 
 `test_ice_adapter.py` is skipped when the optional `zeroc-ice` dependency is not
 installed.

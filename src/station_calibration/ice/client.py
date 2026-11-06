@@ -131,6 +131,14 @@ class CalibrationIceClient:
     def is_ready(self) -> bool:
         return bool(self.proxy.isReady())
 
+    def abort(self) -> None:
+        """Abort the active calibration and allow another procedure."""
+        self.proxy.abort()
+
+    def finish(self) -> bool:
+        """Force the final fit and return whether a result is available."""
+        return bool(self.proxy.finish())
+
     def get_intrinsic(self) -> tuple[intrinsicParams, list[float]]:
         return self.proxy.getIntrinsic()
 

@@ -20,15 +20,48 @@ value.
 > optional `init` override is recursively merged over that procedure default; for
 > a newly created procedure it becomes part of the new procedure default, while
 > for an existing procedure it applies only to the current run. The merged copy
-> is written to `<date>/config.toml`.
+> is written to `<date>/config.toml`. `[general] procedures_root` is server-only;
+> it is ignored when the file is used as a procedure config.
 
 ## Path resolution
 
 - Relative paths in `[general.files]` are resolved against the calibration
-  folder.
+  folder. Absolute paths are used as-is, so absolute `output_folder` and
+  `debug_folder` values stay on the local disk when the calibration folder is on
+  a network share.
 - `output_folder` and `debug_folder` are created when `Settings` is constructed.
 - `all_center_points_filename` is resolved inside the output folder.
 - `config_file` is expanded with `~` but is otherwise used as given.
+
+### Windows paths in TOML
+
+TOML basic strings (`"..."`) process backslash escapes. A Windows path such as
+`C:\3DSC\procedures` contains `\3`, which is not a valid escape, so the file fails
+to parse:
+
+```text
+tomllib.TOMLDecodeError: Unescaped '\' in a string (at line 20, column 22)
+```
+
+Use a literal string, double every backslash, or use forward slashes:
+
+```toml
+# Literal string: backslashes are not escapes (recommended)
+procedures_root = '\\server\share\3DSC\procedures'
+output_folder = 'C:\ProgramData\3DSC\output'
+
+# Basic string: every backslash must be doubled
+procedures_root = "\\\\server\\share\\3DSC\\procedures"
+output_folder = "C:\\ProgramData\\3DSC\\output"
+
+# Forward slashes also work on Windows
+procedures_root = "//server/share/3DSC/procedures"
+output_folder = "C:/ProgramData/3DSC/output"
+```
+
+A UNC path starts with two backslashes, so its basic-string form starts with
+four. Single-quoted literal strings cannot contain a single quote; use a basic
+string if a path does.
 
 ## `[general]`
 
@@ -45,8 +78,8 @@ value.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `robot_pos_filename` | `Calibration3DPositions.csv` | Robot-position CSV |
-| `output_folder` | `output` | Result folder, relative to the calibration folder |
-| `debug_folder` | `debug` | Debug-image folder, relative to the calibration folder |
+| `output_folder` | `output` | Result folder, relative to the calibration folder; absolute paths are used as-is |
+| `debug_folder` | `debug` | Debug-image folder, relative to the calibration folder; absolute paths are used as-is |
 | `all_center_points_filename` | `CalibrationAllPoints.dat` | Point-cache file inside the output folder |
 | `image_name_patterns` | `["*.tif", "*.tiff"]` | Glob patterns used when the CSV has no image names |
 | `sort_image_names_by_mtime` | `true` | Sort discovered images by modification time |

@@ -88,6 +88,11 @@ The config is required and must contain an absolute procedures root:
 procedures_root = "C:/ProgramData/3DSC/procedures"
 ```
 
+Use forward slashes or single-quoted TOML strings for Windows paths. A
+double-quoted path with single backslashes fails with
+`Unescaped '\' in a string`; see
+[Configuration](../docs/wiki/Configuration#windows-paths-in-toml).
+
 The server also accepts `--endpoint` and `--identity`. For clients on another
 machine, bind an externally reachable address, for example
 `--endpoint "tcp -h 0.0.0.0 -p 10000"`.
@@ -108,6 +113,28 @@ replace the default value. For a procedure created by this call, the override is
 also stored in the new procedure default. For an existing procedure it applies
 only to that run. The date folder name uses `_01`, `_02`, ... for same-minute
 collisions.
+
+## Finishing and aborting
+
+```text
+finish() -> bool
+abort() -> void
+```
+
+`finish` forces a final fit with all currently valid observations. It does not
+require the configured `target_observations`; it returns `true` when a result is
+available and `false` when no result can be produced. The result is written to
+`<date>/data/calibration_result.yaml`. After a successful `finish`, `isReady`
+returns `true` and another procedure may be selected.
+
+`abort` closes the active archive and discards the live service, settings, and
+session state. Archived images and results stay on disk; only the in-memory
+calibration is discarded. After `abort`, any procedure may be selected. Calling
+`abort` before `init` is a no-op.
+
+The server rejects switching to a different procedure while the active session
+has received images, is not ready, and has not been finished. Call `finish` to
+keep the result or `abort` to abandon the session before switching.
 
 ## Return conventions
 
@@ -132,11 +159,12 @@ from station_calibration.ice import CalibrationIceClient
 with CalibrationIceClient.connect() as client:
     session_folder = client.init(1)
     client.add_image_file("image.tif", (x, y, z))
-    if client.is_ready():
+    if client.finish():
         intrinsic, intrinsic_error = client.get_intrinsic()
         extrinsic, extrinsic_error = client.get_extrinsic()
         distortion, distortion_error = client.get_distortion()
         nozzle = client.get_optimal_nozzle_position()
+    client.abort()
 ```
 
 `add_image()` accepts either a NumPy frame or encoded image bytes. Encoded bytes

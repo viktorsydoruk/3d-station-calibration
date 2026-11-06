@@ -163,6 +163,11 @@ The config must contain an absolute procedures root:
 procedures_root = "C:/ProgramData/3DSC/procedures"
 ```
 
+Use forward slashes or single-quoted TOML strings for Windows paths. A
+double-quoted path with single backslashes fails with
+`Unescaped '\' in a string`; see
+[Configuration](docs/wiki/Configuration#windows-paths-in-toml).
+
 If a procedure does not exist yet, `init` creates its folder and copies the
 packaged default config, merging any optional override into that new procedure
 default. The expected layout is:
@@ -178,8 +183,9 @@ The optional config path must be absolute and on the server; it is recursively
 merged over the procedure default. For an existing procedure, the override
 applies only to that run. `init` returns the date folder, so the client can
 derive `<returned>/config.toml` and `<returned>/data`. One server process is
-sufficient when only one procedure is calibrated at a time; switching away from
-an unfinished procedure is rejected.
+sufficient when only one procedure is calibrated at a time. Switching away from
+an unfinished procedure is rejected until the client calls `finish()` (force the
+final result) or `abort()` (discard the live session).
 
 The server receives images and robot positions over Ice; it does not read them
 from the procedure folder. With `archive_sessions = true` (the default), each

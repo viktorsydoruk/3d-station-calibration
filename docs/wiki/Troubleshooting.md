@@ -184,9 +184,13 @@ No fit has succeeded yet. Send enough observations to reach
   account can write under `<procedures-root>`.
 - `configurationfilepath must be an absolute path`: the optional `init` override
   is interpreted on the server, not on the client.
-- `procedure 1 has an active calibration`: retrieve the current results first.
-  To abandon the session, re-select procedure 1 to reset it, then select the next
-  procedure.
+- `procedure 1 has an active calibration`: call `finish()` to force the final
+  result, or `abort()` to discard the live session, then select the next
+  procedure. Re-selecting procedure 1 also resets it but starts a new empty date
+  folder.
+- `finish()` returns `false`: the session has no valid observations or the final
+  fit failed. Check `ice-server.err.log` for the one-line `finish failed:` reason,
+  then add valid images or call `abort()`.
 
 ## Windows notes
 

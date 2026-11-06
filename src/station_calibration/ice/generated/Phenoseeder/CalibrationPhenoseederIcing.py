@@ -100,6 +100,18 @@ class CalibrationPhenoseederIcingPrx(ObjectPrx):
     def getOptimalNozzlePositionAsync(self, context: dict[str, str] | None = None) -> Awaitable[Point]:
         return CalibrationPhenoseederIcing._op_getOptimalNozzlePosition.invokeAsync(self, ((), context))
 
+    def abort(self, context: dict[str, str] | None = None) -> None:
+        return CalibrationPhenoseederIcing._op_abort.invoke(self, ((), context))
+
+    def abortAsync(self, context: dict[str, str] | None = None) -> Awaitable[None]:
+        return CalibrationPhenoseederIcing._op_abort.invokeAsync(self, ((), context))
+
+    def finish(self, context: dict[str, str] | None = None) -> bool:
+        return CalibrationPhenoseederIcing._op_finish.invoke(self, ((), context))
+
+    def finishAsync(self, context: dict[str, str] | None = None) -> Awaitable[bool]:
+        return CalibrationPhenoseederIcing._op_finish.invokeAsync(self, ((), context))
+
     @staticmethod
     def checkedCast(
         proxy: ObjectPrx | None,
@@ -152,6 +164,8 @@ class CalibrationPhenoseederIcing(Object, ABC):
     _op_getExtrinsic: IcePy.Operation
     _op_getDistortion: IcePy.Operation
     _op_getOptimalNozzlePosition: IcePy.Operation
+    _op_abort: IcePy.Operation
+    _op_finish: IcePy.Operation
 
     @staticmethod
     def ice_staticId() -> str:
@@ -187,6 +201,14 @@ class CalibrationPhenoseederIcing(Object, ABC):
 
     @abstractmethod
     def getOptimalNozzlePosition(self, current: Current) -> Point | Awaitable[Point]:
+        pass
+
+    @abstractmethod
+    def abort(self, current: Current) -> None | Awaitable[None]:
+        pass
+
+    @abstractmethod
+    def finish(self, current: Current) -> bool | Awaitable[bool]:
         pass
 
 CalibrationPhenoseederIcing._op_calibrate = IcePy.Operation(
@@ -282,6 +304,30 @@ CalibrationPhenoseederIcing._op_getOptimalNozzlePosition = IcePy.Operation(
     (),
     (((), _Phenoseeder_Point_t, False, 0),),
     None,
+    (),
+    False)
+
+CalibrationPhenoseederIcing._op_abort = IcePy.Operation(
+    "abort",
+    "abort",
+    OperationMode.Normal,
+    None,
+    (),
+    (),
+    (),
+    None,
+    (),
+    False)
+
+CalibrationPhenoseederIcing._op_finish = IcePy.Operation(
+    "finish",
+    "finish",
+    OperationMode.Normal,
+    None,
+    (),
+    (),
+    (),
+    ((), IcePy._t_bool, False, 0),
     (),
     False)
 

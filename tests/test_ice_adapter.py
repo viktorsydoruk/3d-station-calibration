@@ -52,11 +52,19 @@ class FakeService:
         self.ready = True
         self.images: list[tuple[np.ndarray, np.ndarray, str | None]] = []
         self.error_calls: list[int] = []
+        self.finish_calls = 0
+        self.finish_error: Exception | None = None
         self.session = SimpleNamespace(fit_observations=[object()])
 
     @property
     def is_ready(self) -> bool:
         return self.ready
+
+    def finish(self):
+        self.finish_calls += 1
+        if self.finish_error is not None:
+            raise self.finish_error
+        return self.last_result
 
     def finish_if_ready(self):
         return self.last_result if self.ready else None
@@ -533,6 +541,51 @@ def test_ice_server_cli_requires_config(tmp_path, monkeypatch) -> None:
     ice_server.run_cli(["--config", str(config_file)])
 
     assert captured["config_file"] == config_file
+    assert (
+        captured["message_size_max_kb"]
+        == ice_server.DEFAULT_MESSAGE_SIZE_MAX_KB
+    )
+
+
+def test_ice_server_raises_ice_message_size_limit(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "procedures"
+    root.mkdir()
+    config_file = tmp_path / "server.toml"
+    config_file.write_text(
+        f"[general]\nprocedures_root = '{root.as_posix()}'\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, list[str]] = {}
+
+    class FakeAdapter:
+        def add(self, servant, identity):
+            return None
+
+        def activate(self) -> None:
+            return None
+
+    class FakeCommunicator:
+        def createObjectAdapterWithEndpoints(self, name, endpoint):
+            return FakeAdapter()
+
+        def waitForShutdown(self) -> None:
+            return None
+
+        def destroy(self) -> None:
+            return None
+
+    def fake_initialize(args):
+        captured["args"] = list(args)
+        return FakeCommunicator()
+
+    monkeypatch.setattr(Ice, "initialize", fake_initialize)
+
+    ice_server.run_server(config_file)
+
+    assert (
+        f"--Ice.MessageSizeMax={ice_server.DEFAULT_MESSAGE_SIZE_MAX_KB}"
+        in captured["args"]
+    )
 
 
 def test_adapter_init_returns_date_folder_and_merged_config(
@@ -596,6 +649,9 @@ def test_adapter_uninitialized_behavior(tmp_path) -> None:
     root = _make_procedure_root(tmp_path)
     servant = CalibrationIceServant(root)
 
+    assert servant.finish() is False
+    servant.abort()
+    assert servant.active_procedure_id is None
     assert servant.isReady() is False
     with pytest.raises(RuntimeError, match="init first"):
         servant.getIntrinsic()
@@ -650,6 +706,101 @@ def test_adapter_rejects_procedure_switch_during_active_calibration(
         servant.init(2)
 
     service.ready = True
+    servant.init(2)
+    assert servant.active_procedure_id == 2
+
+
+def test_adapter_finish_forces_result_and_allows_switch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = _make_procedure_root(tmp_path, procedure_ids=(1, 2))
+    servant, service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        procedures_root=root,
+    )
+    session = Path(servant.init(1))
+    service.ready = False
+    frame = np.zeros((2, 3), dtype=np.uint8)
+    servant.addData(
+        Point(x=1.0, y=2.0, z=3.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+
+    assert servant.isReady() is False
+    assert servant.finish() is True
+    assert service.finish_calls == 1
+    assert servant.isReady() is True
+    assert (session / "data" / "calibration_result.yaml").is_file()
+
+    servant.init(2)
+    assert servant.active_procedure_id == 2
+
+
+def test_adapter_finish_returns_false_without_result(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = _make_procedure_root(tmp_path)
+    servant, service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        procedures_root=root,
+    )
+
+    assert servant.finish() is False
+
+    servant.init(1)
+    service.ready = False
+    service.finish_error = ValueError("too few observations")
+    assert servant.finish() is False
+    assert servant.isReady() is False
+
+
+def test_adapter_abort_discards_session_and_allows_switch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = _make_procedure_root(tmp_path, procedure_ids=(1, 2))
+    servant, service = _make_servant(
+        tmp_path,
+        monkeypatch,
+        procedures_root=root,
+    )
+    session = Path(servant.init(1))
+    service.ready = False
+    frame = np.zeros((2, 3), dtype=np.uint8)
+    servant.addData(
+        Point(x=1.0, y=2.0, z=3.0),
+        imageData(
+            height=2,
+            width=3,
+            spp=1,
+            imgformat=IMAGEFORMAT.PMBGGR,
+            imgDataType=IMAGEDATATYPE.IDTBYTE,
+            bytePixels=frame.tobytes(),
+        ),
+    )
+
+    servant.abort()
+
+    assert servant.active_procedure_id is None
+    assert servant.procedure_session is None
+    assert servant._service is None
+    assert servant.isReady() is False
+    metadata = yaml.safe_load(
+        (session / "data" / "session.yaml").read_text(encoding="utf-8")
+    )
+    assert metadata["session"]["ended_at"] is not None
+
     servant.init(2)
     assert servant.active_procedure_id == 2
 
@@ -723,6 +874,10 @@ def test_ice_round_trip(tmp_path, monkeypatch) -> None:
 
             nozzle = client.get_optimal_nozzle_position()
             assert (nozzle.x, nozzle.y, nozzle.z) == pytest.approx((7.0, 8.0, 9.0))
+
+            assert client.finish() is True
+            client.abort()
+            assert client.is_ready() is False
 
         with CalibrationIceClient.connect(proxy.ice_toString()) as connected:
             connected.init(1)

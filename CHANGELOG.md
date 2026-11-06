@@ -30,6 +30,11 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   `init` creates it from the packaged default and folds the override into that
   new procedure default; an override for an existing procedure applies only to
   the current run.
+- Ice `finish()` and `abort()` operations. `finish` forces a final fit even when
+  the configured `target_observations` stop condition has not been reached and
+  returns whether a result is available; `abort` discards the live session and
+  allows another procedure to be selected. Archived session data remains on
+  disk after `abort`.
 
 ### Changed
 
@@ -48,6 +53,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 - Hardened bad-frame handling and CSV input validation.
 - Restored the packaged `config.toml` header comment to a valid TOML comment.
+- A procedure that cannot reach its `target_observations` no longer locks out
+  other procedures; call `finish()` to keep the result or `abort()` to discard
+  the live session.
 
 <!--
 When the first release tag is created, rename [Unreleased] to the release

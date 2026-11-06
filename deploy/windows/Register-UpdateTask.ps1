@@ -16,7 +16,7 @@
 [CmdletBinding()]
 param(
     [string]$TaskName = "3DSC-IceServer-Update",
-    [string]$Updater = (Join-Path $PSScriptRoot "Update-3DSC.ps1"),
+    [string]$Updater = "",
     [string]$RunAs = "SYSTEM",
     [System.Management.Automation.PSCredential]$Credential,
     [string]$AppDir = "C:\3DSC\app",
@@ -37,6 +37,22 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# $PSScriptRoot is not available in Windows PowerShell 2.0 and can be empty in
+# some hosts. Resolve the companion updater without relying on it alone.
+if (-not $Updater) {
+    $scriptDirectory = $PSScriptRoot
+    if (-not $scriptDirectory -and $PSCommandPath) {
+        $scriptDirectory = Split-Path -Parent $PSCommandPath
+    }
+    if (-not $scriptDirectory -and $MyInvocation.MyCommand.Path) {
+        $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    if (-not $scriptDirectory) {
+        throw "Cannot determine the script directory. Pass -Updater explicitly."
+    }
+    $Updater = Join-Path $scriptDirectory "Update-3DSC.ps1"
+}
 
 if (-not (Test-Path -LiteralPath $Updater)) {
     throw "Updater script not found: $Updater"

@@ -10,16 +10,27 @@ from pathlib import Path
 
 from .. import __version__
 
-__all__ = ["DEFAULT_ENDPOINT", "DEFAULT_IDENTITY", "run_cli", "run_server"]
+__all__ = [
+    "DEFAULT_ENDPOINT",
+    "DEFAULT_IDENTITY",
+    "DEFAULT_MESSAGE_SIZE_MAX_KB",
+    "run_cli",
+    "run_server",
+]
 
 DEFAULT_ENDPOINT = "tcp -h 127.0.0.1 -p 10000"
 DEFAULT_IDENTITY = "CalibrationPhenoseederIcing"
+# Camera frames are sent as raw pixels. A 2048x2448 8-bit frame is about 5 MB,
+# which exceeds Ice's 1 MB default incoming-message limit. Keep this comfortably
+# above the largest expected frame.
+DEFAULT_MESSAGE_SIZE_MAX_KB = 65536
 
 
 def run_server(config_file: str | Path,
                *,
                endpoint: str = DEFAULT_ENDPOINT,
-               identity: str = DEFAULT_IDENTITY) -> None:
+               identity: str = DEFAULT_IDENTITY,
+               message_size_max_kb: int = DEFAULT_MESSAGE_SIZE_MAX_KB) -> None:
     """Create the Ice adapter and block until it shuts down.
 
     ``config_file`` is the deployment config. It must contain
@@ -44,7 +55,9 @@ def run_server(config_file: str | Path,
 
     procedures_root = load_procedures_root(config_file)
     servant = CalibrationIceServant(procedures_root)
-    communicator = Ice.initialize([])
+    communicator = Ice.initialize([
+        f"--Ice.MessageSizeMax={int(message_size_max_kb)}",
+    ])
     try:
         adapter = communicator.createObjectAdapterWithEndpoints(
             "Calibration",
@@ -96,6 +109,15 @@ def run_cli(argv: list[str] | None = None) -> None:
         help=f"Ice identity (default: {DEFAULT_IDENTITY!r})",
     )
     parser.add_argument(
+        "--message-size-max-kb",
+        type=int,
+        default=DEFAULT_MESSAGE_SIZE_MAX_KB,
+        help=(
+            "maximum incoming Ice message size in KiB "
+            f"(default: {DEFAULT_MESSAGE_SIZE_MAX_KB})"
+        ),
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"%(prog)s {__version__}",
@@ -105,6 +127,7 @@ def run_cli(argv: list[str] | None = None) -> None:
         args.config,
         endpoint=args.endpoint,
         identity=args.identity,
+        message_size_max_kb=args.message_size_max_kb,
     )
 
 

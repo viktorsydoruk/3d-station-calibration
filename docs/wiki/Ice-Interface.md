@@ -28,6 +28,8 @@ Operations:
 | `getExtrinsic()` | client → server | Rotation, translation + 6 errors |
 | `getDistortion()` | client → server | Active coefficients + errors |
 | `getOptimalNozzlePosition()` | client → server | Nozzle-end home in robot coordinates |
+| `abort()` | client → server | Abort the active calibration and discard its in-memory state |
+| `finish()` | client → server | Force a final fit; return `true` when a result is available |
 
 ### Wire type layout
 
@@ -99,8 +101,20 @@ The config must contain an absolute procedures root:
 
 ```toml
 [general]
+# Local archive
 procedures_root = "C:/ProgramData/3DSC/procedures"
+
+# Network archive alternative; single quotes keep backslashes literal
+# procedures_root = '\\server\share\3DSC\procedures'
 ```
+
+Use single quotes or forward slashes in TOML for Windows paths; a double-quoted
+path with single backslashes fails with `Unescaped '\' in a string`. See
+[Windows paths in TOML](Configuration#windows-paths-in-toml).
+
+If the root is a UNC path, set absolute local `output_folder` and `debug_folder`
+paths in the procedure config to keep output and debug data off the share. See
+[Deployment and Autostart](Deployment#network-archive-with-local-output-and-debug).
 
 Each procedure has a complete default at
 `<procedures-root>/<procedure-id>/config.toml`. If it is missing, `init` creates
@@ -108,8 +122,9 @@ the procedure folder and copies the packaged default there. `init` also creates
 `<procedures-root>/<procedure-id>/<YYYYMMDD_HHMM>/` with a merged `config.toml`
 and a `data` folder.
 
-The servant starts uninitialized. Before `init`, `isReady()` returns `false` and
-the data/getter operations raise a clear `RuntimeError`. Once initialized, the
+The servant starts uninitialized. Before `init`, `isReady()` and `finish()`
+return `false`, `abort()` is a no-op, and the data/getter operations raise a
+clear `RuntimeError`. Once initialized, the
 servant constructs a `CalibrationService` with `fit_every_n=1`,
 `apply_radius_filter=True`, and `load_stored_data=False`, so the server always
 analyzes newly arriving images.
@@ -136,10 +151,22 @@ Every accepted `init` creates a fresh settings object, service, and archive
 session, clearing the nozzle and error caches.
 
 A switch to a different procedure is rejected with an Ice exception while the
-current session has received images and is not ready. Re-select the same
-procedure to reset it intentionally. After `isReady()` becomes true, the next
-procedure may be selected; retrieve the results first because the live session
-is reset, although the archive remains on disk.
+current session has received images, is not ready, and has not been finished.
+Call `finish()` to keep the result or `abort()` to abandon the session, then
+select the next procedure. After `isReady()` becomes true, the next procedure may
+also be selected. Retrieve the results first because the live session is reset,
+although the archive remains on disk.
+
+### `finish` and `abort`
+
+| Operation | Behavior |
+| --- | --- |
+| `finish()` | Force a final fit with all currently valid observations, ignoring the `target_observations` stop condition. Returns `true` when a result is available and `false` when no result can be produced. Writes `calibration_result.yaml`. A successful finish also makes `isReady()` return `true`. |
+| `abort()` | Close the active archive and discard the live service, settings, and session state. Archived images and results stay on disk. Before `init`, `abort()` is a no-op. |
+
+Adding data after a successful `finish()` reopens the session: `isReady()` falls
+back to the normal stop policy until `finish()` is called again. Re-selecting the
+same procedure still resets it and starts a new date folder.
 
 ### Thread safety and caching
 
@@ -162,11 +189,13 @@ with CalibrationIceClient.connect("CalibrationPhenoseederIcing:tcp -h 127.0.0.1 
     session_folder = client.init(1)
     client.add_image_file("image.tif", (x, y, z))
 
-    if client.is_ready():
+    if client.finish():
         intrinsic, intrinsic_error = client.get_intrinsic()
         extrinsic, extrinsic_error = client.get_extrinsic()
         distortion, distortion_error = client.get_distortion()
         nozzle = client.get_optimal_nozzle_position()
+
+    client.abort()
 ```
 
 `connect()` creates and owns a communicator; `close()` or the context manager

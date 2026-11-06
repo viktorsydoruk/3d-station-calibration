@@ -107,9 +107,10 @@ image, adds the observation to the service's session, and the service refits
 according to the same fit policy. `isReady` and the getters query the session.
 `init` asks `ice/procedures.py` to create
 `<procedures-root>/<procedure-id>/<date>/config.toml` and `<date>/data`, then
-loads a fresh service from that session config. The servant rejects switching to
-another procedure while the current session has received images and is not
-ready. See [Ice Interface](Ice-Interface).
+loads a fresh service from that session config. `finish` forces the final fit;
+`abort` discards the live session. The servant rejects switching to another
+procedure while the current session has received images, is not ready, and has
+not been finished. See [Ice Interface](Ice-Interface).
 
 ### Direct library use
 

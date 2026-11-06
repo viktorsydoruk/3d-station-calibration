@@ -23,7 +23,9 @@ stay outside the checkout.
    `[general] procedures_root = "C:/ProgramData/3DSC/procedures"`. Missing
    `<procedures-root>/<procedure-id>/config.toml` files are created from the
    packaged default on their first `init`; pre-create them only to set
-   camera-specific defaults.
+   camera-specific defaults. For a network archive, use a UNC path and give the
+   service account write access; set absolute local `output_folder` and
+   `debug_folder` paths in the procedure config to keep output/debug local.
 5. Register the NSSM service with `--config C:\3DSC\config.toml`, then start it
    and check the log. The procedures root is read from the config, not a CLI
    argument.

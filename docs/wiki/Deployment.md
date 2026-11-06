@@ -16,7 +16,13 @@ the production client.
   read images or `Calibration3DPositions.csv` from the procedures root.
 - The **procedures root** is configured only in the server TOML file as
   `[general] procedures_root`. It must be an absolute path and is the base for
-  every procedure folder and session archive.
+  every procedure folder and session archive. It may be a UNC path when the
+  archive must live on a file server.
+- `output_folder` and `debug_folder` are resolved relative to `<date>/data` by
+  default. Set absolute local paths in the procedure config to keep plots,
+  debug images, and intermediate output off a network share.
+- NSSM writes server logs to `C:\ProgramData\3DSC\logs`; they are never stored
+  under `procedures_root`.
 - Each procedure has a complete default config at
   `<procedures-root>/<procedure-id>/config.toml`. The client selects a procedure
   with `init(procedureId)`; `init` creates
@@ -75,8 +81,76 @@ than replayability.
 
 > **Disk use.** Archived frames are 8-bit TIFF. A 500-frame session from a 5 MP
 > camera is roughly 2.5 GB before TIFF compression. Monitor free space on the
-> procedures root and adjust `target_observations` or disable archiving if
-> necessary.
+> procedures root for the TIFF archive and on the local disk for `output` and
+> `debug` when they are redirected. Adjust `target_observations` or disable
+> archiving if necessary.
+
+### Network archive with local output and debug
+
+When the captured frames must be stored on a file server, set `procedures_root`
+to a UNC path in the **server** config:
+
+```toml
+[general]
+procedures_root = '\\ibg2fs6\phenoseed$\3DSC\procedures'
+```
+
+Use single quotes so the backslashes stay literal. Do not use a mapped drive
+letter: a Windows service cannot see user drive mappings. The server rejects a
+missing or inaccessible root at startup.
+
+> **TOML escaping.** In a double-quoted TOML string, every backslash must be
+> doubled. A path such as
+> `procedures_root = "\\ibg2fs6\phenoseed$\3DSC\procedures"` fails with
+> `tomllib.TOMLDecodeError: Unescaped '\' in a string`. Use a single-quoted
+> literal string or forward slashes. See
+> [Windows paths in TOML](Configuration#windows-paths-in-toml).
+
+Logs are already local because NSSM writes them to `C:\ProgramData\3DSC\logs`.
+To keep plots, debug images, and intermediate output off the share, set absolute
+local paths in **each procedure config**
+(`<procedures-root>/<procedure-id>/config.toml`):
+
+```toml
+[general]
+archive_sessions = true
+debug = false
+store_debug_images = false
+
+[general.files]
+output_folder = "C:/ProgramData/3DSC/output/1"
+debug_folder = "C:/ProgramData/3DSC/debug/1"
+```
+
+Edit these keys in the complete procedure config; do not reduce the file to this
+snippet. `output_folder` and `debug_folder` are normally relative to the session
+`data` folder. An absolute path overrides that base, so they stay on the local
+disk even when `procedures_root` is a UNC path. Use a distinct folder per
+procedure to avoid mixing sessions. `debug_folder` is still created and used for
+failure images even when `debug` and `store_debug_images` are false.
+
+The network session remains self-contained for replay:
+
+```text
+\\ibg2fs6\phenoseed$\3DSC\procedures\1\20261105_1234\
+├─ config.toml
+└─ data\
+   ├─ Calibration3DPositions.csv
+   ├─ image_0001.tif
+   ├─ ...
+   ├─ calibration_result.yaml
+   └─ session.yaml
+```
+
+```powershell
+3dsc "\\ibg2fs6\phenoseed$\3DSC\procedures\1\20261105_1234\data" `
+  --config "\\ibg2fs6\phenoseed$\3DSC\procedures\1\20261105_1234\config.toml"
+```
+
+> **Per-date isolation.** Absolute `output_folder` and `debug_folder` values are
+> shared by all sessions of that procedure. If you need separate folders per
+> date, keep them relative and accept that they will also be written below the
+> network `procedures_root`.
 
 ## Several procedures on one server
 
@@ -133,6 +207,7 @@ addData(...)
 getIntrinsic()
 getExtrinsic()
 getDistortion()
+finish()        # or abort() to discard the live session
 ```
 
 `init` returns the date folder. The optional override is recursively merged over
@@ -141,11 +216,12 @@ replaced. For a procedure created by that `init`, the override is also stored in
 the new procedure default. For an existing procedure, it applies only to that
 run. The merged result is written to `<date>/config.toml`.
 
-The server rejects `init(2)` while procedure `1` has received images and is not
-ready. Once the session is ready, or before any image has arrived, the next
-procedure may be selected. Retrieve the results before switching; the live
-session is reset, although the archive remains on disk. Re-selecting the same
-procedure resets it and starts a new date folder.
+The server rejects `init(2)` while procedure `1` has received images, is not
+ready, and has not been finished. Call `finish()` to force a final result or
+`abort()` to discard the live session, then select the next procedure. Once the session is ready, or before any
+image has arrived, the next procedure may also be selected. Retrieve the results
+before switching; the live session is reset, although the archive remains on
+disk. Re-selecting the same procedure resets it and starts a new date folder.
 
 For central deployment on Linux, the equivalent systemd command is:
 
@@ -175,9 +251,12 @@ interval is exposed as a command-line option (a recommended change).
 ### 1. Prepare the procedures root
 
 Create the writable root that will contain the procedure folders, for example
-`C:\ProgramData\3DSC\procedures` or `/var/lib/3dsc/procedures`. In Ice mode this
+`C:\ProgramData\3DSC\procedures`, a UNC path such as
+`\\server\share\3DSC\procedures`, or `/var/lib/3dsc/procedures`. In Ice mode this
 is not an image input folder: images and robot positions arrive over Ice. The
 server creates each session's date folder below the selected procedure folder.
+Use a UNC path when the archive must live on a file server; see
+[Network archive with local output and debug](#network-archive-with-local-output-and-debug).
 
 You do not have to create procedure folders in advance: the first `init` for a
 procedure creates `<procedures-root>/<procedure-id>/` and copies the packaged
@@ -211,14 +290,19 @@ root:
 
 ```toml
 [general]
+# Local archive
 procedures_root = "C:/ProgramData/3DSC/procedures"
+
+# Network archive alternative. Single quotes keep the backslashes literal.
+# procedures_root = '\\ibg2fs6\phenoseed$\3DSC\procedures'
 ```
 
 The server only reads `procedures_root` from this file. The same file can also
 serve as the complete runtime configuration for the folder workflow. Each
-procedure default config is a separate complete TOML file. Auto-created procedure
-configs start from the packaged defaults; pre-create and edit them if you need
-the production values below. At minimum set:
+procedure default config is a separate complete TOML file. `procedures_root` is
+server-only and is ignored in a procedure config. Auto-created procedure configs
+start from the packaged defaults; pre-create and edit them if you need the
+production values below. At minimum set:
 
 ```toml
 [general]
@@ -226,15 +310,19 @@ debug = false
 store_debug_images = false
 archive_sessions = true
 load_stored_data = false
-procedures_root = "C:/ProgramData/3DSC/procedures"
 
 [general.files]
-# Use absolute, writable paths for a service account.
-output_folder = "C:/ProgramData/3DSC/output"   # Windows example
-debug_folder = "C:/ProgramData/3DSC/debug"     # Windows example
-# output_folder = "/var/lib/3dsc/output"       # Linux example
-# debug_folder = "/var/lib/3dsc/debug"         # Linux example
+# Use absolute, writable paths for a service account. Absolute local paths keep
+# output/debug off a network procedures root.
+output_folder = "C:/ProgramData/3DSC/output/1"   # Windows example
+debug_folder = "C:/ProgramData/3DSC/debug/1"     # Windows example
+# output_folder = "/var/lib/3dsc/output"         # Linux example
+# debug_folder = "/var/lib/3dsc/debug"           # Linux example
 ```
+
+Use a distinct local output/debug folder per procedure. See
+[Network archive with local output and debug](#network-archive-with-local-output-and-debug)
+when `procedures_root` is a UNC path.
 
 `load_stored_data = false` is important for the Ice server: it must analyze the
 frames that arrive over the wire, not reuse an old point cache.
@@ -268,6 +356,10 @@ The version is generated from Git tags by `hatch-vcs`; it is not edited in
 [Testing and Build](Testing-and-Build#versioning) for the release procedure.
 
 ## Windows
+
+> The examples use the default port `10000`. Replace it with your site port
+> everywhere: NSSM `--endpoint`, firewall rule, updater `-HealthPort`, scheduled
+> task, and client proxy. For the FZJ deployment the port is `30020`.
 
 ### 1. Install Python 3.13
 
@@ -332,9 +424,15 @@ C:\3DSC\.venv\Scripts\3dsc-ice-server.exe --help
 
 ```powershell
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\logs | Out-Null
-New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\procedures | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\output | Out-Null
 New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\debug | Out-Null
+
+# Local procedures root. Skip this when procedures_root is a UNC path.
+New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\procedures | Out-Null
+
+# Per-procedure local output/debug folders used in the example below.
+New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\output\1 | Out-Null
+New-Item -ItemType Directory -Force -Path C:\ProgramData\3DSC\debug\1 | Out-Null
 
 Copy-Item `
   C:\3DSC\app\src\station_calibration\resources\config.toml `
@@ -343,11 +441,19 @@ Copy-Item `
 
 Edit `C:\3DSC\config.toml` as described in
 [Common preparation](#common-preparation). Set
-`procedures_root = "C:/ProgramData/3DSC/procedures"`. The first `init` creates
-`C:\ProgramData\3DSC\procedures\<procedure-id>\config.toml` from the packaged
-default. To set camera-specific values before first use, create that procedure
-folder, copy the packaged config there, and edit it. Use forward slashes in TOML
-paths.
+`procedures_root = "C:/ProgramData/3DSC/procedures"` for a local archive, or a
+UNC path such as
+`procedures_root = '\\ibg2fs6\phenoseed$\3DSC\procedures'` when the session
+archive must live on a file server. For a network root, create the folder on the
+share instead of locally and give the service account write access to it. Keep
+`C:\ProgramData\3DSC\output` and `debug` local and set them as
+absolute paths in the procedure config; see
+[Network archive with local output and debug](#network-archive-with-local-output-and-debug).
+
+The first `init` creates
+`<procedures-root>\<procedure-id>\config.toml` from the packaged default. To set
+camera-specific values before first use, pre-create that procedure folder and
+config. Use forward slashes or single-quoted strings for Windows paths in TOML.
 
 ### 5. Run manually once
 
@@ -362,8 +468,10 @@ root.
 
 > **Procedures root, not an input folder.** The Ice server does not read images
 > from this path. It creates the procedure session folders and writes the
-> archive there. A local path is recommended; if you intentionally archive to a
-> network share, use a UNC path and give the service account write permission.
+> archive there. A local path is recommended unless the archive must live on a
+> file server. For a UNC path, give the service account write permission and set
+> absolute local `output_folder`/`debug_folder` paths in the procedure config to
+> keep output and debug data off the share.
 
 ### 6. Install as a Windows service with NSSM
 
@@ -382,6 +490,10 @@ nssm version
 
 Install and configure the service:
 
+> Run this block only for a first install. If the service already exists,
+> `nssm install` fails with `The specified service already exists`; skip that
+> line, run the `nssm set` lines, then `nssm restart`.
+
 ```powershell
 $svc      = "3DSC-IceServer"
 $exe      = "C:\3DSC\.venv\Scripts\3dsc-ice-server.exe"
@@ -390,7 +502,8 @@ $endpoint = "tcp -h 0.0.0.0 -p 10000"
 
 nssm install $svc $exe
 nssm set $svc AppDirectory "C:\3DSC"
-nssm set $svc AppParameters "--config `"$config`" --endpoint `"$endpoint`""
+# Note the backslash before each backtick-escaped quote.
+nssm set $svc AppParameters "--config \`"$config\`" --endpoint \`"$endpoint\`""
 nssm set $svc DisplayName "3D Station Calibration Ice Server"
 nssm set $svc Description "Serves the phenoSeeder 3D station calibration over ZeroC Ice."
 nssm set $svc Start SERVICE_DELAYED_AUTO_START
@@ -405,6 +518,35 @@ nssm set $svc AppRestartDelay 5000
 nssm start $svc
 ```
 
+> **Quote the endpoint value.** Windows PowerShell 5.1 strips embedded double
+> quotes when it calls a native program. The backslash before each
+> backtick-escaped quote preserves them, so NSSM stores
+> `--config "C:\3DSC\config.toml" --endpoint "tcp -h 0.0.0.0 -p 10000"`.
+> Without the backslash, NSSM stores the values without quotes, and the server
+> parses `-h` as its own option instead of as part of the endpoint.
+>
+> Verify the stored value:
+>
+> ```powershell
+> nssm get $svc AppParameters
+> ```
+>
+> The output must contain the quotes around both the config path and the
+> endpoint string.
+
+If `nssm start` reports `SERVICE_PAUSED`, the service is not healthy: the
+application is exiting and NSSM is restarting it. Stop the service and read the
+application log before changing anything else:
+
+```powershell
+nssm stop $svc
+Get-Content C:\ProgramData\3DSC\logs\ice-server.err.log -Tail 50
+Get-WinEvent -FilterHashtable @{LogName='Application'; ProviderName='nssm'} -MaxEvents 20
+```
+
+Common causes are a TOML parse error, a missing or unwritable UNC procedures
+root, or another process already using the port.
+
 The procedures root is not a service argument; it is read from
 `[general] procedures_root` in `$config`.
 
@@ -414,18 +556,77 @@ up if you intentionally archive to a UNC path.
 #### Service account
 
 By default NSSM runs the service as `LocalSystem`. That is sufficient for a local
-procedures root. For a network share, use a dedicated domain or local account
-that has write access to the procedures root and the configured output/debug
-folders:
+procedures root. For a network archive, use a dedicated **domain** account,
+because a mapped drive letter is not visible to a service and `LocalSystem`
+authenticates to the share as the computer account (`DOMAIN\SERVERNAME$`).
+
+The account needs:
+
+- `Change` on the share and `Modify` on `\\server\share\...\procedures`
+- `Modify` on the local `C:\ProgramData\3DSC\output` and `debug` folders
+- read/execute access to `C:\3DSC\app` and `C:\3DSC\.venv`
+- the `Log on as a service` right
+
+Stop the service, then set the account and password:
 
 ```powershell
-$svc = "3DSC-IceServer"
-nssm set $svc ObjectName "DOMAIN\svc-3dsc" "PASSWORD"
-nssm restart $svc
+$svc  = "3DSC-IceServer"
+$user = "DOMAIN\svc-3dsc"
+
+$secure = Read-Host "Password for $user" -AsSecureString
+$plain  = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+  [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+)
+
+nssm stop $svc
+nssm set $svc ObjectName $user $plain
+nssm get $svc ObjectName
+Get-CimInstance Win32_Service -Filter "Name='$svc'" |
+  Select-Object Name, StartName, State
 ```
 
+`StartName` must show the account. The password is stored by Windows as a
+service secret, not in `config.toml`.
+
+Grant the account access on the file server. Run this there in an elevated
+PowerShell, replacing the share name if needed:
+
+```powershell
+$user  = "DOMAIN\svc-3dsc"
+$share = Get-SmbShare -Name "phenoseed$"
+
+Grant-SmbShareAccess -Name $share.Name -AccountName $user `
+  -AccessRight Change -Force
+
+icacls (Join-Path $share.Path "3DSC") `
+  /grant "${user}:(OI)(CI)M" /T
+```
+
+Grant access to the local output/debug folders and the application on the 3DSC
+server:
+
+```powershell
+$user = "DOMAIN\svc-3dsc"
+
+# Use the actual paths from [general.files] in the procedure config.
+icacls "C:\ProgramData\3DSC\output" /grant "${user}:(OI)(CI)M" /T
+icacls "C:\ProgramData\3DSC\debug"  /grant "${user}:(OI)(CI)M" /T
+
+icacls "C:\3DSC\app"  /grant "${user}:(OI)(CI)RX" /T
+icacls "C:\3DSC\.venv" /grant "${user}:(OI)(CI)RX" /T
+```
+
+If the venv uses a per-user Python installation under
+`C:\Users\<user>\AppData\Local\Programs\Python`, grant the service account
+read/execute on that base Python directory too, or install Python system-wide.
+
+NSSM normally grants `Log on as a service` automatically when `ObjectName` is
+set. If the service fails with error `1069`, grant it explicitly in
+`secpol.msc` or through domain policy.
+
 Alternatively, grant the computer account (`DOMAIN\SERVERNAME$`) access to the
-share. Either way, the account must be able to read the UNC path.
+share and keep `LocalSystem`. Either way, the account must be able to read and
+write the UNC procedures root.
 
 ### 7. Open the firewall (only if clients connect directly)
 
@@ -452,16 +653,32 @@ Get-Content C:\ProgramData\3DSC\logs\ice-server.err.log -Wait
 Test-NetConnection <server-name> -Port 10000
 ```
 
-Restart, stop, and remove:
+Restart the service:
 
 ```powershell
 $svc = "3DSC-IceServer"
 nssm restart $svc
+```
+
+Stop it:
+
+```powershell
+nssm stop $svc
+```
+
+Remove it only when uninstalling:
+
+```powershell
+$svc = "3DSC-IceServer"
 nssm stop $svc
 Unregister-ScheduledTask -TaskName "3DSC-IceServer-Update" -Confirm:$false -ErrorAction SilentlyContinue
 nssm remove $svc confirm
 Remove-NetFirewallRule -DisplayName "3DSC Ice Server (TCP 10000)"
 ```
+
+> Do not run the remove block during a normal update. It deletes the service,
+> the scheduled update task, and the firewall rule. The update steps below
+> expect the service to exist.
 
 Prevent the server from sleeping:
 
@@ -484,6 +701,7 @@ Stop the service, update the checkout, reinstall the package, and start it again
 
 ```powershell
 $svc = "3DSC-IceServer"
+Get-Service $svc          # must exist; if this fails, reinstall with step 6
 nssm stop $svc
 
 Push-Location C:\3DSC\app
@@ -498,6 +716,9 @@ nssm status $svc
 Get-Content C:\ProgramData\3DSC\logs\ice-server.err.log -Tail 20
 ```
 
+- If `Get-Service $svc` fails, the service was removed. Reinstall it with step 6
+  before continuing; otherwise `nssm stop` and `nssm start` fail with
+  `OpenService(): The specified service is not an installed service`.
 - `--upgrade` makes pip reinstall the project even when the version has not
   changed. If you installed without `-e`, omit `-e` from the pip command.
 - Close Jupyter, debuggers, and other processes that use `C:\3DSC\.venv` before
@@ -824,6 +1045,15 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -Schedule Daily -Time 03:00
 ```
 
+> Pass `-HealthPort` when the service is not on the default port `10000`.
+> Otherwise the updater's TCP health check fails and rolls the update back. For
+> this deployment use `-HealthPort 30020`.
+>
+> If registration fails with `Join-Path ... Parameter "Path" ... empty string`,
+> pass the updater explicitly:
+> `-Updater C:\3DSC\app\deploy\windows\Update-3DSC.ps1`. Current versions of the
+> script resolve this path automatically.
+
 The helper creates task `3DSC-IceServer-Update`, runs it with the highest
 privileges (`SYSTEM` by default), starts it when the scheduled time was missed,
 and prevents overlapping instances. To use a weekly window:
@@ -1059,16 +1289,26 @@ with CalibrationIceClient.connect(proxy) as client:
 | --- | --- | --- |
 | `ModuleNotFoundError: Ice` on the Pi | venv was created without system packages | Recreate it with `python3 -m venv --system-site-packages ...`; reinstall the project. |
 | `pip` tries to build `zeroc-ice` on Linux | `.[ice]` extra used on Linux | Install the project without the extra and install `python3-zeroc-ice` from the ZeroC APT repo. |
+| `SERVICE_PAUSED` when starting the NSSM service | The application exits immediately and NSSM is in its restart delay | Check `ice-server.err.log` and the `nssm` Application events. Common causes: TOML error, share permission, port conflict. |
+| `CreateService(): The specified service already exists` | `nssm install` was run for an existing service | Skip install; use `nssm set` and `nssm restart`, or `nssm remove <svc> confirm` first. |
+| `OpenService(): The specified service is not an installed service` | The NSSM service was removed, for example by running the uninstall block during an update | Reinstall the service with step 6; the update steps expect it to exist. |
+| `Join-Path ... Parameter "Path" ... empty string` when registering the update task | `$PSScriptRoot` is empty in that PowerShell host | Pass `-Updater C:\3DSC\app\deploy\windows\Update-3DSC.ps1` explicitly, or update to the fixed script. |
+| `scipy` import fails after an update (`DLL load failed`, `_uarray`, or truncated import traceback) | Pip replaced DLLs while another process used the venv, or the environment is inconsistent | Stop all processes using `C:\3DSC\.venv`, then force-reinstall `numpy` and `scipy`; recreate the venv if it persists. |
 | `server config file not found` | Wrong `--config` path | Use an absolute path. |
+| Service ignores `--endpoint` or exits with argparse help | NSSM `AppParameters` lost its embedded quotes | Use the backslash-backtick form in step 6 and verify with `nssm get $svc AppParameters`. |
 | `missing required setting 'procedures_root'` | Server config lacks the procedures root | Add `procedures_root = "<absolute path>"` under `[general]`. |
-| `procedures root does not exist` | Typo or missing directory | Create the directory or correct `[general] procedures_root`. |
+| `procedures root does not exist` | Typo, missing directory, or offline share | Create the directory or correct `[general] procedures_root`. |
+| `PermissionError: [WinError 5]` on `\\...\procedures` | Service account lacks share/NTFS access | Grant `Change`/`Modify` to the NSSM account; mapped drives do not work for services. |
+| `could not write archived image` | Share full, offline, or no write access | Check free space and write permission on the procedures root. |
 | Cannot create the procedure folder/config | The service account cannot write under the procedures root | Give it write access to `<procedures-root>` and restart the server. |
+| `Unescaped '\' in a string` | Windows path in a double-quoted TOML string | Use single quotes or forward slashes; see [Windows paths in TOML](Configuration#windows-paths-in-toml). |
 | `Missing config section '[...]'` | A runtime TOML file is partial | Copy the full packaged config and edit the copy. |
-| `Permission denied` for `output` or `debug` | Relative paths under a read-only share | Set absolute writable paths in `[general.files]`. |
+| `Permission denied` for `output` or `debug` | Relative paths under a read-only or network share | Set absolute writable local paths in `[general.files]`. |
 | `Access is denied` during a Windows update | Jupyter, an IDE, or another process still uses the venv | Close it, then rerun the pip install. |
 | `--version` still shows the old version | pip skipped the reinstall or the service was not restarted | Reinstall with `--upgrade`, restart the service, and check again. |
 | `robot positions does not match ... images` | CSV names, patterns, or sorting | Check the CSV fourth column and `image_name_patterns`. |
 | Server starts, client times out | Firewall, bind address, or long fit | Check the endpoint, firewall, and `journalctl`; increase the client timeout if the fit is slow. |
+| `Ice.ConnectionLostException` while sending a full-resolution frame | The raw frame is larger than the server's default 1 MB Ice incoming-message limit | Start the server with `--message-size-max-kb 65536` (the default) or patch older servers to `Ice.initialize(["--Ice.MessageSizeMax=65536"])`, then restart the service. |
 | `Ice.ObjectNotExistException` | Wrong identity or proxy | Use `CalibrationPhenoseederIcing` and the printed endpoint. |
 | `Proxy does not implement CalibrationPhenoseederIcing` | Contract revision mismatch | Rebuild the client and server from the same `.ice` files and regenerate stubs. |
 | Very slow on the Pi | Refit after every observation | Lower `target_observations` for tests; see the optimization recommendations. |
@@ -1078,8 +1318,8 @@ with CalibrationIceClient.connect(proxy) as client:
 - [ ] Bind to `127.0.0.1` and use an SSH tunnel, or bind to `0.0.0.0` with a firewall allowlist for known client IPs.
 - [ ] Do not expose port 10000 to the Internet.
 - [ ] Run the service as a dedicated, least-privilege account.
-- [ ] Keep the calibration share read-only; write results to a local writable path.
-- [ ] Protect the service account password and the SMB credentials file.
+- [ ] Grant the service account write access only to the archive/procedures root and the local output/debug folders it needs.
+- [ ] Protect the service account password and any stored SMB credentials.
 - [ ] Keep the OS, Python dependencies, and ZeroC Ice patched.
 - [ ] Use read-only Git credentials for automatic updates.
 - [ ] Restrict who can push or move release tags; the updater executes code as

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from threading import RLock
@@ -71,6 +72,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         self._settings: Settings | None = None
         self._active_procedure_id: int | None = None
         self._session_has_data = False
+        self._session_finished = False
         self._nozzle_cache_key: tuple[int, int, int] | None = None
         self._nozzle_cache: np.ndarray | None = None
         self._error_cache_result: Any | None = None
@@ -121,6 +123,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
 
             image_array = array_from_image_data(image)
             self._session_has_data = True
+            self._session_finished = False
             if self._archive is not None:
                 self._archive.record(image_array, robot_position)
 
@@ -132,11 +135,11 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             self._remember_result(result)
 
     def isReady(self, current: Any = None) -> bool:
-        """Return the session readiness flag without forcing a final fit."""
+        """Return whether results are available without forcing a final fit."""
         with self._lock:
             if self._service is None:
                 return False
-            return bool(self._service.is_ready)
+            return bool(self._session_finished or self._service.is_ready)
 
     def getIntrinsic(self, current: Any = None) -> tuple[intrinsicParams, list[float]]:
         """Return the 3x3 intrinsic matrix and row-major one-sigma uncertainties."""
@@ -216,6 +219,54 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
                 z=float(nozzle[2]),
             )
 
+    def abort(self, current: Any = None) -> None:
+        """Abort the active calibration and discard its in-memory state.
+
+        Archived images and results stay on disk. Only the live service,
+        settings, procedure session, and caches are cleared so another
+        procedure can be selected. Calling ``abort`` without an active session
+        is a no-op.
+        """
+        with self._lock:
+            if self._archive is not None:
+                self._archive.close()
+            self._service = None
+            self._settings = None
+            self._archive = None
+            self._procedure_session = None
+            self._active_procedure_id = None
+            self._session_has_data = False
+            self._session_finished = False
+            self._nozzle_cache_key = None
+            self._nozzle_cache = None
+            self._error_cache_result = None
+            self._error_cache_value = None
+
+    def finish(self, current: Any = None) -> bool:
+        """Force a final fit and return whether a result is available.
+
+        Unlike the readiness stop policy, ``finish`` does not require the
+        configured target observation count. It fits all currently valid
+        observations and returns ``False`` when no result can be produced.
+        """
+        with self._lock:
+            if self._service is None:
+                return False
+            try:
+                result = self._service.finish()
+            except Exception as exc:
+                print(
+                    f"finish failed: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return False
+            if result is None:
+                return False
+            self._remember_result(result)
+            self._session_finished = True
+            return True
+
     def calibrate(self, *args: Any, **kwargs: Any) -> list[float]:
         """Legacy operation retained by the contract; no result is produced."""
         return []
@@ -268,6 +319,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         self._active_procedure_id = procedure_id
         self._procedure_session = profile
         self._session_has_data = False
+        self._session_finished = False
         self._nozzle_cache_key = None
         self._nozzle_cache = None
         self._error_cache_result = None
@@ -282,7 +334,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             return
         if self._service is None or not self._session_has_data:
             return
-        if self._service.is_ready:
+        if self._session_finished or self._service.is_ready:
             return
 
         raise RuntimeError(

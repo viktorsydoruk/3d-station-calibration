@@ -49,6 +49,13 @@ module Phenoseeder
 		//get optimal nozzle center
 		void getOptimalNozzlePosition(out Point nozzleCenter);
 
+		//abort the current running calibration and discard the data
+		void abort();
+
+		//inform the server that it should finish the current calibration
+		//returns when calculation is complete
+		bool finish();
+
 	};
 };
 

@@ -32,7 +32,7 @@ def _install_shutdown_handlers(communicator: Any) -> dict[int, Any]:
     """Turn SIGINT/SIGTERM/SIGBREAK into a clean Ice communicator shutdown."""
     previous: dict[int, Any] = {}
 
-    def request_shutdown(signum: int, frame: Any) -> None:
+    def request_shutdown(_signum: int, _frame: Any) -> None:
         communicator.shutdown()
 
     for name in ("SIGINT", "SIGTERM", "SIGBREAK"):

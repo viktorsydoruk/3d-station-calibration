@@ -89,7 +89,6 @@ __all__ = [
     "visualize_image_center_points",
     "visualize_radii",
     "visualize_sigmas",
-    "visualize_diff_new_old_center_points",
     "visualize_nozzle_and_home_pos_estimation",
     "visualize_scale_coef_estimation",
     "visualize_n_sigma_estimation",
@@ -169,7 +168,6 @@ from .support import (
 _PLOTTING_NAMES = {
     "apply_own_style_to_mpl",
     "visualize_debug_data",
-    "visualize_diff_new_old_center_points",
     "visualize_image_center_points",
     "visualize_n_sigma_estimation",
     "visualize_nozzle_and_home_pos_estimation",

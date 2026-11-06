@@ -131,6 +131,5 @@ def test_visualize_image_center_points_without_optional_overlays(
         n_distortion_coefs=0,
         debug_folder=tmp_path,
     )
-    plots.visualize_diff_new_old_center_points()
 
     assert (tmp_path / "center_points_00.png").is_file()

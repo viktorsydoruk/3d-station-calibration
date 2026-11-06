@@ -79,6 +79,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   file and atomic replacement.
 - The Ice server handles `SIGTERM` and `SIGBREAK` like `Ctrl+C`, closing the
   active archive and destroying the communicator cleanly.
+- Dead-code cleanup: removed the no-op `visualize_diff_new_old_center_points`
+  plotting export and renamed unused callback arguments and fit locals. No
+  numerical or runtime behavior changed.
 
 ### Fixed
 

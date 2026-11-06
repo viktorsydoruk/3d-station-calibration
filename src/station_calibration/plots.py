@@ -113,10 +113,6 @@ def visualize_sigmas(robot_positions: np.ndarray,
     plt.close()
 
 
-def visualize_diff_new_old_center_points():
-    pass
-
-
 def visualize_nozzle_and_home_pos_estimation(all_plots_params: dict,
                                              debug_folder: Path) -> None:
     visualize_scale_coef_estimation(debug_folder=debug_folder, **all_plots_params['scaling_visualization'])

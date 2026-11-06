@@ -82,7 +82,7 @@ class CalibrationIceClient:
     def __enter__(self) -> "CalibrationIceClient":
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, _exc_type, _exc_value, _traceback) -> None:
         self.close()
 
     def init(self,

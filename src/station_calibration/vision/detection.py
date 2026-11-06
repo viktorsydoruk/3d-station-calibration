@@ -301,7 +301,7 @@ def gaussian_fit(x: np.ndarray,
     sigma0 = (np.max(x) - np.min(x)) / 4
     p0 = [a0, x0, sigma0]
 
-    popt, pcov = curve_fit(gaussian_model, x, y, p0=p0)
+    popt, _pcov = curve_fit(gaussian_model, x, y, p0=p0)
     a, x0, sigma = popt
     return a, x0, sigma
 

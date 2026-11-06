@@ -289,30 +289,30 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
         debug_folder=debug_folder,
     )
 
-    sphere_centers = []
-    border_sigmas = []
-    radii = []
-    image_sizes = []
-    all_directions = []
+    sphere_centers_list: list[list[float]] = []
+    border_sigmas_list: list[float] = []
+    radii_list: list[float] = []
+    image_sizes_list: list[tuple[int, int]] = []
+    all_directions_list: list[int] = []
 
     for analysis in analyses:
-        image_sizes.append(analysis.image_shape)
-        all_directions.append(analysis.direction)
+        image_sizes_list.append(analysis.image_shape)
+        all_directions_list.append(analysis.direction)
 
         if analysis.observation is None:
-            sphere_centers.append([np.nan, np.nan])
-            border_sigmas.append(np.nan)
-            radii.append(np.nan)
+            sphere_centers_list.append([np.nan, np.nan])
+            border_sigmas_list.append(np.nan)
+            radii_list.append(np.nan)
         else:
-            sphere_centers.append([analysis.observation.x, analysis.observation.y])
-            border_sigmas.append(analysis.observation.sigma)
-            radii.append(analysis.observation.radius)
+            sphere_centers_list.append([analysis.observation.x, analysis.observation.y])
+            border_sigmas_list.append(analysis.observation.sigma)
+            radii_list.append(analysis.observation.radius)
 
-    sphere_centers = np.array(sphere_centers, dtype=np.float64)
-    border_sigmas = np.array(border_sigmas, dtype=np.float64)
-    radii = np.array(radii, dtype=np.float64)
-    image_sizes = np.array(image_sizes, dtype=np.float64)
-    all_directions = np.array(all_directions, dtype=np.int8)
+    sphere_centers = np.array(sphere_centers_list, dtype=np.float64)
+    border_sigmas = np.array(border_sigmas_list, dtype=np.float64)
+    radii = np.array(radii_list, dtype=np.float64)
+    image_sizes = np.array(image_sizes_list, dtype=np.float64)
+    all_directions = np.array(all_directions_list, dtype=np.int8)
 
     # filtering the data that has bad radius estimation
     filtering_data_by_radius(

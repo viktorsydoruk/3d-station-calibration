@@ -118,23 +118,23 @@ def get_forground_mask(image_gray: np.ndarray,
     forground_mask = image_gray > bg_thr
 
     open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    forground_mask = cv2.morphologyEx(
+    forground_mask_u8 = cv2.morphologyEx(
         forground_mask.astype(np.uint8),
         cv2.MORPH_OPEN,
         open_kernel,
         iterations=1
     )
 
-    cnts, _ = cv2.findContours(forground_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    cnts, _ = cv2.findContours(forground_mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if not cnts:
         return np.zeros_like(image_gray, dtype=bool)
 
     cnt = max(cnts, key=cv2.contourArea)
 
-    forground_mask[:] = 0
-    cv2.drawContours(forground_mask, [cnt], -1, 255, thickness=cv2.FILLED)
+    forground_mask_u8[:] = 0
+    cv2.drawContours(forground_mask_u8, [cnt], -1, 255, thickness=cv2.FILLED)
 
-    return forground_mask.astype(bool)
+    return forground_mask_u8.astype(bool)
 
 
 def smooth_1D_array(arr: np.ndarray,

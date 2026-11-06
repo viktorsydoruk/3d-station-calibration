@@ -19,7 +19,10 @@ class ObservationDataset(Protocol):
     observations: tuple[CalibrationObservation, ...]
     rejections: tuple[ObservationRejection, ...]
     image_size_xy: tuple[int, int]
-    apply_radius_filter: bool
+
+    @property
+    def apply_radius_filter(self) -> bool:
+        """Whether the session should apply radius filtering to these observations."""
 
 
 class ObservationSource(Protocol):

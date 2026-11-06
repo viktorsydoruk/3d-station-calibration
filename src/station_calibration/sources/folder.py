@@ -176,7 +176,7 @@ def _observations_from_rows(
         image_shape = _shape_from_row(image_sizes[index])
         if image_shape is None:
             continue
-        source = source_names[index] if source_names is not None else None
+        source = source_names[int(index)] if source_names is not None else None
         observations.append(
             _make_observation(
                 robot_position=robot_positions[index],

@@ -46,6 +46,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   the Ice adapter/client test suite.
 - Ruff linting, a formatter configuration, and pre-commit hooks for Python
   checks and common file hygiene.
+- Initial `mypy` checking for `src/station_calibration`, with generated Ice
+  stubs excluded, third-party imports tolerated, and a CI lint step. Stricter
+  per-module checks remain incremental.
 - Branch coverage reporting with a `90%` gate, published as `coverage.xml` by
   GitLab CI.
 - Coverage-driven tests for camera-model packing, fit validation, reporting

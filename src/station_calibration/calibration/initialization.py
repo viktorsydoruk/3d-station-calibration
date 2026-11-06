@@ -117,7 +117,7 @@ def extract_z_lines(robot_positions: np.ndarray,
     left_args = [0, 1, 2]
     left_args.remove(z_arg)
 
-    lines = []
+    lines: list[list[float]] = []
     left_robot_positions = np.copy(robot_positions)
     left_image_center_points = np.copy(image_center_points)
     while len(left_robot_positions) != 0:
@@ -130,15 +130,15 @@ def extract_z_lines(robot_positions: np.ndarray,
         left_robot_positions = np.delete(left_robot_positions, sel_args, axis=0)
         left_image_center_points = np.delete(left_image_center_points, sel_args, axis=0)
 
-    all_intersection_points = []
+    all_intersection_points: list[tuple[float, float]] = []
     for i in range(len(lines)):
         for j in range(i, len(lines)):
             int_point = intersect_lines(*lines[i], *lines[j])
             if int_point is not None and int_point[0] > 0 and int_point[1] > 0 and int_point[0] < 2500 and int_point[1] < 2000:
                 all_intersection_points.append(int_point)
 
-    all_intersection_points = np.array(all_intersection_points)
-    return np.mean(all_intersection_points, axis=0)
+    intersection_points = np.array(all_intersection_points)
+    return np.mean(intersection_points, axis=0)
 
 
 def make_initial_parameters(focal_length: float = 2000.0,

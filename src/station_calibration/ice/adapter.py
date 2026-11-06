@@ -76,7 +76,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
         self._nozzle_cache_key: tuple[int, int, int] | None = None
         self._nozzle_cache: np.ndarray | None = None
         self._error_cache_result: Any | None = None
-        self._error_cache_value: tuple[np.ndarray, ...] | None = None
+        self._error_cache_value: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None = None
         self._archive: SessionArchive | None = None
         self._procedure_session: ProcedureSession | None = None
 

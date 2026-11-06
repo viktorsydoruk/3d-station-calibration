@@ -28,7 +28,7 @@ from Phyto.Common import (  # noqa: E402
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Sized
 
 __all__ = [
     "array_from_image_data",
@@ -163,5 +163,5 @@ def _select_pixels(image: imageData) -> tuple[str, type[np.generic]]:
 
 
 def _is_populated(image: imageData, field: str) -> bool:
-    values: Iterable[object] = getattr(image, field)
+    values: Sized = getattr(image, field)
     return len(values) > 0

@@ -52,6 +52,7 @@ lint:
   script:
     - uv sync --frozen
     - uv run ruff check .
+    - uv run mypy
 
 test-ice:
   stage: test

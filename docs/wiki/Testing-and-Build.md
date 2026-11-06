@@ -66,6 +66,18 @@ uv run ruff format path\to\file.py
 uv run pre-commit run ruff-format --hook-stage manual
 ```
 
+## Static type checking
+
+`mypy` is configured in `pyproject.toml` for the `src/station_calibration`
+package. The generated Ice stubs are excluded, and third-party imports without
+stubs are ignored during this first stage. Untyped function bodies are checked,
+but the stricter `disallow_untyped_defs` family is intentionally deferred until
+the remaining modules are annotated:
+
+```powershell
+uv run mypy
+```
+
 ## Pre-commit
 
 Install the hooks once per checkout:
@@ -76,7 +88,8 @@ uv run pre-commit install
 
 On each commit, pre-commit runs `ruff check --fix`, TOML/YAML validation,
 trailing-whitespace cleanup, end-of-file fixing, and large-file checks. Generated
-Ice stubs are excluded. Run the hooks manually with:
+Ice stubs and the shared `ice/` Slice contracts are excluded. Run the hooks
+manually with:
 
 ```powershell
 uv run pre-commit run
@@ -146,7 +159,7 @@ unpacked sdist does not provide.
 
 - **test** — `uv sync --frozen`, `uv lock --check`, and `pytest` with branch
   coverage, publishing `coverage.xml` as an artifact;
-- **lint** — `uv sync --frozen` and `ruff check .`;
+- **lint** — `uv sync --frozen`, `ruff check .`, and `mypy`;
 - **test-ice** — installs ZeroC Ice from the official Debian repository and runs
   `tests/test_ice_adapter.py` with the system Python;
 - **build** — `uv build`, then install the wheel into the test environment,
@@ -244,5 +257,5 @@ uv sync --extra ice
 uv sync --extra notebooks
 ```
 
-The `dev` dependency group (`pre-commit`, `pytest`, `pytest-cov`, `ruff`, and
-`scipy-stubs`) is installed by `uv sync`.
+The `dev` dependency group (`mypy`, `pre-commit`, `pytest`, `pytest-cov`,
+`ruff`, and `scipy-stubs`) is installed by `uv sync`.

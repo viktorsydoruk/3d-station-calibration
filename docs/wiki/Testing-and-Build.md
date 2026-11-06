@@ -6,7 +6,10 @@
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The suite currently collects **145 tests** and runs without network access.
+The suite currently collects **185 tests** when the optional Ice package is
+installed. Without `zeroc-ice`, `test_ice_adapter.py` is skipped. The tests run
+without network access.
+
 `pytest` is configured in `pyproject.toml` with `testpaths = ["tests"]` and
 `pythonpath = ["src"]`.
 
@@ -21,8 +24,10 @@ The suite currently collects **145 tests** and runs without network access.
 | `test_image.py` | Background, sphere detection, blur sigma |
 | `test_metrics.py` | Uncertainty mapping and RMSE |
 | `test_storage.py` | Point cache and YAML round-trips |
+| `test_atomic.py` | Atomic result-file replacement and failure cleanup |
+| `test_lazy_imports.py` | CLI/plots import without loading Matplotlib |
 | `test_debug.py` | Debug image writing |
-| `test_ice_adapter.py` | Servant mapping, caches, loopback when Ice is installed |
+| `test_ice_adapter.py` | Servant mapping, caches, archive schema, shutdown, loopback when Ice is installed |
 
 `test_ice_adapter.py` is skipped when the optional `zeroc-ice` dependency is not
 installed.
@@ -89,6 +94,8 @@ unpacked sdist does not provide.
 `.gitlab-ci.yml` runs on every push:
 
 - **test** — `uv sync --frozen`, `uv lock --check`, and `pytest`;
+- **test-ice** — installs ZeroC Ice from the official Debian repository and runs
+  `tests/test_ice_adapter.py` with the system Python;
 - **build** — `uv build`, then install the wheel into the test environment and
   check `3dsc --version` and `3dsc-ice-server --version`;
 - **check** — `bash -n deploy/linux/3dsc-update`, compile the maintainer

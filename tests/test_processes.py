@@ -257,12 +257,31 @@ def test_store_calibration_writes_nozzle_home_position(tmp_path: Path) -> None:
         distortion_std=np.zeros(14),
         image_xy=(2448, 2048),
         output_folder=output_folder,
+        n_distortion_coefs=4,
+        rmse=0.25,
+        observation_count=10,
+        observations_used=9,
+        sphere_home_position=np.array([4.0, 5.0, 6.0]),
     )
 
     calibration = yaml.safe_load(
         (output_folder / "calibration_data.yaml").read_text(encoding="utf-8")
     )
+    assert calibration["schema_version"] == 1
     assert calibration["nozzle"]["home_position"] == nozzle_home_position.tolist()
+    camera = calibration["camera"]
+    assert camera["resolution"] == [2448, 2048]
+    assert camera["n_distortion_coefs"] == 4
+    assert camera["rmse"] == pytest.approx(0.25)
+    assert camera["observation_count"] == 10
+    assert camera["observations_used"] == 9
+    assert camera["sphere_home_position"] == [4.0, 5.0, 6.0]
+    assert set(camera["errors"]) == {
+        "intrinsic_std",
+        "rot_vec_std",
+        "tra_vec_std",
+        "distortion_std",
+    }
 
 
 def test_main_stores_nozzle_end_home_position(
@@ -367,10 +386,10 @@ def test_main_stores_nozzle_end_home_position(
     )
     monkeypatch.setattr(app_module, "store_calibration", fake_store_calibration)
 
-    app_module.main(tmp_path, debug=False)
+    app_module.main(tmp_path, debug=False, fit_every_n=5)
 
     assert captured["session"].added_observations == len(observations)
-    assert captured["fit_every_n"] == 1
+    assert captured["fit_every_n"] == 5
     assert captured["apply_radius_filter"] is False
     assert captured["partial_fits"] == 1
     np.testing.assert_allclose(

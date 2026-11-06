@@ -96,9 +96,9 @@ the point distribution.
 
 ### Fit time
 
-Folder mode refits after every observation (`step_size = 1`). For quick
-experiments build a session directly with `fit_every_n=None` and call `finish()`
-once, or use a larger `fit_every_n`.
+Folder and Ice modes refit according to `[analysis] fit_every_n` (default `1`).
+For quick experiments set `fit_every_n = 0` to fit only in `finish()`, or use a
+larger value to reduce intermediate fits.
 
 ### Weak parameters
 

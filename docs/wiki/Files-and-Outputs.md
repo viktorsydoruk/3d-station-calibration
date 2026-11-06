@@ -65,11 +65,14 @@ later tooling:
   --config "<procedures-root>\1\20261103_1542\config.toml"
 ```
 
-`calibration_result.yaml` contains the latest intrinsic matrix, extrinsic matrix,
-distortion coefficients, resolution, RMSE, and observation counts. It is updated
-whenever a fitted result is available. `session.yaml` records the procedure ID,
-the date/config/data paths, session start and end times, package version, and
-image count.
+`calibration_result.yaml` uses the same schema as the folder workflow's
+`output/calibration_data.yaml`: `schema_version`, `nozzle`, and `camera` at the
+top level, with the latest matrices, distortion coefficients, resolution, RMSE,
+and observation counts under `camera`. It is updated whenever a fitted result is
+available and is written atomically. The Ice archive has no nozzle measurement at
+write time, so `nozzle.home_position` and `camera.errors` are `null`; the folder
+workflow fills both. `session.yaml` records the procedure ID, the date/config/data
+paths, session start and end times, package version, and image count.
 
 ## Point cache
 
@@ -105,6 +108,7 @@ filter. Use `--no-load-stored-data` to re-analyze images and regenerate it.
 `output/calibration_data.yaml`:
 
 ```yaml
+schema_version: 1
 nozzle:
   home_position:
   - 12.345
@@ -157,6 +161,14 @@ camera:
   - 0.0
   - 0.0
   - 0.0
+  n_distortion_coefs: 4
+  rmse: 0.213
+  observation_count: 500
+  observations_used: 487
+  sphere_home_position:
+  - 15.2
+  - -38.7
+  - 80.9
   errors:
     intrinsic_std:
     - - dfx
@@ -186,6 +198,8 @@ Notes:
 - `rot_vec_std` and `tra_vec_std` each contain three one-sigma values.
 - `distortion_std` has 14 entries; inactive ones are zero.
 - The numbers above are illustrative; use the values from your own run.
+- Result YAML and `session.yaml` are written through a temporary file in the same
+  folder and atomically replaced, so a crash cannot leave a truncated document.
 
 ## Per-image debug images
 

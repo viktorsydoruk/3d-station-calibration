@@ -13,7 +13,7 @@ depend on the internal module layout.
 | Image analysis | `SphereObservation`, `ImageAnalysisResult`, `load_image`, `decode_image`, `split_image`, `analyze_image`, `analyze_image_array`, `analyze_image_bytes`, `analyze_images`, `get_sphere_centers_and_blur_sigmas`, `get_radius_outlier_mask`, `filtering_data_by_radius`, `adjust_image_center_points` |
 | Numerical pipeline | `get_calibration_data`, `get_3D_and_2D_data`, `print_calibration`, `get_calibration`, `calibrate_camera`, `check_distortion_monotonicity`, `back_projected_point`, `calculate_RMSE`, `calculate_calibration_errors` |
 | Robot/geometry | `find_robot_home_pos_shift`, `get_nozzle_end_home_position`, `find_proper_args_to_compare`, `fit_line_general_form`, `intersect_lines`, `calculate_errors` |
-| I/O | `load_robot_positions`, `search_images`, `store_all_points`, `load_all_points`, `store_calibration` |
+| I/O | `load_robot_positions`, `search_images`, `store_all_points`, `load_all_points`, `RESULT_SCHEMA_VERSION`, `calibration_document`, `store_calibration` |
 | Plotting | `visualize_*`, `apply_own_style_to_mpl` (lazy imports) |
 
 Plotting helpers are loaded on first access, so importing the package does not
@@ -42,12 +42,13 @@ print("home:", result.pos_home)
 observations, and returns a session. With `fit_every_n=None`, exactly one fit is
 performed by `finish()`.
 
-To mirror the CLI (an incremental fit after every observation), pass
-`fit_every_n=1`:
+To mirror the configured CLI cadence, pass `settings.fit_every_n`:
 
 ```python
-session = create_folder_session(settings, fit_every_n=1)
+session = create_folder_session(settings, fit_every_n=settings.fit_every_n)
 ```
+
+`settings.fit_every_n` is `None` when `[analysis] fit_every_n = 0`.
 
 ## Incremental service
 

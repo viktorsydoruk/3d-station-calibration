@@ -125,9 +125,10 @@ and a `data` folder.
 The servant starts uninitialized. Before `init`, `isReady()` and `finish()`
 return `false`, `abort()` is a no-op, and the data/getter operations raise a
 clear `RuntimeError`. Once initialized, the
-servant constructs a `CalibrationService` with `fit_every_n=1`,
-`apply_radius_filter=True`, and `load_stored_data=False`, so the server always
-analyzes newly arriving images.
+servant constructs a `CalibrationService` with the procedure's configured
+`[analysis] fit_every_n`, `apply_radius_filter=True`, and
+`load_stored_data=False`, so the server always analyzes newly arriving images.
+`fit_every_n=0` disables intermediate fits until `finish()`.
 
 ### `init` semantics
 
@@ -160,7 +161,7 @@ Retrieve the results before finishing if needed; the archive remains on disk.
 
 | Operation | Behavior |
 | --- | --- |
-| `finish()` | Force a final fit with all currently valid observations, ignoring the `target_observations` stop condition. Returns `true` when a result is available and `false` when no result can be produced. Writes `calibration_result.yaml`. A successful finish also makes `isReady()` return `true`. |
+| `finish()` | Force a final fit with all currently valid observations, ignoring the `target_observations` stop condition. Returns `true` when a result is available and `false` when no result can be produced. Writes `calibration_result.yaml` using the shared result schema; `nozzle.home_position` and `camera.errors` are `null` because the Ice archive does not compute them. A successful finish also makes `isReady()` return `true`. |
 | `abort()` | Close the active archive and discard the live service, settings, and session state. Archived images and results stay on disk. Before `init`, `abort()` is a no-op. |
 
 > To verify a new server build, call these operations only while no session is

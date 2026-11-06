@@ -1,7 +1,7 @@
 # configuration to the 3D station calibration
 [general]
-# whether to show debug information
-debug = true
+# whether to show debug information and write reporting plots
+debug = false
 # whether to store debug images
 store_debug_images = false
 # whether the Ice server archives each session with images, robot positions,
@@ -32,6 +32,9 @@ sort_image_names_by_mtime = true
 n_iterations = 3
 # maximum allowed outliers (0 - not allowed outlier detection, < 1 - part of number of points, >=1 - allowed number of outliers
 max_outliers = 0
+# refit after this many new valid observations; 0 fits only on an explicit
+# finish() call. Larger values reduce CPU use during long acquisitions.
+fit_every_n = 1
 
 [analysis.background]
 # fixed threshold value for the background (0 estimation will be done automatically based on 2 next params

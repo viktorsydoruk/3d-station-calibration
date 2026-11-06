@@ -26,6 +26,9 @@ session = CalibrationSession(
 | `apply_radius_filter` | `True` | Apply the 2.5σ radius filter before fitting |
 | `stop_policy` | from `Settings` | Readiness rule |
 
+The folder CLI and Ice server pass `settings.fit_every_n`; setting
+`[analysis] fit_every_n = 0` resolves to `None` and waits for `finish()`.
+
 If `target_observations` or `max_observations` is below `min_observations`,
 construction raises `ValueError`.
 

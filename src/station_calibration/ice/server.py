@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import argparse
+import signal
 from pathlib import Path
+from typing import Any
 
 from .. import __version__
 
@@ -24,6 +26,34 @@ DEFAULT_IDENTITY = "CalibrationPhenoseederIcing"
 # which exceeds Ice's 1 MB default incoming-message limit. Keep this comfortably
 # above the largest expected frame.
 DEFAULT_MESSAGE_SIZE_MAX_KB = 65536
+
+
+def _install_shutdown_handlers(communicator: Any) -> dict[int, Any]:
+    """Turn SIGINT/SIGTERM/SIGBREAK into a clean Ice communicator shutdown."""
+    previous: dict[int, Any] = {}
+
+    def request_shutdown(signum: int, frame: Any) -> None:
+        communicator.shutdown()
+
+    for name in ("SIGINT", "SIGTERM", "SIGBREAK"):
+        signum = getattr(signal, name, None)
+        if signum is None:
+            continue
+        try:
+            previous[signum] = signal.getsignal(signum)
+            signal.signal(signum, request_shutdown)
+        except (AttributeError, OSError, ValueError):
+            previous.pop(signum, None)
+    return previous
+
+
+def _restore_shutdown_handlers(previous: dict[int, Any]) -> None:
+    """Restore the handlers that were active before :func:`run_server`."""
+    for signum, handler in previous.items():
+        try:
+            signal.signal(signum, handler)
+        except (OSError, ValueError):
+            continue
 
 
 def run_server(config_file: str | Path,
@@ -58,6 +88,7 @@ def run_server(config_file: str | Path,
     communicator = Ice.initialize([
         f"--Ice.MessageSizeMax={int(message_size_max_kb)}",
     ])
+    shutdown_handlers: dict[int, Any] = {}
     try:
         adapter = communicator.createObjectAdapterWithEndpoints(
             "Calibration",
@@ -70,10 +101,12 @@ def run_server(config_file: str | Path,
         print(f"Identity: {identity}", flush=True)
         print(f"Procedures root: {procedures_root}", flush=True)
         print("Press Ctrl+C to stop.", flush=True)
+        shutdown_handlers = _install_shutdown_handlers(communicator)
         communicator.waitForShutdown()
     except KeyboardInterrupt:
         pass
     finally:
+        _restore_shutdown_handlers(shutdown_handlers)
         try:
             servant.close()
         finally:

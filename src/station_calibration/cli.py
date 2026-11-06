@@ -21,7 +21,6 @@ from .calibration import (
     print_calibration,
 )
 from .debug import DebugInfo
-from .plots import visualize_results
 from .robot import get_nozzle_end_home_position
 from .session import CalibrationSession
 from .settings import Settings
@@ -43,15 +42,15 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
 
     try:
         # Feed the folder observations one at a time into a single session. The
-        # session refits every ``step_size`` observations, mirroring the incremental
-        # Ice workflow; the guaranteed final fit happens after all images are added.
-        step_size = 1
+        # session refits every ``fit_every_n`` observations, mirroring the
+        # incremental Ice workflow; the guaranteed final fit happens after all
+        # images are added.
         source = FolderCalibrationSource(settings, print_debug)
         dataset = source.load()
         session = CalibrationSession(
             settings,
             print_debug,
-            fit_every_n=step_size,
+            fit_every_n=settings.fit_every_n,
             apply_radius_filter=dataset.apply_radius_filter,
         )
         for rejection in dataset.rejections:
@@ -135,9 +134,16 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
             distortion_std=distortion_std,
             image_xy=image_size_xy,
             output_folder=settings.output_folder,
+            n_distortion_coefs=n_dist_coef,
+            rmse=result.rmse,
+            observation_count=result.observation_count,
+            observations_used=result.n_used,
+            sphere_home_position=pos_home,
         )
 
         if settings.debug:
+            from .plots import visualize_results
+
             print_debug(f"Sphere center home position: {pos_home}, estimated sphere diameter: {sphere_diam_mm: 0.3f} mm")
             print_debug(f"Nozzle center home position: {nozzle_end_home_pos}")
 

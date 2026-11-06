@@ -1,17 +1,24 @@
 # SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
 # SPDX-License-Identifier: Apache-2.0
 
-"""Functions to visualize results"""
+"""Functions to visualize results."""
 
-import matplotlib as mpl
-import matplotlib.tri as tri
-import numpy as np
-from matplotlib import pyplot as plt
 from pathlib import Path
+
+import numpy as np
+
+
+def _pyplot():
+    """Import pyplot only when a plot is actually requested."""
+    import matplotlib.pyplot as plt
+
+    return plt
 
 
 def apply_own_style_to_mpl(font_size: float = 8) -> None:
     """Apply the shared Matplotlib style used by calibration plots."""
+    import matplotlib as mpl
+
     mpl.rcParams['font.size'] = font_size
     mpl.rcParams['text.color'] = '#68686C'
     mpl.rcParams['legend.fontsize'] = font_size
@@ -35,6 +42,7 @@ def visualize_image_center_points(center_points: np.ndarray,
                                   n_distortion_coefs: int,
                                   debug_folder: Path) -> None:
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     plt.scatter(center_points[:, 0], center_points[:, 1], c=sigmas)
     plt.colorbar()
@@ -69,6 +77,7 @@ def visualize_radii(robot_positions: np.ndarray,
     coords = np.dot(extrinsic_matrix[None, :3, :3], robot_positions[:, :, None])[0, 2, :, 0]
 
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     plt.plot(coords, radii, '.', label="R")
     plt.plot(coords, radii-sigmas, '.', label=r"R-$\sigma$")
@@ -92,6 +101,7 @@ def visualize_sigmas(robot_positions: np.ndarray,
     coords = np.dot(extrinsic_matrix[None, :3, :3], robot_positions[:, :, None])[0, 2, :, 0]
 
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     plt.plot(coords, sigmas, '.')
 
@@ -121,6 +131,7 @@ def visualize_scale_coef_estimation(z_pos: np.ndarray,
                                     fit_popt: np.ndarray,
                                     debug_folder: Path) -> None:
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     plt.scatter(z_pos, scale)
     x = np.linspace(np.min(z_pos), np.max(z_pos), 101)
@@ -139,6 +150,7 @@ def visualize_n_sigma_estimation(n_sigmas: np.ndarray,
                                  debug_folder: Path) -> None:
 
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     plt.plot(n_sigmas, std_radii)
 
@@ -157,6 +169,7 @@ def visualize_sphere_radius_estimation(z_pos: np.ndarray,
                                        n_sigma_est: float,
                                        debug_folder: Path) -> None:
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     plt.scatter(z_pos, 2*radii*coef_for_radii, label="diam")
     plt.scatter(z_pos, 2*(radii-n_sigma_est*sigmas)*coef_for_radii, label=rf"diam-{2*n_sigma_est:0.2f}$\sigma$")
@@ -181,6 +194,7 @@ def visualize_sphere_radius_vs_depth(z_pos: np.ndarray,
                                      n_sigma_est: float,
                                      debug_folder: Path) -> None:
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     est_radii = 2*(radii-n_sigma_est*sigmas)*coef_for_radii
     popt = np.polyfit(z_pos, est_radii, deg=2)
@@ -211,6 +225,7 @@ def visualize_residuals(residuals: np.ndarray,
                         debug_folder: Path,
                         image_size_xy: tuple[int, int]) -> None:
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     residuals_xy = residuals.reshape(-1, 2)
     distance = np.sqrt(np.sum(residuals_xy**2, axis=1))
@@ -236,6 +251,7 @@ def visualize_residuals(residuals: np.ndarray,
 def visualize_debug_data(data: list[list[str | float | np.floating | np.integer]],
                          debug_folder: Path) -> None:
     apply_own_style_to_mpl()
+    plt = _pyplot()
 
     names = data[0]
     values = np.array(data[1:], dtype=float).T

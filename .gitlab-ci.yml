@@ -42,6 +42,29 @@ test:
     - uv lock --check
     - uv run pytest -q
 
+test-ice:
+  stage: test
+  # Use the Debian system Python so the distro's zeroc-ice package is visible.
+  image: debian:trixie-slim
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends
+      ca-certificates git gnupg python3 python3-pip python3-venv wget
+      libgl1 libglib2.0-0t64 libsm6 libxext6 libxrender1
+    - wget https://download.zeroc.com/ice/3.8/debian13/ice-repo-3.8_1.0.0_all.deb
+      -O /tmp/ice-repo.deb
+    - dpkg -i /tmp/ice-repo.deb
+    - apt-get update
+    - apt-get install -y --no-install-recommends python3-zeroc-ice
+    - python3 -c "import Ice; print(Ice.stringVersion())"
+  script:
+    - python3 -m venv --system-site-packages .venv-ice
+    - .venv-ice/bin/python -m pip install --upgrade pip
+    - .venv-ice/bin/python -m pip install -e . pytest
+    - .venv-ice/bin/python -m pytest -q tests/test_ice_adapter.py
+
 build:
   stage: build
   script:

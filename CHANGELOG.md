@@ -38,6 +38,12 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   returns whether a result is available; `abort` discards the live session and
   allows another procedure to be selected. Archived session data remains on
   disk after `abort`.
+- `[analysis] fit_every_n` controls how often a running session refits; `0`
+  disables intermediate fits and waits for `finish()`.
+- A versioned, shared result document for the folder CLI and Ice archive, with
+  consistent `schema_version`, `nozzle`, and `camera` sections.
+- GitLab CI now installs ZeroC Ice from the official Debian repository and runs
+  the Ice adapter/client test suite.
 
 ### Changed
 
@@ -51,6 +57,13 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   `[general] procedures_root`. The positional server folder and
   `--stations-root` were removed. `3dsc-ice-client` now requires
   `--procedure-id`.
+- The packaged `debug` default is now `false`, keeping reporting optional.
+- Matplotlib is imported lazily, so the CLI and Ice server start without loading
+  the plotting stack.
+- Calibration result and session metadata YAML files are written via a temporary
+  file and atomic replacement.
+- The Ice server handles `SIGTERM` and `SIGBREAK` like `Ctrl+C`, closing the
+  active archive and destroying the communicator cleanly.
 
 ### Fixed
 

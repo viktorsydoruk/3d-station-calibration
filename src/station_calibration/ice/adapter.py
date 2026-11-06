@@ -293,7 +293,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             service = CalibrationService(
                 settings,
                 print_debug=self._print_debug or DebugInfo(settings.debug),
-                fit_every_n=1,
+                fit_every_n=settings.fit_every_n,
                 apply_radius_filter=True,
             )
         else:

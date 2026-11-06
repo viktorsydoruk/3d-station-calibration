@@ -60,6 +60,7 @@ class PossibleOptions(TypedDict, total=False):
     allowed_outliers: float
     target_observations: int
     max_observations: int | None
+    fit_every_n: int | None
 
 
 class Settings:
@@ -100,6 +101,7 @@ class Settings:
     allowed_outliers: float
     target_observations: int
     max_observations: int | None
+    fit_every_n: int | None
 
     def __init__(self,
                  folder_to_analyze: str | Path,
@@ -246,6 +248,7 @@ class Settings:
         self.allowed_outliers = float(self._get(
             analysis, "max_outliers", override="allowed_outliers"
         ))
+        fit_every_n = int(self._get(analysis, "fit_every_n", 1))
 
         if self.n_iterations < 1:
             raise ValueError(f"n_iterations must be at least 1, got {self.n_iterations}")
@@ -253,6 +256,11 @@ class Settings:
             raise ValueError(
                 f"allowed_outliers (max_outliers) must be non-negative, got {self.allowed_outliers}"
             )
+        if fit_every_n < 0:
+            raise ValueError(
+                f"fit_every_n must be non-negative, got {fit_every_n}"
+            )
+        self.fit_every_n = None if fit_every_n == 0 else fit_every_n
 
     def _init_background(self) -> None:
         bg = self._section("analysis", "background")

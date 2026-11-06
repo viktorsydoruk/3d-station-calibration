@@ -67,7 +67,7 @@ string if a path does.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `debug` | `true` | Print detailed progress and write reporting plots |
+| `debug` | `false` | Print detailed progress and write reporting plots |
 | `store_debug_images` | `false` | Also write a debug image for successful analyses |
 | `archive_sessions` | `true` | Archive each Ice session's images, robot positions, and latest result in `<date>/data` |
 | `load_stored_data` | `true` | Reuse the point cache when it exists |
@@ -98,6 +98,7 @@ Python attribute aliases differ where the TOML name is more descriptive:
 | --- | --- | --- |
 | `n_iterations` | `3` | Inner camera/home/centre adjustment iterations (must be ≥ 1) |
 | `max_outliers` | `0` | Outlier policy, see below (must be ≥ 0) |
+| `fit_every_n` | `1` | Refit after this many new valid observations; `0` disables intermediate fits and waits for `finish()` (must be ≥ 0) |
 
 `max_outliers` (Python: `allowed_outliers`):
 
@@ -105,6 +106,11 @@ Python attribute aliases differ where the TOML name is more descriptive:
 - `0 < x < 1` — at most `int(N * x)` removals, minimum one iteration.
 - `x >= 1` — at most `int(x)` removals.
 - Iterations are capped at `N - min_points + 1` so that enough points remain.
+
+`fit_every_n` controls how often a running session refits while observations are
+still arriving. The final `finish()` call always performs a fit, so larger values
+reduce CPU use during long acquisitions without changing the final result. The
+folder workflow and the Ice server both read this setting.
 
 ## `[analysis.background]`
 

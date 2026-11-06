@@ -78,6 +78,7 @@ and fit the cached observations directly.
 ```text
 src/station_calibration/
 ├─ cli.py                 folder workflow entry point
+├─ atomic.py              atomic text-file replacement
 ├─ settings.py            TOML-backed settings
 ├─ models.py              observations, rejections, fit results
 ├─ session.py             source-agnostic incremental calibration session
@@ -98,7 +99,7 @@ src/station_calibration/
 ├─ storage/
 │  ├─ inputs.py           robot CSV and image discovery
 │  ├─ points.py           point-cache serialization
-│  └─ results.py          calibration-result YAML
+│  └─ results.py          shared calibration-result schema and YAML
 ├─ processes.py           iterative calibration pipeline
 ├─ robot.py               robot geometry and nozzle home estimation
 ├─ support.py             line geometry and parameter uncertainty
@@ -121,7 +122,8 @@ For an incremental frontend, use `CalibrationService`:
 ```python
 from station_calibration import CalibrationService, Settings
 
-service = CalibrationService(Settings(analysis_folder))
+settings = Settings(analysis_folder)
+service = CalibrationService(settings, fit_every_n=settings.fit_every_n)
 service.add_image_bytes(image_bytes, robot_position)
 # or, for a frontend that already provides a NumPy image:
 service.add_image_array(image_array, robot_position)
@@ -194,7 +196,9 @@ from the procedure folder. With `archive_sessions = true` (the default), each
 session writes compressed TIFF frames at their source dtype and bit depth,
 `Calibration3DPositions.csv`, `calibration_result.yaml`, and `session.yaml`
 directly into `<date>/data`, so it can be re-analyzed with an updated fitting
-procedure later.
+procedure later. The result YAML uses the same versioned schema as the folder
+workflow; see
+[`docs/wiki/Files-and-Outputs.md`](docs/wiki/Files-and-Outputs.md).
 
 See `ice/README.md` for generation details and the wire type layout, and
 [`docs/wiki/Deployment.md`](docs/wiki/Deployment.md) for Windows/Raspberry Pi

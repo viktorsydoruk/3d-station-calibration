@@ -23,6 +23,8 @@ import numpy as np
 import yaml
 
 from .. import __version__
+from ..atomic import atomic_write_text
+from ..storage import calibration_document
 
 __all__ = ["SessionArchive"]
 
@@ -171,46 +173,43 @@ class SessionArchive:
         if key == self._last_result_key:
             return None
 
-        data = {
-            "session": {
-                "procedure_id": self.procedure_id,
-                "session_folder": str(self.session_folder),
-                "data_folder": str(self.data_folder),
-                "config_file": (
-                    str(self.config_file)
-                    if self.config_file is not None
-                    else None
-                ),
-                "started_at": _isoformat(self._started_at),
-                "package_version": __version__,
-                "image_count": self._image_index,
-                "csv_filename": self.csv_filename,
-            },
-            "camera": {
-                "model": "pinhole",
-                "resolution": [int(value) for value in result.image_size_xy],
-                "intrinsic_matrix": _array_list(result.intrinsic_matrix),
-                "extrinsic_matrix": _array_list(result.extrinsic_matrix),
-                "distortion_coefficients": _array_list(result.distortion),
-                "n_distortion_coefs": int(result.n_distortion_coefs),
-                "rmse": _optional_float(result, "rmse"),
-                "observation_count": int(
-                    getattr(result, "observation_count", 0)
-                ),
-                "observations_used": int(getattr(result, "n_used", 0)),
-                "sphere_home_position": _array_list(
-                    getattr(result, "pos_home", [])
-                ),
-            },
+        session_metadata = {
+            "procedure_id": self.procedure_id,
+            "session_folder": str(self.session_folder),
+            "data_folder": str(self.data_folder),
+            "config_file": (
+                str(self.config_file)
+                if self.config_file is not None
+                else None
+            ),
+            "started_at": _isoformat(self._started_at),
+            "package_version": __version__,
+            "image_count": self._image_index,
+            "csv_filename": self.csv_filename,
         }
+        rmse_value = getattr(result, "rmse", None)
+        data = calibration_document(
+            nozzle_home_position=None,
+            intrinsic_matrix=result.intrinsic_matrix,
+            extrinsic_matrix=result.extrinsic_matrix,
+            distortion_coefficients=result.distortion,
+            image_xy=result.image_size_xy,
+            n_distortion_coefs=int(result.n_distortion_coefs),
+            rmse=None if rmse_value is None else float(rmse_value),
+            observation_count=int(getattr(result, "observation_count", 0)),
+            observations_used=int(getattr(result, "n_used", 0)),
+            sphere_home_position=getattr(result, "pos_home", None),
+            session=session_metadata,
+        )
         path = self._session_dir / RESULT_FILENAME
-        with path.open("w", encoding="utf-8", newline="\n") as handle:
+        atomic_write_text(
+            path,
             yaml.safe_dump(
                 data,
-                handle,
                 sort_keys=False,
                 default_flow_style=False,
-            )
+            ),
+        )
         self._last_result_key = key
         return path
 
@@ -249,13 +248,14 @@ class SessionArchive:
             }
         }
         path = self._session_dir / METADATA_FILENAME
-        with path.open("w", encoding="utf-8", newline="\n") as handle:
+        atomic_write_text(
+            path,
             yaml.safe_dump(
                 data,
-                handle,
                 sort_keys=False,
                 default_flow_style=False,
-            )
+            ),
+        )
 
 
 def _tiff_array(image: np.ndarray) -> np.ndarray:
@@ -275,17 +275,6 @@ def _tiff_array(image: np.ndarray) -> np.ndarray:
     if array.ndim == 3 and array.shape[2] not in (1, 3, 4):
         raise ValueError(f"unsupported archived image shape: {array.shape}")
     return np.ascontiguousarray(array)
-
-
-def _array_list(value: Any) -> list[Any]:
-    return np.asarray(value, dtype=np.float64).tolist()
-
-
-def _optional_float(value: Any, name: str) -> float | None:
-    raw = getattr(value, name, None)
-    if raw is None:
-        return None
-    return float(raw)
 
 
 def _isoformat(value: datetime | None) -> str | None:

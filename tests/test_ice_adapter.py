@@ -328,7 +328,10 @@ def test_adapter_archives_session_images_csv_and_result(
     result = yaml.safe_load(
         (data / "calibration_result.yaml").read_text(encoding="utf-8")
     )
+    assert result["schema_version"] == 1
+    assert result["nozzle"]["home_position"] is None
     assert result["camera"]["intrinsic_matrix"][0][0] == pytest.approx(100.0)
+    assert "errors" in result["camera"]
     assert result["session"]["image_count"] == 1
     assert result["session"]["procedure_id"] == 1
     assert result["session"]["config_file"] == str(session / "config.toml")
@@ -680,6 +683,85 @@ def test_ice_server_raises_ice_message_size_limit(tmp_path, monkeypatch) -> None
         f"--Ice.MessageSizeMax={ice_server.DEFAULT_MESSAGE_SIZE_MAX_KB}"
         in captured["args"]
     )
+
+
+def test_ice_server_signal_handler_shuts_down_communicator(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "procedures"
+    root.mkdir()
+    config_file = tmp_path / "server.toml"
+    config_file.write_text(
+        f"[general]\nprocedures_root = '{root.as_posix()}'\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, bool] = {}
+    installed: dict[int, object] = {}
+
+    class FakeAdapter:
+        def add(self, servant, identity):
+            return None
+
+        def activate(self) -> None:
+            return None
+
+    class FakeCommunicator:
+        def createObjectAdapterWithEndpoints(self, name, endpoint):
+            return FakeAdapter()
+
+        def waitForShutdown(self) -> None:
+            captured["waited"] = True
+
+        def shutdown(self) -> None:
+            captured["shutdown"] = True
+
+        def destroy(self) -> None:
+            captured["destroyed"] = True
+
+    monkeypatch.setattr(Ice, "initialize", lambda args: FakeCommunicator())
+
+    def fake_getsignal(signum):
+        return "old-handler"
+
+    def fake_signal(signum, handler):
+        if callable(handler):
+            installed[signum] = handler
+        return "old-handler"
+
+    monkeypatch.setattr(ice_server.signal, "getsignal", fake_getsignal)
+    monkeypatch.setattr(ice_server.signal, "signal", fake_signal)
+
+    ice_server.run_server(config_file)
+
+    sigterm = ice_server.signal.SIGTERM
+    assert sigterm in installed
+    installed[sigterm](sigterm, None)
+
+    assert captured["waited"] is True
+    assert captured["shutdown"] is True
+    assert captured["destroyed"] is True
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [(7, 7), (0, None)],
+)
+def test_adapter_uses_configured_fit_every_n(
+    tmp_path,
+    configured,
+    expected,
+) -> None:
+    root = _make_procedure_root(tmp_path)
+    config_path = root / "1" / "config.toml"
+    config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    config["analysis"]["fit_every_n"] = configured
+    config_path.write_text(dumps_toml(config), encoding="utf-8")
+
+    servant = CalibrationIceServant(root)
+    servant.init(1)
+
+    assert servant._require_service().session.fit_every_n == expected
 
 
 def test_adapter_init_returns_date_folder_and_merged_config(

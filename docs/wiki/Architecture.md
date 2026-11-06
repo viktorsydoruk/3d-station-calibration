@@ -11,6 +11,7 @@ src/station_calibration/
 ├─ __init__.py              explicit public API, lazy plotting exports
 ├─ __main__.py              python -m station_calibration
 ├─ cli.py                   folder workflow and 3dsc entry point
+├─ atomic.py                atomic text-file replacement
 ├─ debug.py                 DebugInfo printing helper
 ├─ settings.py              TOML-backed settings and overrides
 ├─ stop.py                  StopPolicy / StopReason / StopStatus
@@ -38,7 +39,7 @@ src/station_calibration/
 ├─ storage/
 │  ├─ inputs.py             robot CSV and image discovery
 │  ├─ points.py             point-cache serialization
-│  └─ results.py            calibration YAML
+│  └─ results.py            shared calibration-result schema and YAML
 ├─ sources/
 │  ├─ base.py               ObservationSource / ObservationDataset protocols
 │  └─ folder.py             folder source adapter
@@ -61,7 +62,7 @@ src/station_calibration/
 | Calibration | `calibration/*` | Camera model, fit, uncertainties |
 | Pipeline | `processes.py`, `robot.py` | Iterative fit, home shift, nozzle home |
 | Session | `session.py`, `service.py` | Fit policy, observation storage, readiness |
-| I/O | `storage/*` | CSV, point cache, YAML |
+| I/O | `storage/*`, `atomic.py` | CSV, point cache, YAML, atomic replacement |
 | Frontends | `cli.py`, `sources/folder.py`, `ice/*` | Folder and Ice entry points |
 
 The important dependency rule is that `CalibrationSession` imports neither the
@@ -96,9 +97,10 @@ robot CSV ──► CalibrationObservation ────────────�
 ### Folder
 
 `cli.main()` uses `FolderCalibrationSource` to load either a point cache or all
-images. It feeds every observation into `CalibrationSession` with
-`fit_every_n = 1`, then calls `finish()` once. The final result is converted into
-the YAML file and optional plots.
+images. It feeds every observation into `CalibrationSession` with the configured
+`fit_every_n` (default `1`; `0` disables intermediate fits), then calls
+`finish()` once. The final result is converted into the YAML file and optional
+plots.
 
 ### Ice
 

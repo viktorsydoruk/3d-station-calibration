@@ -934,6 +934,9 @@ sudo -u 3dsc /opt/3dsc/.venv/bin/python -m pip install --upgrade /opt/3dsc/app
 sudo -u 3dsc /opt/3dsc/.venv/bin/3dsc-ice-server --version
 ```
 
+`systemctl stop` sends `SIGTERM`; the server treats it like `Ctrl+C`, closes the
+active session archive, and destroys the Ice communicator before exiting.
+
 If `deploy/linux/3dsc-ice-server.service` changed in the new revision, reinstall
 the unit now. Preserve any site-specific paths you edited:
 

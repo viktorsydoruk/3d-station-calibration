@@ -81,6 +81,8 @@ __all__ = [
     "search_images",
     "store_all_points",
     "load_all_points",
+    "RESULT_SCHEMA_VERSION",
+    "calibration_document",
     "store_calibration",
     # Reporting
     "apply_own_style_to_mpl",
@@ -115,6 +117,8 @@ from .models import (
     ObservationRejection,
 )
 from .storage import (
+    RESULT_SCHEMA_VERSION,
+    calibration_document,
     load_all_points,
     load_robot_positions,
     search_images,

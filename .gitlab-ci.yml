@@ -40,7 +40,18 @@ test:
     - uv --version
     - uv sync --frozen
     - uv lock --check
-    - uv run pytest -q
+    - uv run pytest -q --cov=station_calibration --cov-report=term-missing --cov-report=xml
+  coverage: '/^TOTAL\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+(?:\.\d+)?)%$/'
+  artifacts:
+    paths:
+      - coverage.xml
+    expire_in: 1 week
+
+lint:
+  stage: test
+  script:
+    - uv sync --frozen
+    - uv run ruff check .
 
 test-ice:
   stage: test
@@ -72,6 +83,7 @@ build:
     - rm -rf dist
     - uv build
     - uv pip install --no-deps --force-reinstall dist/*.whl
+    - .venv/bin/python -c "from pathlib import Path; import station_calibration; assert (Path(station_calibration.__file__).parent / 'py.typed').is_file()"
     - .venv/bin/3dsc --version
     - .venv/bin/3dsc-ice-server --version
   artifacts:

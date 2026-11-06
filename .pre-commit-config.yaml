@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 Forschungszentrum Jülich GmbH
+# SPDX-License-Identifier: Apache-2.0
+
+# Generated Ice stubs are intentionally excluded from all hooks.
+exclude: ^src/station_calibration/ice/generated/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.4
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      # Enabled manually until the repository-wide formatting pass lands:
+      #   uv run pre-commit run ruff-format --hook-stage manual --all-files
+      - id: ruff-format
+        stages: [manual]

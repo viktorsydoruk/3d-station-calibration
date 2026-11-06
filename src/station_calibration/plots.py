@@ -89,7 +89,7 @@ def visualize_radii(robot_positions: np.ndarray,
 
     plt.legend()
     plt.tight_layout()
-    plt.savefig(debug_folder / f'radii_in_depth.png')
+    plt.savefig(debug_folder / 'radii_in_depth.png')
     plt.close()
 
 
@@ -109,7 +109,7 @@ def visualize_sigmas(robot_positions: np.ndarray,
     plt.ylabel("bluring sigma (px)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'sigmas_in_depth.png')
+    plt.savefig(debug_folder / 'sigmas_in_depth.png')
     plt.close()
 
 
@@ -141,7 +141,7 @@ def visualize_scale_coef_estimation(z_pos: np.ndarray,
     plt.ylabel("scale (mm/px)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'scale_coef_estimation.png')
+    plt.savefig(debug_folder / 'scale_coef_estimation.png')
     plt.close()
 
 
@@ -158,7 +158,7 @@ def visualize_n_sigma_estimation(n_sigmas: np.ndarray,
     plt.ylabel("std_radii (px)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'n_sigma_estimation.png')
+    plt.savefig(debug_folder / 'n_sigma_estimation.png')
     plt.close()
 
 
@@ -183,7 +183,7 @@ def visualize_sphere_radius_estimation(z_pos: np.ndarray,
     plt.ylabel("sphere diameter (mm)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'sphere_diam_estimation.png')
+    plt.savefig(debug_folder / 'sphere_diam_estimation.png')
     plt.close()
 
 
@@ -206,7 +206,7 @@ def visualize_sphere_radius_vs_depth(z_pos: np.ndarray,
     plt.ylabel("sphere diameter (mm)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'sphere_diam_vs_depth.png')
+    plt.savefig(debug_folder / 'sphere_diam_vs_depth.png')
     plt.close()
 
     diam = np.polyval(popt, 0)
@@ -217,7 +217,7 @@ def visualize_sphere_radius_vs_depth(z_pos: np.ndarray,
     plt.ylabel("sphere diameter rel. error (%)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'sphere_diam_rel_error_vs_depth.png')
+    plt.savefig(debug_folder / 'sphere_diam_rel_error_vs_depth.png')
     plt.close()
 
 def visualize_residuals(residuals: np.ndarray,
@@ -259,21 +259,21 @@ def visualize_debug_data(data: list[list[str | float | np.floating | np.integer]
     plt.errorbar(values[0], values[2], yerr=values[3], label=names[2])
     plt.errorbar(values[0], values[4], yerr=values[5], label=names[4])
     plt.xlabel(f"{names[0]}")
-    plt.ylabel(f"Focal length (px)")
+    plt.ylabel("Focal length (px)")
 
     plt.legend()
     plt.tight_layout()
-    plt.savefig(debug_folder / f'focal length vs number of points.png')
+    plt.savefig(debug_folder / 'focal length vs number of points.png')
     plt.close()
 
     plt.errorbar(values[1], values[2], yerr=values[3], label=names[2])
     plt.errorbar(values[1], values[4], yerr=values[5], label=names[4])
     plt.xlabel(f"{names[1]}")
-    plt.ylabel(f"Focal length (px)")
+    plt.ylabel("Focal length (px)")
 
     plt.legend()
     plt.tight_layout()
-    plt.savefig(debug_folder / f'focal length vs left number of points.png')
+    plt.savefig(debug_folder / 'focal length vs left number of points.png')
     plt.close()
 
     plt.errorbar(values[0], values[6], yerr=values[7], label=names[6])
@@ -281,7 +281,7 @@ def visualize_debug_data(data: list[list[str | float | np.floating | np.integer]
     plt.ylabel(f"{names[6]} (mm)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'camera distance vs number of points.png')
+    plt.savefig(debug_folder / 'camera distance vs number of points.png')
     plt.close()
 
     plt.errorbar(values[1], values[6], yerr=values[7], label=names[6])
@@ -289,7 +289,7 @@ def visualize_debug_data(data: list[list[str | float | np.floating | np.integer]
     plt.ylabel(f"{names[6]} (mm)")
 
     plt.tight_layout()
-    plt.savefig(debug_folder / f'camera distance vs left number of points.png')
+    plt.savefig(debug_folder / 'camera distance vs left number of points.png')
     plt.close()
 
 
@@ -300,7 +300,7 @@ def visualize_debug_data(data: list[list[str | float | np.floating | np.integer]
 
     plt.legend()
     plt.tight_layout()
-    plt.savefig(debug_folder / f'RMSE vs number of points.png')
+    plt.savefig(debug_folder / 'RMSE vs number of points.png')
     plt.close()
 
 

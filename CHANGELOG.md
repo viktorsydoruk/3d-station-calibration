@@ -44,6 +44,14 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   consistent `schema_version`, `nozzle`, and `camera` sections.
 - GitLab CI now installs ZeroC Ice from the official Debian repository and runs
   the Ice adapter/client test suite.
+- Ruff linting, a formatter configuration, and pre-commit hooks for Python
+  checks and common file hygiene.
+- Branch coverage reporting with a baseline gate, published as `coverage.xml`
+  by GitLab CI.
+- A PEP 561 `py.typed` marker so downstream type checkers use the package's
+  inline annotations.
+- A GitLab CI lint job and updated contributor documentation for the new
+  tooling.
 
 ### Changed
 

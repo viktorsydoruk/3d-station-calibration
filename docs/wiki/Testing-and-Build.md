@@ -13,6 +13,15 @@ without network access.
 `pytest` is configured in `pyproject.toml` with `testpaths = ["tests"]` and
 `pythonpath = ["src"]`.
 
+Run the suite with branch coverage and a per-file missing-line report:
+
+```powershell
+uv run pytest -q --cov=station_calibration --cov-report=term-missing
+```
+
+Coverage omits the generated Ice stubs and currently enforces a `70%` floor.
+The generated `coverage.xml` is published by CI as an artifact.
+
 | Test module | Coverage |
 | --- | --- |
 | `test_settings.py` | Defaults, overrides, path resolution, validation |
@@ -32,6 +41,41 @@ without network access.
 `test_ice_adapter.py` is skipped when the optional `zeroc-ice` dependency is not
 installed.
 
+## Linting and formatting
+
+Ruff is configured in `pyproject.toml` and excludes the generated Ice stubs:
+
+```powershell
+uv run ruff check .
+uv run ruff check --fix .
+```
+
+The formatter uses the existing 120-character line length and preserves the
+current quote style. A repository-wide formatting pass is intentionally deferred
+so that this baseline stays reviewable. Until that pass lands, format touched
+files directly or through the manual pre-commit hook:
+
+```powershell
+uv run ruff format path\to\file.py
+uv run pre-commit run ruff-format --hook-stage manual
+```
+
+## Pre-commit
+
+Install the hooks once per checkout:
+
+```powershell
+uv run pre-commit install
+```
+
+On each commit, pre-commit runs `ruff check --fix`, TOML/YAML validation,
+trailing-whitespace cleanup, end-of-file fixing, and large-file checks. Generated
+Ice stubs are excluded. Run the hooks manually with:
+
+```powershell
+uv run pre-commit run
+```
+
 ## Lock file
 
 ```powershell
@@ -39,7 +83,7 @@ uv lock --check
 ```
 
 Verifies that `uv.lock` matches `pyproject.toml`. The repository currently locks
-52 packages.
+63 packages.
 
 > The project version is generated from Git, so it is not stored in `uv.lock`.
 > Run `uv lock` when dependencies or build requirements change; version changes
@@ -62,7 +106,8 @@ dist/3dstationcalibration-<version>.tar.gz
 
 ### Wheel contents
 
-- the `station_calibration` package, including `resources/config.toml`;
+- the `station_calibration` package, including `resources/config.toml` and the
+  PEP 561 `py.typed` marker;
 - the Ice adapter, server, client, and generated stubs;
 - `LICENSE` and `THIRD_PARTY_NOTICES.md` as license files.
 
@@ -93,11 +138,14 @@ unpacked sdist does not provide.
 
 `.gitlab-ci.yml` runs on every push:
 
-- **test** — `uv sync --frozen`, `uv lock --check`, and `pytest`;
+- **test** — `uv sync --frozen`, `uv lock --check`, and `pytest` with branch
+  coverage, publishing `coverage.xml` as an artifact;
+- **lint** — `uv sync --frozen` and `ruff check .`;
 - **test-ice** — installs ZeroC Ice from the official Debian repository and runs
   `tests/test_ice_adapter.py` with the system Python;
-- **build** — `uv build`, then install the wheel into the test environment and
-  check `3dsc --version` and `3dsc-ice-server --version`;
+- **build** — `uv build`, then install the wheel into the test environment,
+  verify the packaged `py.typed` marker, and check `3dsc --version` and
+  `3dsc-ice-server --version`;
 - **check** — `bash -n deploy/linux/3dsc-update`, compile the maintainer
   scripts, and parse both Windows PowerShell scripts with
   `scripts/check-powershell.ps1`.
@@ -190,4 +238,5 @@ uv sync --extra ice
 uv sync --extra notebooks
 ```
 
-The `dev` dependency group (`pytest`, `scipy-stubs`) is installed by `uv sync`.
+The `dev` dependency group (`pre-commit`, `pytest`, `pytest-cov`, `ruff`, and
+`scipy-stubs`) is installed by `uv sync`.

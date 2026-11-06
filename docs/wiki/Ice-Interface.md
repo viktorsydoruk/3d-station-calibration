@@ -164,6 +164,10 @@ although the archive remains on disk.
 | `finish()` | Force a final fit with all currently valid observations, ignoring the `target_observations` stop condition. Returns `true` when a result is available and `false` when no result can be produced. Writes `calibration_result.yaml`. A successful finish also makes `isReady()` return `true`. |
 | `abort()` | Close the active archive and discard the live service, settings, and session state. Archived images and results stay on disk. Before `init`, `abort()` is a no-op. |
 
+> To verify a new server build, call these operations only while no session is
+> active. Before `init()`, `finish()` returns `false` and `abort()` is a no-op.
+> On an active session they finalize or discard it.
+
 Adding data after a successful `finish()` reopens the session: `isReady()` falls
 back to the normal stop policy until `finish()` is called again. Re-selecting the
 same procedure still resets it and starts a new date folder.

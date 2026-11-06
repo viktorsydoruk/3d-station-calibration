@@ -1072,6 +1072,21 @@ Get-ScheduledTaskInfo -TaskName "3DSC-IceServer-Update"
 Get-Content C:\ProgramData\3DSC\logs\update.log -Tail 50
 ```
 
+A successful run ends with `Update complete: ...` and `LastTaskResult = 0`.
+Verify the installed build and endpoint independently:
+
+```powershell
+C:\3DSC\.venv\Scripts\3dsc-ice-server.exe --version
+Get-Service 3DSC-IceServer
+
+$healthPort = 30020  # use the configured -HealthPort
+Get-NetTCPConnection -LocalPort $healthPort -State Listen
+```
+
+`hatch-vcs` normalizes the calendar tag for PEP 440: tag `v2026.11.06.0`
+installs as package version `2026.11.6.0`. Compare the tag and commit in
+`update.log` with `--version`; do not expect the strings to be identical.
+
 Disable automatic updates:
 
 ```powershell
@@ -1096,8 +1111,9 @@ installing it. Add `-AllowLightweightTags` only if the repository deliberately
 uses lightweight tags.
 
 By default the scheduled task runs as `SYSTEM`. For a private repository,
-configure a read-only deploy key for that account, or register the task under the
-account that owns the checkout:
+configure read-only Git credentials for that account (an HTTPS deploy token or
+an SSH deploy key), or register the task under the account that owns the
+checkout:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass `
@@ -1109,6 +1125,113 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 The helper prompts for that account's password and stores it in Task Scheduler.
 The account needs read/write access to `C:\3DSC\app` and `C:\3DSC\.venv`, plus
 read-only Git credentials for the repository.
+
+#### Git credentials for the scheduled task
+
+The update task and the Ice service can run as different accounts. The NSSM
+service account is only used at runtime; the scheduled task runs `git` and `pip`
+as its own account, `SYSTEM` by default. `SYSTEM` does not use the interactive
+user's Git Credential Manager store, so an HTTPS checkout can fail with:
+
+```text
+fatal: could not read Username for 'https://gitlab.fz-juelich.de': terminal prompts disabled
+```
+
+The updater sets `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=Never`, so it
+fails immediately instead of opening a credential prompt. Check both accounts
+instead of assuming they are the same:
+
+```powershell
+Get-CimInstance Win32_Service -Filter "Name='3DSC-IceServer'" |
+  Select-Object Name, StartName
+
+(Get-ScheduledTask -TaskName "3DSC-IceServer-Update").Principal |
+  Format-List UserId, LogonType
+```
+
+Grant the credential file to the account that actually runs `git`, not to the
+service account.
+
+**HTTPS deploy token**
+
+Create a GitLab deploy token with the `read_repository` scope. URL-encode
+characters such as `@`, `:`, `/`, and `%` if they occur in the token username or
+value. Write it to a credential file:
+
+```powershell
+$tokenUser = "REPLACE_WITH_DEPLOY_TOKEN_USERNAME"
+$token     = "REPLACE_WITH_DEPLOY_TOKEN"
+
+Set-Content -LiteralPath C:\3DSC\.git-credentials `
+  -Value "https://${tokenUser}:${token}@gitlab.fz-juelich.de" `
+  -NoNewline -Encoding ascii
+```
+
+Restrict the file to `SYSTEM` and administrators. Use well-known SIDs instead of
+localized group names such as `Administrators` or `Administratoren`:
+
+```powershell
+icacls C:\3DSC\.git-credentials /inheritance:r
+icacls C:\3DSC\.git-credentials /grant:r "*S-1-5-18:(R)" "*S-1-5-32-544:(F)"
+```
+
+`S-1-5-18` is `SYSTEM`; `S-1-5-32-544` is the built-in Administrators group. A
+UAC-filtered administrator token does not receive the Administrators grant
+automatically, so run the interactive fetch test from an elevated PowerShell or
+grant your own account temporary read access. If the task is registered with
+`-RunAs`, grant that exact account read access too:
+
+```powershell
+icacls C:\3DSC\.git-credentials /grant:r "DOMAIN\svc-3dsc:(R)"
+```
+
+Use the real machine or domain name from `StartName`/`UserId`. A typo such as
+`W2W8` instead of `W2K8` produces
+`Zuordnungen von Kontennamen und Sicherheitskennungen wurden nicht durchgeführt`
+(`account name and security ID mappings were not performed`).
+
+Configure the checkout to use the file and reset inherited helpers:
+
+```powershell
+Set-Location C:\3DSC\app
+
+# The final "" is intentional. cmd.exe preserves the empty argument.
+cmd /c "git config --local --replace-all credential.helper """
+
+git config --local --add credential.helper "store --file=C:/3DSC/.git-credentials"
+git config --local --get-all credential.helper
+```
+
+Windows PowerShell 5.1 drops an empty `""` argument when it calls a native
+program. Running `git config --local --replace-all credential.helper ""`
+directly fails with `wrong number of arguments` or leaves the inherited helper
+active. The `cmd.exe` form above stores an empty first entry.
+
+The output must contain an empty line before the `store` entry:
+
+```text
+
+store --file=C:/3DSC/.git-credentials
+```
+
+The empty entry resets inherited helpers, including Git Credential Manager. If
+it is missing, `git fetch` can still call the interactive helper first and fail
+with `terminal prompts disabled`.
+
+Test the non-interactive path before relying on the schedule:
+
+```powershell
+$env:GIT_TERMINAL_PROMPT = "0"
+git fetch --tags --prune --prune-tags origin
+```
+
+Then start the scheduled task and inspect
+`C:\ProgramData\3DSC\logs\update.log`. The task itself is the definitive test
+because it runs under its own account, not your interactive PowerShell session.
+
+Protect the credential file and rotate the token when necessary. Use a
+read-only deploy token; do not store a personal access token with write access on
+the server.
 
 If the installation does not use the default paths, pass the same `-AppDir`,
 `-VenvDir`, `-ServiceName`, `-HealthHost`, `-HealthPort`, and `-TagPattern`
@@ -1237,7 +1360,13 @@ systemctl list-timers 3dsc-update.timer
 | --- | --- | --- |
 | Task or timer does not run | Not enabled, or the scheduled time is outside the maintenance window | Check `Get-ScheduledTaskInfo` or `systemctl list-timers 3dsc-update.timer`. |
 | `Git working tree is not clean` | Local edits or copied files inside the checkout | Commit, stash, or remove them; keep data and configuration outside the checkout. |
-| `git fetch` fails or asks for credentials | Task account cannot reach the repository | Configure a read-only deploy key for `SYSTEM`/`3dsc` and test the fetch manually. |
+| `git fetch` fails or asks for credentials | Task account cannot reach the repository | Configure a read-only deploy token or key for `SYSTEM`/`3dsc` and test the fetch manually. |
+| `fatal: could not read Username for 'https://...': terminal prompts disabled` | The task account has no non-interactive Git credentials, or the inherited Credential Manager helper still runs first | Configure the credential file and the empty `credential.helper` reset in [Git credentials for the scheduled task](#git-credentials-for-the-scheduled-task), then test with `GIT_TERMINAL_PROMPT=0`. |
+| `git config ... credential.helper ""` reports `wrong number of arguments` | Windows PowerShell 5.1 dropped the empty argument | Use the `cmd.exe` form in [Git credentials for the scheduled task](#git-credentials-for-the-scheduled-task), then verify with `git config --local --get-all credential.helper`. |
+| `icacls` reports `Administrators: ... mappings were not performed` | Localized Windows group name | Use the SID `*S-1-5-32-544` for Administrators. |
+| `icacls` reports `<account>: ... mappings were not performed` | Wrong machine, domain, or account name | Read the exact `StartName` from the service and `UserId` from the scheduled task, then use that value. |
+| `Zuordnungen von Kontennamen und Sicherheitskennungen wurden nicht durchgeführt` | German Windows: localized group name or wrong account | Use `*S-1-5-32-544` for Administrators and the exact account from `StartName`/`UserId`. |
+| `LastTaskResult` is not `0` after an update | The updater failed before or after the health check | Read `C:\ProgramData\3DSC\logs\update.log` and the rows above; the task returns the updater's exit code. |
 | Windows update rolls back with `Access is denied` | Jupyter, an IDE, or a debugger still locks the venv | Close those processes before the scheduled maintenance window. |
 | Update rolled back after the health check | Wrong port, bind address, or server failed to start | Match `HealthHost`/`HealthPort` to the endpoint and inspect the server log/journal. |
 | `No calendar-version release tags ... match 'v[0-9]*'` | No CalVer tags were fetched | Create and push a release tag with `scripts/release.py`, then run `git fetch --tags`. |
@@ -1250,6 +1379,10 @@ On a Windows client, install the project with the Ice extra:
 ```powershell
 python -m pip install -e ".[ice]"
 ```
+
+> Install the client from the same release tag as the server. `finish()` and
+> `abort()` require both the new server build and the regenerated client stubs;
+> an older client package will not expose them.
 
 Test with the one-image CLI:
 

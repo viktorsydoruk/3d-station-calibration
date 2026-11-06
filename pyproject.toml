@@ -110,6 +110,8 @@ pretty = true
 branch = true
 source = ["station_calibration"]
 omit = [
+    # The optional Ice transport is exercised in the dedicated test-ice job.
+    "*/station_calibration/ice/*.py",
     "*/station_calibration/ice/generated/*",
 ]
 

@@ -12,6 +12,8 @@ import numpy as np
 import pytest
 
 from station_calibration.storage import (
+    RESULT_SCHEMA_VERSION,
+    calibration_document,
     load_all_points,
     load_robot_positions,
     search_images,
@@ -135,3 +137,34 @@ def test_search_images_uses_names_and_modified_time(tmp_path: Path) -> None:
 
     named = search_images(tmp_path, ["missing.tif", "first.tif"])
     assert named == [tmp_path / "missing.tif", first]
+
+
+def test_calibration_document_includes_optional_session_metadata() -> None:
+    document = calibration_document(
+        nozzle_home_position=np.array([1.0, 2.0, 3.0]),
+        intrinsic_matrix=np.eye(3),
+        extrinsic_matrix=np.eye(4),
+        distortion_coefficients=np.zeros(5),
+        image_xy=(100, 200),
+        n_distortion_coefs=5,
+        rmse=0.25,
+        observation_count=10,
+        observations_used=8,
+        sphere_home_position=np.array([4.0, 5.0, 6.0]),
+        errors={"intrinsic_std": np.eye(3)},
+        session={"procedure_id": 7},
+    )
+
+    assert document["schema_version"] == RESULT_SCHEMA_VERSION
+    assert document["session"] == {"procedure_id": 7}
+    assert document["nozzle"]["home_position"] == pytest.approx([1.0, 2.0, 3.0])
+    assert document["camera"]["resolution"] == [100, 200]
+    assert document["camera"]["rmse"] == pytest.approx(0.25)
+    assert document["camera"]["observations_used"] == 8
+    assert document["camera"]["sphere_home_position"] == pytest.approx(
+        [4.0, 5.0, 6.0]
+    )
+    np.testing.assert_allclose(
+        document["camera"]["errors"]["intrinsic_std"],
+        np.eye(3).tolist(),
+    )

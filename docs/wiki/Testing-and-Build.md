@@ -19,8 +19,10 @@ Run the suite with branch coverage and a per-file missing-line report:
 uv run pytest -q --cov=station_calibration --cov-report=term-missing
 ```
 
-Coverage omits the generated Ice stubs and currently enforces a `90%` floor.
-The generated `coverage.xml` is published by CI as an artifact.
+Coverage omits the optional Ice transport and generated Ice stubs, and currently
+enforces a `90%` floor. Ice behavior is exercised separately by the `test-ice`
+job because `zeroc-ice` is an optional dependency. The generated `coverage.xml`
+is published by CI as an artifact.
 
 | Test module | Coverage |
 | --- | --- |

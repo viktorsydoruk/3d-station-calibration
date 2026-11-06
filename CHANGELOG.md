@@ -49,8 +49,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - Initial `mypy` checking for `src/station_calibration`, with generated Ice
   stubs excluded, third-party imports tolerated, and a CI lint step. Stricter
   per-module checks remain incremental.
-- Branch coverage reporting with a `90%` gate, published as `coverage.xml` by
-  GitLab CI.
+- Branch coverage reporting with a `90%` gate, excluding the optional Ice
+  transport, published as `coverage.xml` by GitLab CI. Ice tests run in the
+  separate `test-ice` job.
 - Coverage-driven tests for camera-model packing, fit validation, reporting
   plots, robot geometry, image/storage edge cases, CLI parsing, and the Ice wire
   format.

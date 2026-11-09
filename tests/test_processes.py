@@ -699,11 +699,14 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
     )
     assert intrinsic[0, 2] == 1224.0
     assert intrinsic[1, 2] == 1024.0
+    # tx and ty are essentially zero, so only atol protects them. Different
+    # BLAS/LAPACK implementations move the optimum by a few 1e-8 mm; keep the
+    # check at the nanometre scale without making it platform-dependent.
     np.testing.assert_allclose(
         extrinsic[:3, 3],
         [-1.243445171204292e-04, 4.525225150326526e-04, 7.353737262475748e01],
         rtol=1e-5,
-        atol=1e-8,
+        atol=1e-6,
     )
     # The rational coefficients are highly correlated, so different BLAS/LAPACK
     # implementations move the least-squares optimum slightly. Keep this check
@@ -776,11 +779,12 @@ def test_stored_point_cloud_regression_without_distortion(tmp_path: Path) -> Non
     )
     assert intrinsic[0, 2] == 1224.0
     assert intrinsic[1, 2] == 1024.0
+    # As above, tx and ty are essentially zero; use a nanometre-scale floor.
     np.testing.assert_allclose(
         extrinsic[:3, 3],
         [-4.78315063e-05, 1.17921331e-05, 7.38537308e01],
         rtol=1e-5,
-        atol=1e-8,
+        atol=1e-6,
     )
     np.testing.assert_allclose(distortion, np.zeros(14))
     assert rmse == pytest.approx(4.433681338406652, rel=1e-6)

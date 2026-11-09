@@ -62,6 +62,9 @@ sphere_center_to_nozzle_part = 0.7
 min_bg_pixels_on_edges = 5
 # border thickness of rings on edge of sphere to average to estimate bluring sigma
 blur_est_border_thickness = 2
+# refine the sphere boundary to the 50 % intensity crossing instead of the
+# binary mask pixel; removes the blur-dependent radius bias
+subpixel_edges = false
 
 [analysis.fit]
 # whether to fix principal point of the camera

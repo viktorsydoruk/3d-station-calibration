@@ -218,12 +218,130 @@ def fit_circle(x: np.ndarray,
     return x_c, y_c, R
 
 
+def _first_upward_crossing(profile: np.ndarray,
+                           level: float) -> float | None:
+    """
+        Locate the first upward crossing of ``level`` along a 1D profile.
+
+        The profile must be ordered from the outside of the object towards its
+        interior.  The returned value is a fractional index: ``k - 1 + t``
+        means that the crossing lies between samples ``k - 1`` and ``k``.
+    """
+    if profile.size < 2:
+        return None
+    above = profile >= level
+    # The crossing must be inside the window, so the first sample has to be
+    # below the level and a later one has to reach it.
+    if above[0] or not np.any(above):
+        return None
+    k = int(np.argmax(above))
+    low = float(profile[k - 1])
+    high = float(profile[k])
+    if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+        return None
+    fraction = (level - low) / (high - low)
+    return float(k - 1 + np.clip(fraction, 0.0, 1.0))
+
+
+def _sample_radial_profiles(image_gray: np.ndarray,
+                            x_c: float,
+                            y_c: float,
+                            angles: np.ndarray,
+                            radii: np.ndarray,
+                            ) -> np.ndarray:
+    """Sample image intensity along radial profiles (angles x radii)."""
+    cos_a = np.cos(angles)[:, None]
+    sin_a = np.sin(angles)[:, None]
+    map_x = (x_c + radii[None, :] * cos_a).astype(np.float32)
+    map_y = (y_c + radii[None, :] * sin_a).astype(np.float32)
+    return cv2.remap(
+        np.asarray(image_gray, dtype=np.float32),
+        map_x,
+        map_y,
+        interpolation=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+
+
+def _subpixel_radial_points(image_gray: np.ndarray,
+                            x_c: float,
+                            y_c: float,
+                            radius: float,
+                            direction: int,
+                            sphere_center_to_nozzle_part: float,
+                            search_px: int | None = None,
+                            n_rays: int = 360,
+                            ) -> tuple[np.ndarray, np.ndarray]:
+    """
+        Locate sphere boundary points at the 50 % radial intensity crossing.
+
+        Rays are sampled from the rough circle outwards to inwards, so every
+        profile crosses the edge normally. This avoids the noisy, nearly
+        horizontal rows at the top and bottom of a row-wise scan. The local
+        background and object intensity are estimated on each ray, which also
+        handles a smooth illumination gradient across the sphere.
+    """
+    search = max(4, int(0.2 * radius)) if search_px is None else int(search_px)
+    n_samples = 2 * search + 1
+    radii = np.linspace(radius + search, radius - search, n_samples)
+
+    angles = np.linspace(0.0, 2.0 * np.pi, n_rays, endpoint=False)
+    sin_a = np.sin(angles)
+    if direction == 1:
+        angles = angles[sin_a >= -sphere_center_to_nozzle_part]
+    else:
+        angles = angles[sin_a <= sphere_center_to_nozzle_part]
+    if angles.size == 0:
+        return np.empty(0), np.empty(0)
+
+    height, width = image_gray.shape
+    cos_a = np.cos(angles)[:, None]
+    sin_a = np.sin(angles)[:, None]
+    sample_x = x_c + radii[None, :] * cos_a
+    sample_y = y_c + radii[None, :] * sin_a
+    inside = (
+        (sample_x >= 0.0)
+        & (sample_x <= width - 1.0)
+        & (sample_y >= 0.0)
+        & (sample_y <= height - 1.0)
+    ).all(axis=1)
+    angles = angles[inside]
+    if angles.size == 0:
+        return np.empty(0), np.empty(0)
+
+    profiles = _sample_radial_profiles(image_gray, x_c, y_c, angles, radii)
+    inner = max(3, n_samples // 4)
+
+    xs: list[float] = []
+    ys: list[float] = []
+    for angle, profile in zip(angles, profiles):
+        background = float(np.median(profile[:inner]))
+        foreground = float(np.median(profile[-inner:]))
+        if (
+            not np.isfinite(background)
+            or not np.isfinite(foreground)
+            or foreground <= background
+        ):
+            continue
+        level = 0.5 * (background + foreground)
+        fraction = _first_upward_crossing(profile, level)
+        if fraction is None:
+            continue
+        r = float(np.interp(fraction, np.arange(n_samples), radii))
+        xs.append(x_c + r * np.cos(angle))
+        ys.append(y_c + r * np.sin(angle))
+
+    return np.asarray(xs, dtype=np.float64), np.asarray(ys, dtype=np.float64)
+
+
 def find_the_sphere_on_mask(forground_mask: np.ndarray,
                             n_mov_aver: int = 11,
                             sphere_center_to_nozzle_part: float = 0.3,
                             direction: int = 1,
                             min_bg_pixels_on_edges: int = 5,
                             return_covariance: bool = False,
+                            image_gray: np.ndarray | None = None,
+                            edge_search_px: int | None = None,
                             ) -> tuple[float, float, float] | tuple[float, float, float, np.ndarray] | None:
     """
         Function to find the sphere which is at the lowest positon of the forground mask with only one island
@@ -233,10 +351,20 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
     :param direction: direction for calculations (1 - nozzle on the top, -1 - nozzle on the bottom)
     :param min_bg_pixels_on_edges: minimum number of pixels between the edge of the image and a sphere mask
     :param return_covariance: whether to append the fitted centre covariance to the result
+    :param image_gray: optional gray-scale image; when given, radial edges are refined to the sub-pixel 50 % intensity crossing
+    :param edge_search_px: optional search window for the sub-pixel crossing in pixels
     :return: x, y and radius of the sphere or None if something is not right
     """
     if direction not in [1, -1]:
         raise ValueError('direction must be either 1 or -1')
+    if image_gray is not None:
+        image_gray = np.asarray(image_gray)
+        if image_gray.shape != forground_mask.shape:
+            raise ValueError(
+                "image_gray and forground_mask must have the same shape"
+            )
+    if edge_search_px is not None and int(edge_search_px) < 1:
+        raise ValueError("edge_search_px must be positive")
     if not np.any(forground_mask):
         return None
 
@@ -306,12 +434,38 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
         np.maximum.at(right, row_ids, col_ids)
 
         row_offset = np.arange(band_rows, dtype=np.float64)
+        left_f = left.astype(np.float64)
+        right_f = right.astype(np.float64)
+
         all_sel_x = np.empty(2 * band_rows, dtype=np.float64)
         all_sel_y = np.empty(2 * band_rows, dtype=np.float64)
-        all_sel_x[0::2] = left.astype(np.float64) + x_0
-        all_sel_x[1::2] = right.astype(np.float64) + x_0
+        all_sel_x[0::2] = left_f + x_0
+        all_sel_x[1::2] = right_f + x_0
         all_sel_y[0::2] = y_0 + row_offset
         all_sel_y[1::2] = y_0 + row_offset
+
+        if image_gray is not None:
+            x_c_int, y_c_int, radius_int = fit_circle(all_sel_x, all_sel_y)
+            sub_x, sub_y = _subpixel_radial_points(
+                image_gray,
+                x_c_int,
+                y_c_int,
+                radius_int,
+                direction,
+                sphere_center_to_nozzle_part,
+                search_px=edge_search_px,
+            )
+            if sub_x.size >= 3:
+                all_sel_x, all_sel_y = sub_x, sub_y
+                x_c, y_c, radius = fit_circle(all_sel_x, all_sel_y)
+                residual = np.hypot(all_sel_x - x_c, all_sel_y - y_c) - radius
+                median = float(np.median(residual))
+                mad = 1.4826 * float(np.median(np.abs(residual - median)))
+                if np.isfinite(mad) and mad > 0:
+                    keep = np.abs(residual - median) <= 3.0 * mad
+                    if np.count_nonzero(keep) >= 3:
+                        all_sel_x = all_sel_x[keep]
+                        all_sel_y = all_sel_y[keep]
 
         if return_covariance:
             return fit_circle_with_covariance(all_sel_x, all_sel_y)

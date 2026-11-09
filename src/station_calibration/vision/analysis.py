@@ -46,6 +46,7 @@ def analyze_image(image_gray: np.ndarray,
                   debug_imagefile: Path | None = None,
                   store_debug_images: bool = False,
                   estimate_center_covariance: bool = True,
+                  subpixel_edges: bool = False,
                   ) -> ImageAnalysisResult:
     """
         Analyze one image and extract the sphere center, radius, edge blur and nozzle direction.
@@ -67,6 +68,7 @@ def analyze_image(image_gray: np.ndarray,
     :param debug_imagefile: optional path for a debug image
     :param store_debug_images: whether successful results should also store a debug image
     :param estimate_center_covariance: whether to propagate the circle-fit centre covariance
+    :param subpixel_edges: whether to refine the silhouette edges to sub-pixel intensity crossings
     :return: analysis result with an observation or a rejection reason
     """
     image_shape = (int(image_gray.shape[0]), int(image_gray.shape[1]))
@@ -108,6 +110,7 @@ def analyze_image(image_gray: np.ndarray,
         direction=direction,
         min_bg_pixels_on_edges=min_bg_pixels_on_edges,
         return_covariance=estimate_center_covariance,
+        image_gray=image_gray if subpixel_edges else None,
     )
 
     if sphere_params is None:
@@ -240,6 +243,7 @@ def analyze_images(image_filenames: list[Path],
                    store_debug_images: bool = False,
                    debug_folder: Path | None = None,
                    estimate_center_covariance: bool = True,
+                   subpixel_edges: bool = False,
                    ) -> list[ImageAnalysisResult]:
     """Analyze a list of image files one by one and return each analysis result."""
     analyses = []
@@ -269,6 +273,7 @@ def analyze_images(image_filenames: list[Path],
                 debug_imagefile=debug_imagefile,
                 store_debug_images=store_debug_images,
                 estimate_center_covariance=estimate_center_covariance,
+                subpixel_edges=subpixel_edges,
             )
         except MemoryError:
             raise
@@ -302,6 +307,7 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
                                        print_debug: DebugInfo = DebugInfo(),
                                        store_debug_images: bool = False,
                                        debug_folder: Path | None = None,
+                                       subpixel_edges: bool = False,
                                        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
         Getting found sphere parameters and bluring sigma at the border of the sphere
@@ -316,6 +322,7 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
     :param print_debug: print debug information if needed
     :param store_debug_images: whether to store the debug images
     :param debug_folder: folder to store debug information
+    :param subpixel_edges: whether to refine silhouette edges to sub-pixel intensity crossings
     :return: sphere centers, border sigmas, radii, image sizes and nozzle directions
     """
     analyses = analyze_images(
@@ -330,6 +337,7 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
         print_debug=print_debug,
         store_debug_images=store_debug_images,
         debug_folder=debug_folder,
+        subpixel_edges=subpixel_edges,
     )
 
     sphere_centers_list: list[list[float]] = []

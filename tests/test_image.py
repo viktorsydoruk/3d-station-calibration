@@ -24,6 +24,7 @@ from station_calibration.vision import (
 )
 from station_calibration.vision.debug import debug_images_storing
 from station_calibration.vision.detection import (
+    find_the_sphere_on_mask,
     fit_circle_with_covariance,
     get_bg_value,
     get_forground_mask,
@@ -116,6 +117,92 @@ def test_fit_circle_with_covariance_matches_geometric_circle() -> None:
     assert covariance.shape == (2, 2)
     np.testing.assert_allclose(covariance, covariance.T)
     assert np.all(np.linalg.eigvalsh(covariance) > 0.0)
+
+
+def _blurred_disk_image(sigma: float,
+                        radius: float = 140.0,
+                        center: tuple[float, float] = (500.0, 450.0),
+                        ) -> np.ndarray:
+    """Create a bright disk with a Gaussian-blurred edge on a noisy background."""
+    height, width = 900, 1000
+    rng = np.random.default_rng(11)
+    image = rng.normal(8.0, 2.0, (height, width))
+    cv2.circle(
+        image,
+        (int(center[0]), int(center[1])),
+        int(radius),
+        220.0,
+        -1,
+        lineType=cv2.LINE_AA,
+    )
+    return cv2.GaussianBlur(image, (0, 0), sigma)
+
+
+@pytest.mark.parametrize("sigma", [1.0, 2.0, 3.0, 5.0])
+def test_subpixel_edges_remove_blur_radius_bias(sigma: float) -> None:
+    center = (500.0, 450.0)
+    radius = 140.0
+    image = _blurred_disk_image(sigma, radius=radius, center=center)
+    mask = image > 30.0
+    kwargs = {
+        "n_mov_aver": 11,
+        "sphere_center_to_nozzle_part": 0.7,
+        "direction": 1,
+        "min_bg_pixels_on_edges": 5,
+    }
+
+    integer = find_the_sphere_on_mask(mask, **kwargs)
+    subpixel = find_the_sphere_on_mask(mask, image_gray=image, **kwargs)
+
+    assert integer is not None
+    assert subpixel is not None
+
+    # The binary contour sits at the near-background threshold, so its radius
+    # grows with the edge blur. The 50 % intensity crossing is nearly unbiased.
+    assert integer[2] - radius > 0.4 * sigma
+    assert abs(subpixel[2] - radius) < 0.35
+    assert abs(subpixel[0] - center[0]) < 0.5
+    assert abs(subpixel[1] - center[1]) < 0.5
+
+
+def test_subpixel_edges_follow_illumination_gradient() -> None:
+    center = (500.0, 450.0)
+    radius = 140.0
+    image = _blurred_disk_image(3.0, radius=radius, center=center)
+    gradient = np.linspace(0.65, 1.35, image.shape[1])[None, :]
+    image = image * gradient
+    mask = image > 30.0
+    kwargs = {
+        "n_mov_aver": 11,
+        "sphere_center_to_nozzle_part": 0.7,
+        "direction": 1,
+        "min_bg_pixels_on_edges": 5,
+    }
+
+    subpixel = find_the_sphere_on_mask(mask, image_gray=image, **kwargs)
+
+    assert subpixel is not None
+    # A single global edge level would pull the dark side inward. The per-ray
+    # level keeps the centre and radius close to the geometric disk.
+    assert abs(subpixel[0] - center[0]) < 0.7
+    assert abs(subpixel[1] - center[1]) < 0.5
+    assert abs(subpixel[2] - radius) < 0.5
+
+
+def test_analyze_image_subpixel_edges_improve_radius() -> None:
+    image_gray, _ = _synthetic_image()
+
+    integer = analyze_image(image_gray, **_analysis_kwargs()).observation
+    subpixel = analyze_image(
+        image_gray, subpixel_edges=True, **_analysis_kwargs()
+    ).observation
+
+    assert integer is not None
+    assert subpixel is not None
+    assert abs(integer.radius - SYNTHETIC_RADIUS) > 2.0
+    assert abs(subpixel.radius - SYNTHETIC_RADIUS) < 1.0
+    assert abs(subpixel.x - SYNTHETIC_CENTER[0]) < 0.5
+    assert abs(subpixel.y - SYNTHETIC_CENTER[1]) < 0.5
 
 
 def test_analyze_image_bytes_extracts_synthetic_sphere() -> None:

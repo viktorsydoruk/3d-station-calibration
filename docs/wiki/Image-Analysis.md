@@ -100,6 +100,36 @@ containing the nozzle and the sphere.
 
 The result is `(x_c, y_c, radius)`, or `None`.
 
+### Sub-pixel edge refinement (opt-in)
+
+Passing `subpixel_edges=True` to `analyze_image`, `analyze_images`, or
+`get_sphere_centers_and_blur_sigmas`, or setting `subpixel_edges = true` in
+`[analysis.sphere_projection]`, refines the sphere silhouette to the
+**50 % intensity crossing** between the local background and the sphere
+interior. The binary mask still supplies the rough circle and the search
+window. The refinement then samples 360 radial profiles and locates the
+crossing on each ray by linear interpolation. Because every ray crosses the
+edge normally, the noisy, nearly horizontal top and bottom rows of a row-wise
+scan no longer contribute. Each ray estimates its own background and interior
+level, which handles a smooth illumination gradient; rays on the nozzle side
+are skipped with the same `sphere_center_to_nozzle_part` rule as the binary
+fit, and a MAD-based trim drops inconsistent crossings before the final circle
+fit.
+
+The reason is the radius bias: the mask threshold sits near the background
+level, so the integer contour lies roughly `~1 sigma` outside the true
+silhouette. That offset grows with defocus and is invisible to a centre-only
+check. On synthetic blurred spheres the sub-pixel path removes it (for example,
+a radius error of `+5.7 px` at `sigma = 5 px` becomes about `-0.05 px`) without
+changing the centre accuracy. On a real 2 mm sphere set (124 poses, 8 mm depth
+range) the empirical blur correction `n_sigma_est` drops from `0.69 sigma` to
+`0`, and the radius consistency at zero correction improves from `0.027 mm` to
+`0.006 mm`. On two independent 6 mm sphere scans the estimated diameter becomes
+more repeatable (`5.972` / `5.977 mm` versus `5.982` / `5.969 mm`), while the
+calibration RMSE changes between `-0.20 px` and `+0.06 px`. The packaged
+default remains `false`; enable it per station after checking the radius and
+diameter trends on a calibration run.
+
 ### 6. Edge blur (`sigma`)
 
 `get_blur_sigma` estimates defocus from the intensity profile across the sphere

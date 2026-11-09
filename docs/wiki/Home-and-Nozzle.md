@@ -116,7 +116,10 @@ sphere_radius = mean((radius - n_sigma_est * sigma) * coef)
 ```
 
 The factor `2` converts radius to diameter; the scan picks the blur correction
-that makes the physical diameter most consistent across depths.
+that makes the physical diameter most consistent across depths. With
+`[analysis.sphere_projection] subpixel_edges = true` the detected radius is
+already close to the 50 % silhouette, so the scan normally returns
+`n_sigma_est = 0` and the correction only absorbs residual blur bias.
 
 ### 3. Offset from sphere centre to nozzle tip
 

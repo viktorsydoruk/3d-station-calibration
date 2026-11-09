@@ -49,6 +49,7 @@ BASE_CONFIG: dict[str, dict[str, Any]] = {
         "sphere_center_to_nozzle_part": 0.7,
         "min_bg_pixels_on_edges": 5,
         "blur_est_border_thickness": 2,
+        "subpixel_edges": True,
     },
     "analysis.fit": {
         "fix_cx_cy": True,
@@ -157,6 +158,7 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.sphere_center_to_nozzle_part == 0.7
     assert settings.min_bg_pixels_on_edges == 5
     assert settings.blur_est_border_thickness == 2
+    assert settings.subpixel_edges is True
     assert settings.fix_cx_cy is True
     assert settings.n_distortion_coefs == 4
     assert settings.focal_length_initial == 1800.0
@@ -207,6 +209,7 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
     assert settings.fit_every_n == 5
     assert settings.n_distortion_coefs == 0
     assert settings.center_weighting is True
+    assert settings.subpixel_edges is False
     assert settings.target_observations == 100
     assert settings.readiness_enabled is True
     assert settings.readiness_checkpoint_interval == 10

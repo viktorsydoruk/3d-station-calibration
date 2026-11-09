@@ -79,6 +79,7 @@ class PossibleOptions(TypedDict, total=False):
     sphere_center_to_nozzle_part: float
     min_bg_pixels_on_edges: int
     blur_est_border_thickness: int
+    subpixel_edges: bool
     fix_cx_cy: bool
     n_distortion_coefs: int
     focal_length_initial: float
@@ -137,6 +138,7 @@ class Settings:
     sphere_center_to_nozzle_part: float
     min_bg_pixels_on_edges: int
     blur_est_border_thickness: int
+    subpixel_edges: bool
     fix_cx_cy: bool
     _n_distortion_coefs: int
     focal_length_initial: float
@@ -374,6 +376,7 @@ class Settings:
         )
         self.min_bg_pixels_on_edges = int(self._get(sphere, "min_bg_pixels_on_edges"))
         self.blur_est_border_thickness = int(self._get(sphere, "blur_est_border_thickness"))
+        self.subpixel_edges = bool(self._get(sphere, "subpixel_edges", False))
 
         if self.n_move_aver < 1:
             raise ValueError(f"n_move_aver must be at least 1, got {self.n_move_aver}")

@@ -348,6 +348,7 @@ class FolderCalibrationSource:
             sphere_center_to_nozzle_part=self.settings.sphere_center_to_nozzle_part,
             min_bg_pixels_on_edges=self.settings.min_bg_pixels_on_edges,
             blur_est_border_thickness=self.settings.blur_est_border_thickness,
+            subpixel_edges=self.settings.subpixel_edges,
             print_debug=self.print_debug,
             debug_folder=self.settings.debug_folder,
             store_debug_images=self.settings.store_debug_images,

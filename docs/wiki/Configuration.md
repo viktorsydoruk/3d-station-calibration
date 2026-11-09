@@ -149,9 +149,23 @@ background contains bright reflections; lower it when the sphere is dim.
 | `sphere_center_to_nozzle_part` | `0.7` | Fraction of the sphere used on the nozzle side |
 | `min_bg_pixels_on_edges` | `5` | Required background margin around the sphere |
 | `blur_est_border_thickness` | `2` | Annular border thickness for the blur profile |
+| `subpixel_edges` | `false` | Move the silhouette edge to the 50 % intensity crossing |
 
 Ranges: `n_move_aver >= 1`, `0 <= sphere_center_to_nozzle_part <= 1`,
 `min_bg_pixels_on_edges >= 1`, `blur_est_border_thickness >= 1`.
+
+`subpixel_edges = true` refines the sphere silhouette to the 50 % intensity
+crossing between the local background and the sphere interior. The binary mask
+supplies the rough circle and the search window; the refinement samples radial
+profiles around the sphere, estimates a local background and interior level on
+each ray, and trims inconsistent crossings before the final circle fit. Because
+the binary mask threshold sits near the background level, its contour lies
+roughly `~1 sigma` outside the true silhouette; the offset grows with defocus.
+The sub-pixel path removes that radius bias without changing the centre
+accuracy. On real 2 mm and 6 mm sphere sets the empirical blur correction
+dropped to `0`, the diameter repeatability across independent scans improved,
+and the calibration RMSE changed by at most `0.2 px`. See
+[Image Analysis](Image-Analysis).
 
 ## `[analysis.fit]`
 

@@ -45,6 +45,13 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   materially. The count floor defaults to `target_observations = 100`; explicit
   and maximum-observation stops remain forced overrides. Count-only readiness is
   restored with `enabled = false` or when automatic fitting is disabled.
+- Optional residual-bootstrap nozzle-home uncertainty diagnostic:
+  `[analysis.uncertainty]` and `3dsc --bootstrap` rerun the fit with perturbed
+  image centres and resampled radius/sigma residuals, then write a sidecar
+  `output/nozzle_uncertainty.json`. The standalone
+  `scripts/bootstrap_nozzle.py` runner remains available. Robot positions and
+  the original inlier set stay fixed, the diagnostic is disabled by default,
+  and it does not change the stored calibration or the readiness decision.
 - A versioned, shared result document for the folder CLI and Ice archive, with
   consistent `schema_version`, `nozzle`, and `camera` sections.
 - GitLab CI now installs ZeroC Ice from the official Debian repository and runs

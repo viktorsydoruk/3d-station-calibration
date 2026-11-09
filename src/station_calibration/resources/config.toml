@@ -103,3 +103,15 @@ translation_tolerance_mm = 0.05
 rotation_tolerance_deg = 0.01
 home_tolerance_mm = 0.05
 distortion_tolerance = 0.0001
+
+[analysis.uncertainty]
+# optional post-fit residual bootstrap for the nozzle-home uncertainty; this
+# reruns the fit and writes a sidecar JSON report, but does not affect readiness
+# or the stored calibration result
+enabled = false
+# number of bootstrap replicates
+n_bootstrap = 500
+# random seed; use the same seed to reproduce a report
+seed = 0
+# sidecar JSON file inside the output folder
+report_filename = "nozzle_uncertainty.json"

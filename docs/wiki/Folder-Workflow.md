@@ -72,6 +72,10 @@ python -m station_calibration "P:\3Dcalibration\3D_example"
 | `--no-load-stored-data` | Force re-analysis of the images |
 | `--target-observations N` | Override the readiness count floor (default 100) |
 | `--max-observations N` | Set a hard readiness cap |
+| `--bootstrap` | Write the optional post-fit nozzle-uncertainty report |
+| `--no-bootstrap` | Disable the report even if the config enables it |
+| `--bootstrap-n N` | Set the number of replicates; implies `--bootstrap` |
+| `--bootstrap-seed N` | Set the random seed; implies `--bootstrap` |
 
 Command-line values override the TOML file, and the TOML file overrides the
 packaged defaults. See [Configuration](Configuration).
@@ -92,6 +96,8 @@ packaged defaults. See [Configuration](Configuration).
 5. `session.finish()` guarantees a final fit that includes all observations.
 6. The nozzle-end home position, sphere diameter, uncertainties, YAML result,
    and optional debug plots are produced.
+7. If `[analysis.uncertainty] enabled = true` or `--bootstrap` is given, the
+   residual-bootstrap nozzle report is written after the calibration result.
 
 The folder workflow deliberately mirrors the incremental Ice workflow: the same
 session, the same fit policy, and the same analysis code.
@@ -143,6 +149,7 @@ readiness or the observation count floor.
 ```text
 <folder>/output/CalibrationAllPoints.dat
 <folder>/output/calibration_data.yaml
+<folder>/output/nozzle_uncertainty.json   # only when the optional bootstrap is enabled
 <folder>/debug/...
 ```
 

@@ -13,7 +13,8 @@ depend on the internal module layout.
 | Image analysis | `SphereObservation`, `ImageAnalysisResult`, `load_image`, `decode_image`, `split_image`, `analyze_image`, `analyze_image_array`, `analyze_image_bytes`, `analyze_images`, `get_sphere_centers_and_blur_sigmas`, `get_radius_outlier_mask`, `filtering_data_by_radius`, `adjust_image_center_points` |
 | Numerical pipeline | `get_calibration_data`, `get_3D_and_2D_data`, `print_calibration`, `get_calibration`, `calibrate_camera`, `check_distortion_monotonicity`, `back_projected_point`, `calculate_RMSE`, `calculate_calibration_errors` |
 | Robot/geometry | `find_robot_home_pos_shift`, `get_nozzle_end_home_position`, `find_proper_args_to_compare`, `fit_line_general_form`, `intersect_lines`, `calculate_errors` |
-| I/O | `load_robot_positions`, `search_images`, `store_all_points`, `load_all_points`, `RESULT_SCHEMA_VERSION`, `calibration_document`, `store_calibration` |
+| Uncertainty | `bootstrap_nozzle_home`, `NozzleBootstrapResult` |
+| I/O | `load_robot_positions`, `search_images`, `store_all_points`, `load_all_points`, `RESULT_SCHEMA_VERSION`, `calibration_document`, `store_calibration`, `NOZZLE_UNCERTAINTY_SCHEMA_VERSION`, `store_nozzle_uncertainty` |
 | Plotting | `visualize_*`, `apply_own_style_to_mpl` (lazy imports) |
 
 Plotting helpers are loaded on first access, so importing the package does not
@@ -114,6 +115,29 @@ intrinsic_std, distortion_std, rot_std, trans_std = calculate_calibration_errors
 
 `intrinsic_std` is a 3×3 matrix; structurally fixed entries, including
 `[2, 2]`, are zero.
+
+The nozzle home is not part of the camera-fit parameter vector. Estimate its
+uncertainty from the inlier observations with the residual bootstrap:
+
+```python
+from station_calibration import bootstrap_nozzle_home
+
+uncertainty = bootstrap_nozzle_home(
+    session.fit_observations,
+    result,
+    settings,
+    n_bootstrap=500,
+    seed=0,
+)
+
+print(uncertainty.original)
+print(uncertainty.std)
+print(uncertainty.covariance)
+```
+
+The bootstrap keeps the original inlier set and the commanded robot positions
+fixed, perturbs image centres with their stored covariance, resamples
+radius/sigma residuals, and reruns the fit for each replicate.
 
 ## Settings and overrides
 

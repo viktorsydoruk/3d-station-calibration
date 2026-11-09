@@ -142,6 +142,54 @@ nozzle_robot = sphere_home + Rᵀ · [0, sign·r, 0]
 so only the orientation of the offset matters, not the extrinsic translation.
 The returned diameter is `2 * sphere_radius`.
 
+## Nozzle-home uncertainty
+
+`calculate_calibration_errors` reports only the camera parameters. The nozzle
+home is a post-fit function of the sphere home, the sphere radius, and the
+rotation:
+
+```text
+nozzle_robot = sphere_home + sign * radius * Rᵀ · e_y
+```
+
+The sphere home and radius are not part of `OptimizeResult.jac`, so their
+uncertainty is not included in the reported `fx/fy/distortion/rotation/
+translation` errors. Use the residual-bootstrap diagnostic instead:
+
+```powershell
+python scripts/bootstrap_nozzle.py <folder> --load-stored-data --n-bootstrap 500
+```
+
+The folder analysis can also produce the report after its normal fit:
+
+```powershell
+3dsc <folder> --bootstrap
+```
+
+This writes `output/nozzle_uncertainty.json`; the main
+`calibration_data.yaml` is unchanged. Use `--bootstrap-n` and
+`--bootstrap-seed` to override the config values, or set
+`[analysis.uncertainty] enabled = true` in the TOML file.
+
+The standalone script additionally supports `--ready` to bootstrap the first
+readiness snapshot instead of all observations, and `--json <file>` to choose
+the output path.
+
+The diagnostic:
+
+1. fixes the original inlier set;
+2. perturbs image centres with their stored 2 x 2 covariance;
+3. resamples radius/sigma residuals around the fitted depth trends;
+4. keeps the commanded robot positions fixed;
+5. reruns the camera fit and `get_nozzle_end_home_position`;
+6. reports the mean, bias, covariance, per-axis 1 sigma, 1 sigma/2 sigma
+   intervals, and the uncertainty along and perpendicular to the nozzle axis.
+
+The result is conditional on the inlier selection, the camera model, and the
+radius/sigma trends. It does not model robot-positioning errors or a wrong
+sphere diameter, and it is a diagnostic rather than an input to the readiness
+gate.
+
 ## Assumptions
 
 - The sphere is centred on the nozzle axis.

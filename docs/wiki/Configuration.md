@@ -228,6 +228,25 @@ there are no incremental fit checkpoints to compare.
 `checkpoint_interval`, `stable_checkpoints`, and all tolerances must be
 positive. `min_inlier_fraction` must be in `(0, 1]`.
 
+## `[analysis.uncertainty]`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `false` | Run the optional post-fit nozzle-home bootstrap |
+| `n_bootstrap` | `500` | Number of bootstrap replicates; must be positive |
+| `seed` | `0` | Random seed; must be non-negative |
+| `report_filename` | `nozzle_uncertainty.json` | Sidecar JSON file inside the output folder |
+
+This diagnostic reruns the camera fit and nozzle-home estimator for every
+replicate. It is separate from the calibration result and does not affect the
+readiness gate. Enable it from the configuration or with `3dsc --bootstrap`;
+`--bootstrap-n` and `--bootstrap-seed` override the replicate count and seed and
+imply `--bootstrap` unless `--no-bootstrap` is given.
+
+Because the diagnostic conditions on the original inlier set and keeps robot
+positions fixed, it reports measurement-noise uncertainty rather than robot or
+model error. See [Home and Nozzle](Home-and-Nozzle#nozzle-home-uncertainty).
+
 ## Example
 
 ```toml
@@ -267,6 +286,12 @@ max_observations = 500
 enabled = true
 checkpoint_interval = 10
 stable_checkpoints = 3
+
+[analysis.uncertainty]
+enabled = true
+n_bootstrap = 500
+seed = 0
+report_filename = "nozzle_uncertainty.json"
 ```
 
 ## Validation errors

@@ -9,7 +9,8 @@
 ├─ image_0002.tif
 ├─ output/
 │  ├─ CalibrationAllPoints.dat
-│  └─ calibration_data.yaml
+│  ├─ calibration_data.yaml
+│  └─ nozzle_uncertainty.json          # only when the optional bootstrap is enabled
 └─ debug/
    ├─ result0000.png
    ├─ result0001.png
@@ -208,6 +209,36 @@ Notes:
 - The numbers above are illustrative; use the values from your own run.
 - Result YAML and `session.yaml` are written through a temporary file in the same
   folder and atomically replaced, so a crash cannot leave a truncated document.
+
+## Nozzle uncertainty report
+
+When `[analysis.uncertainty] enabled = true` (or `3dsc --bootstrap` is used), the
+folder workflow writes `output/nozzle_uncertainty.json` after the main
+calibration result. The sidecar keeps the main YAML schema stable.
+
+It contains `schema_version`, `diagnostic`, the fitted observation counts and
+RMSE, the sphere home and diameter, and the bootstrap summary:
+
+```json
+{
+  "schema_version": 1,
+  "diagnostic": "nozzle_home_residual_bootstrap",
+  "fit": {"observation_count": 492, "observations_used": 482, "rmse": 4.32},
+  "bootstrap_config": {"n_bootstrap": 500, "seed": 0},
+  "nozzle_home_position": [315.487, -111.521, -35.572],
+  "original": [315.487, -111.521, -35.572],
+  "mean": [315.488, -111.498, -35.573],
+  "bias": [0.0005, 0.0228, -0.0008],
+  "std": [0.0024, 0.0613, 0.0055],
+  "covariance": [[...], [...], [...]],
+  "samples": [[...], ...],
+  "lower_1sigma": [...],
+  "upper_1sigma": [...]
+}
+```
+
+The values are millimetres. A failed optional bootstrap prints a warning and
+does not invalidate the already stored calibration.
 
 ## Per-image debug images
 

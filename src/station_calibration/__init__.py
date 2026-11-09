@@ -83,6 +83,9 @@ __all__ = [
     "fit_line_general_form",
     "intersect_lines",
     "calculate_errors",
+    # Uncertainty diagnostics
+    "NozzleBootstrapResult",
+    "bootstrap_nozzle_home",
     # File and output helpers
     "load_robot_positions",
     "search_images",
@@ -90,8 +93,10 @@ __all__ = [
     "load_all_points",
     "load_all_points_with_covariances",
     "RESULT_SCHEMA_VERSION",
+    "NOZZLE_UNCERTAINTY_SCHEMA_VERSION",
     "calibration_document",
     "store_calibration",
+    "store_nozzle_uncertainty",
     # Reporting
     "apply_own_style_to_mpl",
     "visualize_image_center_points",
@@ -127,6 +132,7 @@ from .models import (
     ObservationRejection,
 )
 from .storage import (
+    NOZZLE_UNCERTAINTY_SCHEMA_VERSION,
     RESULT_SCHEMA_VERSION,
     calibration_document,
     load_all_points,
@@ -135,6 +141,7 @@ from .storage import (
     search_images,
     store_all_points,
     store_calibration,
+    store_nozzle_uncertainty,
 )
 from .vision import (
     ImageAnalysisResult,
@@ -181,6 +188,7 @@ from .support import (
     fit_line_general_form,
     intersect_lines,
 )
+from .uncertainty import NozzleBootstrapResult, bootstrap_nozzle_home
 
 
 _PLOTTING_NAMES = {

@@ -175,6 +175,14 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.readiness_rotation_tolerance_deg == 0.01
     assert settings.readiness_home_tolerance_mm == 0.05
     assert settings.readiness_distortion_tolerance == 0.0001
+    assert settings.uncertainty_enabled is False
+    assert settings.uncertainty_n_bootstrap == 500
+    assert settings.uncertainty_seed == 0
+    assert settings.uncertainty_report_filename == "nozzle_uncertainty.json"
+    assert (
+        settings.uncertainty_report_file
+        == settings.output_folder / "nozzle_uncertainty.json"
+    )
 
     # The parsed config is exposed as well.
     assert settings.config["analysis"]["n_iterations"] == 3
@@ -202,6 +210,67 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
     assert settings.target_observations == 100
     assert settings.readiness_enabled is True
     assert settings.readiness_checkpoint_interval == 10
+    assert settings.uncertainty_enabled is False
+    assert settings.uncertainty_n_bootstrap == 500
+    assert settings.uncertainty_seed == 0
+
+
+def test_loads_uncertainty_settings_and_overrides(context: ConfigContext) -> None:
+    context.config["analysis.uncertainty"] = {
+        "enabled": True,
+        "n_bootstrap": 50,
+        "seed": 7,
+        "report_filename": "uncertainty.json",
+    }
+    context.write()
+
+    settings = context.make()
+    assert settings.uncertainty_enabled is True
+    assert settings.uncertainty_n_bootstrap == 50
+    assert settings.uncertainty_seed == 7
+    assert settings.uncertainty_report_filename == "uncertainty.json"
+    assert settings.uncertainty_report_file == settings.output_folder / "uncertainty.json"
+
+    overridden = context.make(
+        uncertainty_enabled=False,
+        uncertainty_n_bootstrap=12,
+        uncertainty_seed=3,
+        uncertainty_report_filename="override.json",
+    )
+    assert overridden.uncertainty_enabled is False
+    assert overridden.uncertainty_n_bootstrap == 12
+    assert overridden.uncertainty_seed == 3
+    assert overridden.uncertainty_report_filename == "override.json"
+
+
+def test_invalid_uncertainty_settings_raise(context: ConfigContext) -> None:
+    cases = [
+        ("n_bootstrap", 0, "uncertainty_n_bootstrap"),
+        ("seed", -1, "uncertainty_seed"),
+        ("report_filename", "", "uncertainty_report_filename"),
+    ]
+    for key, value, message in cases:
+        context.config["analysis.uncertainty"] = {key: value}
+        context.write()
+        with pytest.raises(ValueError, match=message):
+            context.make()
+
+
+def test_non_table_uncertainty_section_raises_clear_error(
+    context: ConfigContext,
+) -> None:
+    context.config["analysis"]["uncertainty"] = "not-a-table"
+    context.write()
+
+    with pytest.raises(TypeError, match=r"analysis\.uncertainty.*not a table"):
+        context.make()
+
+
+def test_uncertainty_report_filename_must_be_pathlike(
+    context: ConfigContext,
+) -> None:
+    with pytest.raises(TypeError, match="uncertainty_report_filename"):
+        context.make(uncertainty_report_filename=123)  # type: ignore[arg-type]
 
 
 def test_loads_stop_settings_and_overrides(context: ConfigContext) -> None:

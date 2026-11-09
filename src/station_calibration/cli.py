@@ -9,6 +9,7 @@ folder. The heavy lifting lives in the session and numerical pipeline modules.
 """
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
 import traceback
 
@@ -21,6 +22,7 @@ from .calibration import (
     print_calibration,
 )
 from .debug import DebugInfo
+from .models import CalibrationObservation, CalibrationResult
 from .robot import get_nozzle_end_home_position
 from .session import CalibrationSession
 from .settings import Settings
@@ -28,8 +30,76 @@ from .sources.folder import (
     FolderCalibrationSource,
     observations_to_arrays,
 )
-from .storage import store_calibration
+from .storage import store_calibration, store_nozzle_uncertainty
 from .support import calculate_errors
+from .uncertainty import bootstrap_nozzle_home
+
+
+def _write_nozzle_uncertainty_report(
+    settings: Settings,
+    result: CalibrationResult,
+    fit_observations: Sequence[CalibrationObservation],
+    *,
+    nozzle_home_position: np.ndarray,
+    sphere_home_position: np.ndarray,
+    sphere_diameter_mm: float,
+) -> Path | None:
+    """Run the optional post-fit bootstrap and write its sidecar report."""
+    if not settings.uncertainty_enabled:
+        return None
+
+    try:
+        bootstrap = bootstrap_nozzle_home(
+            fit_observations,
+            result,
+            settings,
+            n_bootstrap=settings.uncertainty_n_bootstrap,
+            seed=settings.uncertainty_seed,
+        )
+        metadata = {
+            "source": str(settings.main_folder),
+            "fit": {
+                "observation_count": result.observation_count,
+                "observations_used": result.n_used,
+                "rmse": None if result.rmse is None else float(result.rmse),
+                "n_distortion_coefs": result.n_distortion_coefs,
+            },
+            "bootstrap_config": {
+                "n_bootstrap": settings.uncertainty_n_bootstrap,
+                "seed": settings.uncertainty_seed,
+            },
+            "sphere_home_position": np.asarray(
+                sphere_home_position, dtype=np.float64
+            ).tolist(),
+            "sphere_diameter_mm": float(sphere_diameter_mm),
+            "nozzle_home_position": np.asarray(
+                nozzle_home_position, dtype=np.float64
+            ).tolist(),
+        }
+        report_path = store_nozzle_uncertainty(
+            report=bootstrap.as_dict(),
+            output_folder=settings.output_folder,
+            filename=settings.uncertainty_report_filename,
+            metadata=metadata,
+        )
+    except Exception as error:
+        # The calibration itself is already complete and stored. A failed
+        # optional diagnostic must not turn a valid calibration into a failure.
+        print(f"Warning: nozzle uncertainty bootstrap failed: {error}")
+        return None
+
+    if bootstrap.n_failed:
+        print(
+            "Warning: "
+            f"{bootstrap.n_failed} of {bootstrap.n_requested} nozzle "
+            "uncertainty bootstrap replicates failed."
+        )
+    print(
+        "Nozzle uncertainty (1 sigma): "
+        f"std = [{', '.join(f'{float(value):.6f}' for value in bootstrap.std)}] mm, "
+        f"norm = {bootstrap.norm_std:.6f} mm; report: {report_path}"
+    )
+    return report_path
 
 
 def main(folder_to_analyze: str | Path, **opts) -> None:
@@ -141,6 +211,15 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
             sphere_home_position=pos_home,
         )
 
+        _write_nozzle_uncertainty_report(
+            settings,
+            result,
+            fit_observations,
+            nozzle_home_position=nozzle_end_home_pos,
+            sphere_home_position=pos_home,
+            sphere_diameter_mm=sphere_diam_mm,
+        )
+
         if settings.debug:
             from .plots import visualize_results
 
@@ -221,8 +300,39 @@ def run_cli(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--target-observations", type=int, default=None)
     parser.add_argument("--max-observations", type=int, default=None)
+    parser.add_argument(
+        "--bootstrap",
+        action="store_true",
+        default=None,
+        help="write the optional post-fit nozzle-uncertainty bootstrap report",
+    )
+    parser.add_argument(
+        "--no-bootstrap",
+        action="store_false",
+        default=None,
+        dest="bootstrap",
+        help="disable the bootstrap report even when the config enables it",
+    )
+    parser.add_argument(
+        "--bootstrap-n",
+        type=int,
+        default=None,
+        help="bootstrap replicates; implies --bootstrap when no explicit toggle is given",
+    )
+    parser.add_argument(
+        "--bootstrap-seed",
+        type=int,
+        default=None,
+        help="bootstrap random seed; implies --bootstrap when no explicit toggle is given",
+    )
 
     args = parser.parse_args(argv)
+    bootstrap_enabled = args.bootstrap
+    if (
+        bootstrap_enabled is None
+        and (args.bootstrap_n is not None or args.bootstrap_seed is not None)
+    ):
+        bootstrap_enabled = True
     opts = {
         name: value
         for name, value in {
@@ -232,6 +342,9 @@ def run_cli(argv: list[str] | None = None) -> None:
             "load_stored_data": args.load_stored_data,
             "target_observations": args.target_observations,
             "max_observations": args.max_observations,
+            "uncertainty_enabled": bootstrap_enabled,
+            "uncertainty_n_bootstrap": args.bootstrap_n,
+            "uncertainty_seed": args.bootstrap_seed,
         }.items()
         if value is not None
     }

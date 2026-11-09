@@ -38,6 +38,11 @@ from .stop import DEFAULT_TARGET_OBSERVATIONS
 
 _MISSING = object()
 
+DEFAULT_UNCERTAINTY_ENABLED = False
+DEFAULT_UNCERTAINTY_N_BOOTSTRAP = 500
+DEFAULT_UNCERTAINTY_SEED = 0
+DEFAULT_UNCERTAINTY_REPORT_FILENAME = "nozzle_uncertainty.json"
+
 
 def _finite_float(value: Any, name: str) -> float:
     """Convert a setting to float and reject NaN/infinity."""
@@ -97,6 +102,10 @@ class PossibleOptions(TypedDict, total=False):
     readiness_rotation_tolerance_deg: float
     readiness_home_tolerance_mm: float
     readiness_distortion_tolerance: float
+    uncertainty_enabled: bool
+    uncertainty_n_bootstrap: int
+    uncertainty_seed: int
+    uncertainty_report_filename: str | Path
 
 
 class Settings:
@@ -152,6 +161,10 @@ class Settings:
     readiness_rotation_tolerance_deg: float
     readiness_home_tolerance_mm: float
     readiness_distortion_tolerance: float
+    uncertainty_enabled: bool
+    uncertainty_n_bootstrap: int
+    uncertainty_seed: int
+    uncertainty_report_filename: str
 
     def __init__(self,
                  folder_to_analyze: str | Path,
@@ -188,6 +201,7 @@ class Settings:
         self._init_fit()
         self._init_stop()
         self._init_readiness()
+        self._init_uncertainty()
 
     # -----------------------------------------------------------------
     # Initialization helpers
@@ -581,6 +595,65 @@ class Settings:
             if value <= 0.0:
                 raise ValueError(f"{name} must be positive, got {value}")
 
+    def _init_uncertainty(self) -> None:
+        analysis = self._section("analysis")
+        uncertainty = analysis.get("uncertainty", {})
+        if not isinstance(uncertainty, dict):
+            raise TypeError(
+                "Config section '[analysis.uncertainty]' "
+                f"in {self.config_file_path} is not a table"
+            )
+
+        self.uncertainty_enabled = bool(
+            self._get(
+                uncertainty,
+                "enabled",
+                DEFAULT_UNCERTAINTY_ENABLED,
+                override="uncertainty_enabled",
+            )
+        )
+        self.uncertainty_n_bootstrap = int(
+            self._get(
+                uncertainty,
+                "n_bootstrap",
+                DEFAULT_UNCERTAINTY_N_BOOTSTRAP,
+                override="uncertainty_n_bootstrap",
+            )
+        )
+        self.uncertainty_seed = int(
+            self._get(
+                uncertainty,
+                "seed",
+                DEFAULT_UNCERTAINTY_SEED,
+                override="uncertainty_seed",
+            )
+        )
+        report_filename = self._get(
+            uncertainty,
+            "report_filename",
+            DEFAULT_UNCERTAINTY_REPORT_FILENAME,
+            override="uncertainty_report_filename",
+        )
+        if not isinstance(report_filename, (str, Path)):
+            raise TypeError(
+                "uncertainty_report_filename must be a string or pathlib.Path"
+            )
+        report_filename = str(report_filename).strip()
+        if not report_filename:
+            raise ValueError("uncertainty_report_filename must not be empty")
+        self.uncertainty_report_filename = report_filename
+
+        if self.uncertainty_n_bootstrap < 1:
+            raise ValueError(
+                "uncertainty_n_bootstrap must be positive, got "
+                f"{self.uncertainty_n_bootstrap}"
+            )
+        if self.uncertainty_seed < 0:
+            raise ValueError(
+                "uncertainty_seed must be non-negative, got "
+                f"{self.uncertainty_seed}"
+            )
+
     # -----------------------------------------------------------------
     # Properties with validation/transformation
     # -----------------------------------------------------------------
@@ -623,6 +696,11 @@ class Settings:
     @all_center_points_file.setter
     def all_center_points_file(self, value: str | Path):
         self._all_center_points_file = self.output_folder.joinpath(value)
+
+    @property
+    def uncertainty_report_file(self) -> Path:
+        """Sidecar JSON report for the optional nozzle-uncertainty bootstrap."""
+        return self.output_folder / self.uncertainty_report_filename
 
     @property
     def n_distortion_coefs(self) -> int:

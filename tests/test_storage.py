@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -13,6 +14,7 @@ import pytest
 
 import station_calibration.storage.points as points_module
 from station_calibration.storage import (
+    NOZZLE_UNCERTAINTY_SCHEMA_VERSION,
     RESULT_SCHEMA_VERSION,
     calibration_document,
     load_all_points,
@@ -20,6 +22,7 @@ from station_calibration.storage import (
     load_robot_positions,
     search_images,
     store_all_points,
+    store_nozzle_uncertainty,
 )
 
 
@@ -259,3 +262,28 @@ def test_calibration_document_includes_optional_session_metadata() -> None:
         document["camera"]["errors"]["intrinsic_std"],
         np.eye(3).tolist(),
     )
+
+
+def test_store_nozzle_uncertainty_writes_sidecar_json(tmp_path: Path) -> None:
+    report_path = store_nozzle_uncertainty(
+        report={
+            "mode": "residual",
+            "std": [0.01, 0.02, 0.03],
+            "norm_std": 0.0374,
+        },
+        output_folder=tmp_path,
+        filename="nozzle.json",
+        metadata={
+            "source": "example",
+            "fit": {"observations_used": 10},
+        },
+    )
+
+    assert report_path == tmp_path / "nozzle.json"
+    document = json.loads(report_path.read_text(encoding="utf-8"))
+    assert document["schema_version"] == NOZZLE_UNCERTAINTY_SCHEMA_VERSION
+    assert document["diagnostic"] == "nozzle_home_residual_bootstrap"
+    assert document["source"] == "example"
+    assert document["fit"] == {"observations_used": 10}
+    assert document["mode"] == "residual"
+    assert document["std"] == [0.01, 0.02, 0.03]

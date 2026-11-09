@@ -5,10 +5,13 @@
 
 __all__ = [
     "RESULT_SCHEMA_VERSION",
+    "NOZZLE_UNCERTAINTY_SCHEMA_VERSION",
     "calibration_document",
     "store_calibration",
+    "store_nozzle_uncertainty",
 ]
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,7 @@ from ..atomic import atomic_write_text
 
 
 RESULT_SCHEMA_VERSION = 1
+NOZZLE_UNCERTAINTY_SCHEMA_VERSION = 1
 
 
 def calibration_document(
@@ -127,6 +131,27 @@ def store_calibration(nozzle_home_position: np.ndarray,
         default_flow_style=False,
     )
     atomic_write_text(Path(output_folder) / "calibration_data.yaml", text)
+
+
+def store_nozzle_uncertainty(
+    *,
+    report: Mapping[str, Any],
+    output_folder: str | Path,
+    filename: str | Path = "nozzle_uncertainty.json",
+    metadata: Mapping[str, Any] | None = None,
+) -> Path:
+    """Write the optional nozzle-home bootstrap report as a sidecar JSON file."""
+    document: dict[str, Any] = {
+        "schema_version": NOZZLE_UNCERTAINTY_SCHEMA_VERSION,
+        "diagnostic": "nozzle_home_residual_bootstrap",
+    }
+    if metadata is not None:
+        document.update(metadata)
+    document.update(report)
+
+    target = Path(output_folder) / Path(filename)
+    atomic_write_text(target, json.dumps(document, indent=2) + "\n")
+    return target
 
 
 def _array_list(value: np.ndarray) -> list[Any]:

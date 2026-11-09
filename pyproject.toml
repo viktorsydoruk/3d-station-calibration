@@ -141,6 +141,7 @@ packages = ["src/station_calibration"]
 [tool.hatch.build.targets.sdist]
 include = [
     "src/station_calibration",
+    "scripts/bootstrap_nozzle.py",
     "scripts/generate_ice_stubs.py",
     "tests",
     "ice",

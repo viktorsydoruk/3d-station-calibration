@@ -38,6 +38,7 @@ def test_run_cli_forwards_parsed_options(
             "--debug",
             "--store-debug-images",
             "--no-load-stored-data",
+            "--subpixel-edges",
             "--target-observations",
             "100",
             "--max-observations",
@@ -51,6 +52,7 @@ def test_run_cli_forwards_parsed_options(
         "debug": True,
         "store_debug_images": True,
         "load_stored_data": False,
+        "subpixel_edges": True,
         "target_observations": 100,
         "max_observations": 200,
     }
@@ -139,6 +141,23 @@ def test_run_cli_omits_unspecified_options(
 
     assert captured["folder"] == tmp_path
     assert captured["opts"] == {}
+
+
+def test_run_cli_can_disable_subpixel_edges(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "main",
+        lambda folder, **opts: captured.update(folder=folder, opts=opts),
+    )
+
+    cli.run_cli([str(tmp_path), "--no-subpixel-edges"])
+
+    assert captured["opts"] == {"subpixel_edges": False}
 
 
 def test_main_reports_keyboard_interrupt(

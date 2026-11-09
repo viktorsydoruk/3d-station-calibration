@@ -70,6 +70,8 @@ python -m station_calibration "P:\3Dcalibration\3D_example"
 | `--store-debug-images` | Write per-image analysis images |
 | `--load-stored-data` | Reuse `output/CalibrationAllPoints.dat` if it exists |
 | `--no-load-stored-data` | Force re-analysis of the images |
+| `--subpixel-edges` | Refine sphere edges to the sub-pixel 50 % crossing |
+| `--no-subpixel-edges` | Force the binary mask edge even if the config enables refinement |
 | `--target-observations N` | Override the readiness count floor (default 100) |
 | `--max-observations N` | Set a hard readiness cap |
 | `--bootstrap` | Write the optional post-fit nozzle-uncertainty report |

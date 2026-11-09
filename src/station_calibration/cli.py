@@ -298,6 +298,12 @@ def run_cli(argv: list[str] | None = None) -> None:
         default=None,
         help="reuse an existing all_points.dat cache instead of analyzing images",
     )
+    parser.add_argument(
+        "--subpixel-edges",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="refine sphere edges to the sub-pixel 50 %% intensity crossing",
+    )
     parser.add_argument("--target-observations", type=int, default=None)
     parser.add_argument("--max-observations", type=int, default=None)
     parser.add_argument(
@@ -340,6 +346,7 @@ def run_cli(argv: list[str] | None = None) -> None:
             "debug": args.debug,
             "store_debug_images": args.store_debug_images,
             "load_stored_data": args.load_stored_data,
+            "subpixel_edges": args.subpixel_edges,
             "target_observations": args.target_observations,
             "max_observations": args.max_observations,
             "uncertainty_enabled": bootstrap_enabled,

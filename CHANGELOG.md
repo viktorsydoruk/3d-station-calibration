@@ -72,8 +72,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - A GitLab CI lint job and updated contributor documentation for the new
   tooling.
 - Optional sub-pixel silhouette refinement for sphere detection:
-  `analyze_image(..., subpixel_edges=True)`, the batch wrappers, and
-  `[analysis.sphere_projection] subpixel_edges` (default `false`) locate the
+  `analyze_image(..., subpixel_edges=True)`, the batch wrappers,
+  `[analysis.sphere_projection] subpixel_edges` (default `false`), and the
+  `--subpixel-edges` CLI flag locate the
   sphere boundary at the 50 % radial intensity crossing instead of the binary
   mask pixel. Each ray estimates its own background and interior level and a
   MAD trim removes inconsistent crossings. On synthetic blurred spheres this

@@ -9,6 +9,7 @@ __all__ = [
     "get_forground_mask",
     "smooth_1D_array",
     "fit_circle",
+    "fit_circle_with_covariance",
     "find_the_sphere_on_mask",
     "get_cut_sphere_mask",
     "gaussian_model",
@@ -143,6 +144,68 @@ def smooth_1D_array(arr: np.ndarray,
     return np.convolve(arr.astype(float), np.ones(w)/w, mode='same')
 
 
+def fit_circle_with_covariance(
+    x: np.ndarray,
+    y: np.ndarray,
+) -> tuple[float, float, float, np.ndarray]:
+    """
+        Fit a circle and estimate the 2x2 covariance of its centre.
+
+        The algebraic Kasa fit is linear in the parameters ``D, E, F``.  Its
+        parameter covariance is ``sigma^2 (A^T A)^-1`` with ``sigma^2`` taken
+        from the algebraic residuals.  Since ``x_c = -D/2`` and ``y_c = -E/2``,
+        the centre covariance is one quarter of the leading 2x2 block.
+
+    :param x: x coordinate points
+    :param y: y coordinate points
+    :return: x_c, y_c, radius, and the 2x2 centre covariance
+    """
+    x = np.asarray(x, dtype=np.float64).reshape(-1)
+    y = np.asarray(y, dtype=np.float64).reshape(-1)
+    if x.size != y.size:
+        raise ValueError("x and y must have the same length")
+    if x.size < 3:
+        raise ValueError("at least three points are required to fit a circle")
+    if not np.all(np.isfinite(x)) or not np.all(np.isfinite(y)):
+        raise ValueError("circle points must be finite")
+
+    # Centre the coordinates before building the linear system.  This keeps the
+    # normal equations well conditioned even though raw pixel coordinates are
+    # O(1000) and their squares are O(1e6).
+    x_mean = float(np.mean(x))
+    y_mean = float(np.mean(y))
+    x_centered = x - x_mean
+    y_centered = y - y_mean
+
+    # build linear system
+    A = np.column_stack([x_centered, y_centered, np.ones_like(x)])
+    b = -(x_centered**2 + y_centered**2)
+
+    # solve least squares
+    D, E, F = np.linalg.lstsq(A, b, rcond=None)[0]
+
+    # recover circle parameters
+    x_c_centered = -D / 2
+    y_c_centered = -E / 2
+    x_c = x_mean + x_c_centered
+    y_c = y_mean + y_c_centered
+    R = np.sqrt(x_c_centered*x_c_centered + y_c_centered*y_c_centered - F)
+
+    residual = A @ np.array([D, E, F], dtype=np.float64) - b
+    degrees_of_freedom = max(int(x.size) - 3, 1)
+    variance = float(np.dot(residual, residual) / degrees_of_freedom)
+    if not np.isfinite(variance) or variance < 0.0:
+        variance = 0.0
+
+    # cov(p) = variance * A^+ (A^+)^T, which is more stable than explicitly
+    # forming the normal-matrix inverse.
+    A_pinv = np.linalg.pinv(A)
+    center_covariance = 0.25 * variance * (A_pinv[:2, :] @ A_pinv[:2, :].T)
+    center_covariance = 0.5 * (center_covariance + center_covariance.T)
+
+    return x_c, y_c, R, center_covariance
+
+
 def fit_circle(x: np.ndarray,
                y: np.ndarray) -> tuple[float, float, float]:
     """
@@ -151,18 +214,7 @@ def fit_circle(x: np.ndarray,
     :param y: y coordinate points
     :return: x_c, y_c and radius of the circle
     """
-    # build linear system
-    A = np.column_stack([x, y, np.ones_like(x)])
-    b = -(x**2 + y**2)
-
-    # solve least squares
-    D, E, F = np.linalg.lstsq(A, b, rcond=None)[0]
-
-    # recover cirlce parameters
-    x_c = -D / 2
-    y_c = -E / 2
-    R = np.sqrt(x_c*x_c + y_c*y_c - F)
-
+    x_c, y_c, R, _ = fit_circle_with_covariance(x, y)
     return x_c, y_c, R
 
 
@@ -171,7 +223,8 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
                             sphere_center_to_nozzle_part: float = 0.3,
                             direction: int = 1,
                             min_bg_pixels_on_edges: int = 5,
-                            ) -> tuple[float, float, float] | None:
+                            return_covariance: bool = False,
+                            ) -> tuple[float, float, float] | tuple[float, float, float, np.ndarray] | None:
     """
         Function to find the sphere which is at the lowest positon of the forground mask with only one island
     :param forground_mask: forground mask with only one island where sphere is located
@@ -179,6 +232,7 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
     :param sphere_center_to_nozzle_part: part of the sphere between center and nozzle that should be taken into account
     :param direction: direction for calculations (1 - nozzle on the top, -1 - nozzle on the bottom)
     :param min_bg_pixels_on_edges: minimum number of pixels between the edge of the image and a sphere mask
+    :param return_covariance: whether to append the fitted centre covariance to the result
     :return: x, y and radius of the sphere or None if something is not right
     """
     if direction not in [1, -1]:
@@ -259,6 +313,8 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
         all_sel_y[0::2] = y_0 + row_offset
         all_sel_y[1::2] = y_0 + row_offset
 
+        if return_covariance:
+            return fit_circle_with_covariance(all_sel_x, all_sel_y)
         return fit_circle(all_sel_x, all_sel_y)
     except Exception:  # noqa: BLE001 - degenerate masks mean no detection
         return None

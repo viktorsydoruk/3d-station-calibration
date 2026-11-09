@@ -11,6 +11,7 @@ import numpy as np
 
 from .debug import DebugInfo
 from .models import CalibrationObservation, CalibrationResult, ObservationRejection
+from .readiness import ReadinessStatus
 from .session import CalibrationSession
 from .settings import Settings
 from .stop import StopReason
@@ -177,25 +178,50 @@ class CalibrationService:
 
     @property
     def is_ready(self) -> bool:
-        """Whether the session has reached its stop condition."""
+        """Whether the session's fit has saturated."""
         return self.session.is_ready
 
     @property
+    def readiness_status(self) -> ReadinessStatus:
+        """Full saturation-based readiness result from the session."""
+        return self.session.readiness_status
+
+    @property
+    def readiness_reason(self) -> StopReason:
+        """Reason for the saturation-based readiness state."""
+        return self.session.readiness_reason
+
+    @property
+    def readiness_detail(self) -> str | None:
+        """Human-readable saturation-based readiness detail."""
+        return self.session.readiness_detail
+
+    @property
     def stop_reason(self) -> StopReason:
-        """Current readiness reason from the session."""
+        """Combined count and saturation readiness reason from the session."""
         return self.session.stop_reason
 
     @property
     def stop_detail(self) -> str | None:
-        """Human-readable readiness detail from the session."""
+        """Combined readiness detail from the session."""
         return self.session.stop_detail
+
+    @property
+    def count_reason(self) -> StopReason:
+        """Count-only stop-policy reason from the session."""
+        return self.session.count_reason
+
+    @property
+    def count_detail(self) -> str | None:
+        """Count-only stop-policy detail from the session."""
+        return self.session.count_detail
 
     @property
     def last_result(self) -> CalibrationResult | None:
         return self.session.last_result
 
     def request_stop(self, detail: str | None = None) -> None:
-        """Request an explicit stop; the stop policy still requires a valid fit."""
+        """Request an explicit stop; readiness still requires the count floor."""
         self.session.request_stop(detail)
 
     def finish(self) -> CalibrationResult:

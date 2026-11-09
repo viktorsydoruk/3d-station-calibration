@@ -162,6 +162,14 @@ Ranges: `n_move_aver >= 1`, `0 <= sphere_center_to_nozzle_part <= 1`,
 | `focal_length_initial` | `2000.0` | Initial `fx`/`fy` in pixels |
 | `camera_distance_initial` | `80.0` | Initial translation `t_z` in millimetres |
 | `loss_f_scale` | `5.0` | Pixel scale where the `soft_l1` robust loss starts downweighting residuals; must be positive and finite |
+| `center_weighting` | `true` | Use the per-image circle-fit centre covariance as measurement weights |
+
+`center_weighting` turns the camera fit into a generalized least-squares fit:
+each measured image centre is whitened by the 2×2 covariance estimated by the
+circle fit. It adds one initial unweighted fit to calibrate the global residual
+scale; image analysis is unaffected. Caches written before covariance support
+contain no covariance columns; they fall back to an unweighted fit until the
+images are re-analyzed with `--no-load-stored-data`.
 
 `n_distortion_coefs` must be one of `0, 4, 5, 8, 12, 14`:
 
@@ -185,11 +193,40 @@ is weakly constrained by a small or poorly distributed dataset.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `target_observations` | `500` | Readiness target for valid observations |
-| `max_observations` | unset | Optional earlier readiness threshold |
+| `target_observations` | `100` | Minimum count before saturation-based readiness is evaluated |
+| `max_observations` | unset | Optional safety cap; reaching it forces readiness |
 
 Both values must be positive. If either is smaller than `min_observations`
 (`10 + n_distortion_coefs`), session construction raises `ValueError`.
+
+Reaching `target_observations` is necessary but not sufficient when
+`[analysis.readiness] enabled = true`: the fitted camera parameters must also
+have stopped changing materially. More observations are accepted while the fit
+is still moving.
+
+## `[analysis.readiness]`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `enabled` | `true` | Layer the saturation test on top of the count floor |
+| `checkpoint_interval` | `10` | Record a fit checkpoint after this many new valid observations |
+| `stable_checkpoints` | `3` | Compare the mean of the last N checkpoints with the previous N |
+| `min_inlier_fraction` | `0.9` | Minimum fraction of observations that must survive filtering |
+| `focal_relative_tolerance` | `0.001` | Maximum relative change in `fx`/`fy` |
+| `principal_point_tolerance_px` | `0.05` | Maximum change in `cx`/`cy` in pixels |
+| `translation_tolerance_mm` | `0.05` | Maximum translation change in millimetres |
+| `rotation_tolerance_deg` | `0.01` | Maximum rotation change in degrees |
+| `home_tolerance_mm` | `0.05` | Maximum change in fitted sphere home position |
+| `distortion_tolerance` | `0.0001` | Maximum absolute change in active distortion coefficients |
+
+Readiness asks whether more images would materially change the calibration. It
+does not use nozzle-position error or nozzle uncertainty. Setting `enabled =
+false` restores count-only readiness. Count-only readiness is also used
+automatically when automatic fitting is disabled (`fit_every_n = 0`), because
+there are no incremental fit checkpoints to compare.
+
+`checkpoint_interval`, `stable_checkpoints`, and all tolerances must be
+positive. `min_inlier_fraction` must be in `(0, 1]`.
 
 ## Example
 
@@ -223,8 +260,13 @@ fix_cx_cy = true
 n_distortion_coefs = 5
 
 [analysis.stop]
-target_observations = 400
+target_observations = 100
 max_observations = 500
+
+[analysis.readiness]
+enabled = true
+checkpoint_interval = 10
+stable_checkpoints = 3
 ```
 
 ## Validation errors

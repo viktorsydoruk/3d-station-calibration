@@ -21,7 +21,12 @@ from ..debug import DebugInfo
 from ..models import CalibrationObservation, ObservationRejection
 from ..session import CalibrationSession
 from ..settings import Settings
-from ..storage import load_all_points, load_robot_positions, search_images, store_all_points
+from ..storage import (
+    load_all_points_with_covariances,
+    load_robot_positions,
+    search_images,
+    store_all_points,
+)
 from ..vision import (
     analyze_images,
     filtering_data_by_radius,
@@ -135,6 +140,7 @@ def _make_observation(
     direction: int,
     image_shape: tuple[int, int],
     source: str | None,
+    center_covariance: np.ndarray | None = None,
 ) -> CalibrationObservation:
     return CalibrationObservation(
         robot_position=robot_position,
@@ -144,6 +150,7 @@ def _make_observation(
         direction=direction,
         image_shape=image_shape,
         source=source,
+        center_covariance=center_covariance,
     )
 
 
@@ -170,6 +177,7 @@ def _observations_from_rows(
     image_sizes: np.ndarray,
     valid_mask: np.ndarray,
     source_names: Sequence[str] | None = None,
+    center_covariances: np.ndarray | None = None,
 ) -> tuple[CalibrationObservation, ...]:
     observations = []
     for index in np.flatnonzero(valid_mask):
@@ -177,6 +185,12 @@ def _observations_from_rows(
         if image_shape is None:
             continue
         source = source_names[int(index)] if source_names is not None else None
+        covariance = None
+        if (
+            center_covariances is not None
+            and np.all(np.isfinite(center_covariances[index]))
+        ):
+            covariance = center_covariances[index]
         observations.append(
             _make_observation(
                 robot_position=robot_positions[index],
@@ -186,6 +200,7 @@ def _observations_from_rows(
                 direction=int(directions[index]),
                 image_shape=image_shape,
                 source=source,
+                center_covariance=covariance,
             )
         )
     return tuple(observations)
@@ -260,7 +275,8 @@ class FolderCalibrationSource:
             sigmas,
             image_sizes,
             directions,
-        ) = load_all_points(point_file)
+            center_covariances,
+        ) = load_all_points_with_covariances(point_file)
 
         valid_mask = _valid_mask(
             robot_positions,
@@ -279,6 +295,7 @@ class FolderCalibrationSource:
             image_sizes,
             valid_mask,
             source_names=[str(point_file)] * len(robot_positions),
+            center_covariances=center_covariances,
         )
 
         rejections = []
@@ -340,6 +357,7 @@ class FolderCalibrationSource:
         center_points = np.full((n_images, 2), np.nan, dtype=np.float64)
         radii = np.full(n_images, np.nan, dtype=np.float64)
         sigmas = np.full(n_images, np.nan, dtype=np.float64)
+        center_covariances = np.full((n_images, 2, 2), np.nan, dtype=np.float64)
         image_sizes = np.empty((n_images, 2), dtype=np.float64)
         directions = np.empty(n_images, dtype=np.int8)
 
@@ -350,6 +368,10 @@ class FolderCalibrationSource:
                 center_points[index] = [analysis.observation.x, analysis.observation.y]
                 radii[index] = analysis.observation.radius
                 sigmas[index] = analysis.observation.sigma
+                if analysis.observation.center_covariance is not None:
+                    center_covariances[index] = (
+                        analysis.observation.center_covariance
+                    )
 
         # Preserve the folder cache: radius outliers are stored as NaN, even though
         # the session receives the raw observations and applies the same filter.
@@ -371,6 +393,7 @@ class FolderCalibrationSource:
             storage_sigmas,
             image_sizes,
             directions,
+            center_covariances,
         )
 
         valid_mask = _valid_mask(
@@ -390,6 +413,7 @@ class FolderCalibrationSource:
             image_sizes,
             valid_mask,
             source_names=[str(filename) for filename in image_filenames],
+            center_covariances=center_covariances,
         )
         fit_observations = _without_radius_outliers(
             observations,

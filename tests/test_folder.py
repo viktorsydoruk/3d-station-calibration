@@ -24,6 +24,7 @@ from station_calibration import (
     get_3D_and_2D_data,
     get_calibration_data,
     load_all_points,
+    load_all_points_with_covariances,
     observations_to_arrays,
 )
 
@@ -39,7 +40,7 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
         "n_distortion_coefs": 4,
         "focal_length_initial": 2000.0,
         "camera_distance_initial": 80.0,
-        "target_observations": 500,
+        "target_observations": 100,
     }
     options.update(overrides)
     return Settings(tmp_path, **options)
@@ -127,6 +128,7 @@ def test_fresh_source_feeds_raw_observations_and_session_filters(
     )
     image_filenames = [tmp_path / f"image_{index:02d}.tif" for index in range(n_images)]
 
+    covariance = np.array([[0.01, 0.001], [0.001, 0.02]])
     analyses = []
     for index in range(n_images):
         if index == n_images - 1:
@@ -148,6 +150,7 @@ def test_fresh_source_feeds_raw_observations_and_session_filters(
                     650.0 + index,
                     radius,
                     2.0,
+                    center_covariance=covariance,
                 ),
                 direction=1,
                 image_shape=(900, 1200),
@@ -187,6 +190,12 @@ def test_fresh_source_feeds_raw_observations_and_session_filters(
     assert np.isnan(stored[2][n_images - 1])
     assert stored[2][0] == pytest.approx(12.0)
 
+    stored_with_covariance = load_all_points_with_covariances(
+        settings.all_center_points_file
+    )
+    np.testing.assert_allclose(stored_with_covariance[6][0], covariance)
+    assert np.all(np.isnan(stored_with_covariance[6][n_images - 2]))
+
     session = source.open_session(fit_every_n=None)
     assert session.n_observations == 16
     assert session.n_rejections == 1
@@ -202,8 +211,11 @@ def test_fresh_source_feeds_raw_observations_and_session_filters(
         image_size_xy,
         settings,
         print_debug,
+        *,
+        center_covariances=None,
     ):
         captured["n_points"] = len(robot_positions)
+        captured["center_covariances"] = center_covariances
         return (
             np.mean(robot_positions, axis=0),
             np.array(center_points, copy=True),
@@ -231,6 +243,9 @@ def test_fresh_source_feeds_raw_observations_and_session_filters(
     result = session.finish()
 
     assert captured["n_points"] == 15
+    assert captured["center_covariances"] is not None
+    assert captured["center_covariances"].shape == (15, 2, 2)
+    np.testing.assert_allclose(captured["center_covariances"][0], covariance)
     assert result.observation_count == 16
     assert result.n_used == 15
     assert result.image_size_xy == (1200, 900)

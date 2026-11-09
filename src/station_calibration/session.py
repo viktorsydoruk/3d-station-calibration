@@ -8,10 +8,13 @@ __all__ = [
     "ObservationRejection",
     "CalibrationResult",
     "CalibrationSession",
+    "ReadinessStatus",
     "StopReason",
     "StopPolicy",
     "StopStatus",
 ]
+
+from collections import deque
 
 import numpy as np
 
@@ -22,6 +25,12 @@ from .models import (
     ObservationRejection,
 )
 from .processes import get_calibration_data
+from .readiness import (
+    FitSnapshot,
+    ReadinessPolicy,
+    ReadinessStatus,
+    ReadinessTolerances,
+)
 from .settings import Settings
 from .stop import StopPolicy, StopReason, StopStatus
 from .vision import ImageAnalysisResult, get_radius_outlier_mask
@@ -100,13 +109,18 @@ class CalibrationSession:
         ``apply_radius_filter=False`` when the source already filtered its data, for
         example when loading a previously stored point cache.
 
-        Readiness is controlled by ``StopPolicy``. By default the session reports
-        readiness once 500 valid observations have been collected. Readiness is
-        advisory: observations added after that point are still accepted and are
-        included in the next fit. The caller decides when to stop sending data
-        and then calls :meth:`finish` to publish a result, or aborts the session
-        in the frontend. The policy can also set an earlier readiness threshold,
-        or the caller can request an explicit stop.
+        Readiness is controlled by ``StopPolicy`` and a saturation policy. The
+        stop policy sets the minimum number of valid observations and the safety
+        cap. Once that minimum is reached, readiness requires the fitted camera
+        parameters to be stable over two windows of fit checkpoints. Readiness
+        asks whether more images would materially change the calibration, not
+        whether the nozzle position has a small absolute uncertainty.
+
+        Readiness is advisory: observations added after that point are still
+        accepted and are included in the next fit. The caller decides when to
+        stop sending data and then calls :meth:`finish` to publish a result, or
+        aborts the session in the frontend. The policy can also set an earlier
+        count floor, or the caller can request an explicit stop.
     """
 
     def __init__(self,
@@ -116,7 +130,8 @@ class CalibrationSession:
                  min_observations: int | None = None,
                  fit_every_n: int | None = 1,
                  apply_radius_filter: bool = True,
-                 stop_policy: StopPolicy | None = None):
+                 stop_policy: StopPolicy | None = None,
+                 readiness_policy: ReadinessPolicy | None = None):
         self.settings = settings
         self.print_debug = print_debug if print_debug is not None else DebugInfo(settings.debug)
         self.apply_radius_filter = bool(apply_radius_filter)
@@ -169,6 +184,27 @@ class CalibrationSession:
                 f"{self.stop_policy.max_observations}"
             )
 
+        if readiness_policy is None:
+            readiness_policy = ReadinessPolicy(
+                # Without incremental fits there are no checkpoints to compare.
+                # Fall back to count-only readiness in that mode.
+                enabled=settings.readiness_enabled and fit_every_n is not None,
+                checkpoint_interval=settings.readiness_checkpoint_interval,
+                stable_checkpoints=settings.readiness_stable_checkpoints,
+                min_inlier_fraction=settings.readiness_min_inlier_fraction,
+                tolerances=ReadinessTolerances(
+                    focal_relative=settings.readiness_focal_relative_tolerance,
+                    principal_point_px=(
+                        settings.readiness_principal_point_tolerance_px
+                    ),
+                    translation_mm=settings.readiness_translation_tolerance_mm,
+                    rotation_deg=settings.readiness_rotation_tolerance_deg,
+                    home_mm=settings.readiness_home_tolerance_mm,
+                    distortion=settings.readiness_distortion_tolerance,
+                ),
+            )
+        self.readiness_policy = readiness_policy
+
         self._observations: list[CalibrationObservation] = []
         self._rejections: list[ObservationRejection] = []
         self._last_result: CalibrationResult | None = None
@@ -176,6 +212,12 @@ class CalibrationSession:
         self._fit_count = 0
         self._new_since_fit = 0
         self._explicit_stop_detail: str | None = None
+        max_history = max(
+            8,
+            4 * int(self.readiness_policy.stable_checkpoints),
+        )
+        self._fit_history: deque[FitSnapshot] = deque(maxlen=max_history)
+        self._next_checkpoint_n = 0
 
     @property
     def observations(self) -> tuple[CalibrationObservation, ...]:
@@ -255,8 +297,8 @@ class CalibrationSession:
         return self._new_since_fit
 
     @property
-    def stop_status(self) -> StopStatus:
-        """Evaluate the stop policy against the current observation count."""
+    def count_status(self) -> StopStatus:
+        """Evaluate the count-only stop policy."""
         return self.stop_policy.evaluate(
             self.n_observations,
             self.min_observations,
@@ -264,24 +306,83 @@ class CalibrationSession:
         )
 
     @property
-    def is_ready(self) -> bool:
-        """Whether no more observations are needed.
+    def stop_status(self) -> StopStatus:
+        """Count-only stop status retained for compatibility."""
+        return self.count_status
 
-        Readiness is based on the stop policy and valid observation count, not on
-        whether the latest fit has already run. Call :meth:`finish` or
-        :meth:`finish_if_ready` before retrieving calibration results.
+    @property
+    def readiness_status(self) -> ReadinessStatus:
+        """Evaluate the count floor, fit health, and saturation policy."""
+        used_directions = None
+        if (
+            self._last_result is not None
+            and self._last_result.observation_count == self.n_observations
+        ):
+            used_directions = [
+                observation.direction
+                for observation, used in zip(
+                    self._observations,
+                    self._last_result.used_mask,
+                )
+                if used
+            ]
+
+        return self.readiness_policy.evaluate(
+            self.count_status,
+            last_result=self._last_result,
+            last_fit_error=self._last_fit_error,
+            new_since_fit=self._new_since_fit,
+            n_observations=self.n_observations,
+            snapshots=tuple(self._fit_history),
+            used_directions=used_directions,
+        )
+
+    @property
+    def is_ready(self) -> bool:
+        """Whether no more observations are likely to improve the fit.
+
+        Readiness requires the stop policy's minimum observation count, a
+        successful current fit, enough inliers, and stable fitted parameters
+        over two checkpoint windows. It does not use the nozzle position or its
+        uncertainty. Call :meth:`finish` or :meth:`finish_if_ready` before
+        retrieving calibration results.
         """
-        return self.stop_status.ready
+        return self.readiness_status.ready
+
+    @property
+    def readiness_reason(self) -> StopReason:
+        """Reason for the current saturation-based readiness state."""
+        return self.readiness_status.reason
+
+    @property
+    def readiness_detail(self) -> str | None:
+        """Human-readable detail for the saturation-based readiness state."""
+        return self.readiness_status.detail
 
     @property
     def stop_reason(self) -> StopReason:
-        """Reason for the current readiness state."""
-        return self.stop_status.reason
+        """Reason for the combined count and saturation readiness state."""
+        return self.readiness_reason
 
     @property
     def stop_detail(self) -> str | None:
-        """Human-readable detail for the current readiness state."""
-        return self.stop_status.detail
+        """Human-readable detail for the combined readiness state."""
+        return self.readiness_detail
+
+    @property
+    def count_reason(self) -> StopReason:
+        """Reason from the count-only stop policy."""
+        return self.count_status.reason
+
+    @property
+    def count_detail(self) -> str | None:
+        """Human-readable detail from the count-only stop policy."""
+        return self.count_status.detail
+
+    @property
+    def fit_history(self) -> tuple[FitSnapshot, ...]:
+        """Recorded fit checkpoints used by the saturation policy."""
+        return tuple(self._fit_history)
 
     @property
     def stop_requested(self) -> bool:
@@ -397,8 +498,36 @@ class CalibrationSession:
             direction=analysis.direction,
             image_shape=analysis.image_shape,
             source=source,
+            center_covariance=analysis.observation.center_covariance,
         )
         return self.add_observation(observation, fit=fit)
+
+    def _record_fit_checkpoint(self, result: CalibrationResult) -> None:
+        """Store a checkpoint when the fit has advanced far enough."""
+        if not self.readiness_policy.enabled:
+            return
+
+        n_observations = int(result.observation_count)
+        if (
+            self._fit_history
+            and n_observations <= self._fit_history[-1].n_observations
+        ):
+            return
+
+        if (
+            self._fit_history
+            and result.n_distortion_coefs
+            != self._fit_history[-1].n_distortion_coefs
+        ):
+            self._fit_history.clear()
+            self._next_checkpoint_n = 0
+
+        if self._fit_history and n_observations < self._next_checkpoint_n:
+            return
+
+        self._fit_history.append(FitSnapshot.from_result(result))
+        interval = int(self.readiness_policy.checkpoint_interval)
+        self._next_checkpoint_n = ((n_observations // interval) + 1) * interval
 
     def fit(self) -> CalibrationResult:
         """
@@ -446,6 +575,29 @@ class CalibrationSession:
                 dtype=np.float64,
             )[fit_observation_indices]
 
+            fit_observations = [
+                self._observations[index] for index in fit_observation_indices
+            ]
+            fit_covariances = None
+            if fit_observations and all(
+                observation.center_covariance is not None
+                for observation in fit_observations
+            ):
+                fit_covariances = np.stack(
+                    [
+                        observation.center_covariance
+                        for observation in fit_observations
+                    ]
+                )
+            elif any(
+                observation.center_covariance is not None
+                for observation in fit_observations
+            ):
+                self.print_debug(
+                    "centre covariance is missing for some observations; "
+                    "using an unweighted fit"
+                )
+
             (
                 pos_home,
                 center_points_adjusted,
@@ -464,6 +616,7 @@ class CalibrationSession:
                 image_size_xy,
                 self.settings,
                 self.print_debug,
+                center_covariances=fit_covariances,
             )
 
             _validate_fit_output(
@@ -512,6 +665,7 @@ class CalibrationSession:
         self._fit_count += 1
         self._new_since_fit = 0
         self._last_fit_error = None
+        self._record_fit_checkpoint(result)
         return result
 
     def request_stop(self, detail: str | None = None) -> None:
@@ -519,10 +673,19 @@ class CalibrationSession:
         self._explicit_stop_detail = detail or "stop requested explicitly"
 
     def finish_if_ready(self) -> CalibrationResult | None:
-        """Return a final fit if the stop policy is ready, otherwise return None."""
-        if not self.is_ready:
+        """Return a final fit when the session is saturated, otherwise None.
+
+        The count floor is checked first. If it is reached, a current fit is
+        obtained before the saturation policy is evaluated, because the policy
+        needs a fresh result and its checkpoint history.
+        """
+        if not self.stop_status.ready:
             return None
-        return self.finish()
+
+        result = self.finish()
+        if self.readiness_status.ready:
+            return result
+        return None
 
     def finish(self) -> CalibrationResult:
         """

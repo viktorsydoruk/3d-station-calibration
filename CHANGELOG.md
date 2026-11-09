@@ -40,6 +40,11 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   disk after `abort`.
 - `[analysis] fit_every_n` controls how often a running session refits; `0`
   disables intermediate fits and waits for `finish()`.
+- Saturation-based readiness: `[analysis.readiness]` compares two windows of
+  fitted camera parameters and reports ready only when they stop changing
+  materially. The count floor defaults to `target_observations = 100`; explicit
+  and maximum-observation stops remain forced overrides. Count-only readiness is
+  restored with `enabled = false` or when automatic fitting is disabled.
 - A versioned, shared result document for the folder CLI and Ice archive, with
   consistent `schema_version`, `nozzle`, and `camera` sections.
 - GitLab CI now installs ZeroC Ice from the official Debian repository and runs
@@ -97,6 +102,13 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   points. A spatial-cluster guard (`outlier_cluster_guard`, default `true`)
   keeps compact groups of high-score points, which usually indicate a
   systematic robot or camera-model effect rather than isolated blunders.
+- Per-observation centre covariance from the circle fit is now propagated
+  through image analysis, the point cache, and the calibration fit. With
+  `[analysis.fit] center_weighting = true` (default), the camera fit uses
+  generalized least squares; raw pixel residuals are retained for RMSE
+  reporting, while whitened residuals feed the parameter covariance and outlier
+  test. Old caches without covariance columns fall back to the unweighted fit
+  until the images are re-analyzed.
 - The packaged defaults now use `n_distortion_coefs = 0`, `fit_every_n = 5`,
   and `max_outliers = 10`. The no-distortion model is adequate for the loose
   nozzle-position requirement, and refitting every five observations reduces

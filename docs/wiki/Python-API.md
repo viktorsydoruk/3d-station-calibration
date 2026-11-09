@@ -7,7 +7,7 @@ depend on the internal module layout.
 
 | Group | Names |
 | --- | --- |
-| Settings and lifecycle | `Settings`, `PossibleOptions`, `DebugInfo`, `StopPolicy`, `StopReason`, `StopStatus`, `DEFAULT_TARGET_OBSERVATIONS` |
+| Settings and lifecycle | `Settings`, `PossibleOptions`, `DebugInfo`, `StopPolicy`, `StopReason`, `StopStatus`, `DEFAULT_TARGET_OBSERVATIONS`, `ReadinessPolicy`, `ReadinessStatus`, `ReadinessTolerances`, `FitSnapshot` |
 | Domain and session | `CalibrationObservation`, `ObservationRejection`, `CalibrationResult`, `SIGMA_OFFSET`, `CalibrationSession`, `CalibrationService` |
 | Sources | `ObservationDataset`, `ObservationSource`, `FolderDataset`, `FolderCalibrationSource`, `create_folder_session`, `observations_to_arrays` |
 | Image analysis | `SphereObservation`, `ImageAnalysisResult`, `load_image`, `decode_image`, `split_image`, `analyze_image`, `analyze_image_array`, `analyze_image_bytes`, `analyze_images`, `get_sphere_centers_and_blur_sigmas`, `get_radius_outlier_mask`, `filtering_data_by_radius`, `adjust_image_center_points` |

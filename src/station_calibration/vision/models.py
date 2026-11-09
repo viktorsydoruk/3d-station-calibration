@@ -10,6 +10,10 @@ __all__ = [
 
 from dataclasses import dataclass
 
+import numpy as np
+
+from ..models import validate_center_covariance
+
 
 @dataclass(frozen=True)
 class SphereObservation:
@@ -18,6 +22,14 @@ class SphereObservation:
     y: float
     radius: float
     sigma: float
+    center_covariance: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "center_covariance",
+            validate_center_covariance(self.center_covariance),
+        )
 
 
 @dataclass(frozen=True)

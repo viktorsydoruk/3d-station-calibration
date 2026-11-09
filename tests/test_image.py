@@ -23,7 +23,11 @@ from station_calibration.vision import (
     split_image,
 )
 from station_calibration.vision.debug import debug_images_storing
-from station_calibration.vision.detection import get_bg_value, get_forground_mask
+from station_calibration.vision.detection import (
+    fit_circle_with_covariance,
+    get_bg_value,
+    get_forground_mask,
+)
 
 SYNTHETIC_CENTER = (600.0, 650.0)
 SYNTHETIC_RADIUS = 170.0
@@ -93,6 +97,25 @@ def test_analyze_image_extracts_synthetic_sphere() -> None:
     assert observation.y == pytest.approx(SYNTHETIC_CENTER[1], abs=2.0)
     assert observation.radius == pytest.approx(SYNTHETIC_RADIUS, abs=5.0)
     assert observation.sigma == pytest.approx(2.5, abs=0.5)
+    assert observation.center_covariance is not None
+    assert observation.center_covariance.shape == (2, 2)
+    assert np.all(np.linalg.eigvalsh(observation.center_covariance) > 0.0)
+
+
+def test_fit_circle_with_covariance_matches_geometric_circle() -> None:
+    rng = np.random.default_rng(42)
+    angles = np.linspace(0.0, 2.0 * np.pi, 200, endpoint=False)
+    x = 100.0 + 50.0 * np.cos(angles) + rng.normal(0.0, 0.1, angles.size)
+    y = 200.0 + 50.0 * np.sin(angles) + rng.normal(0.0, 0.1, angles.size)
+
+    x_c, y_c, radius, covariance = fit_circle_with_covariance(x, y)
+
+    assert x_c == pytest.approx(100.0, abs=0.1)
+    assert y_c == pytest.approx(200.0, abs=0.1)
+    assert radius == pytest.approx(50.0, abs=0.1)
+    assert covariance.shape == (2, 2)
+    np.testing.assert_allclose(covariance, covariance.T)
+    assert np.all(np.linalg.eigvalsh(covariance) > 0.0)
 
 
 def test_analyze_image_bytes_extracts_synthetic_sphere() -> None:

@@ -10,22 +10,22 @@ import pytest
 from station_calibration import StopPolicy, StopReason
 
 
-def test_default_policy_targets_500_valid_observations() -> None:
+def test_default_policy_targets_100_valid_observations() -> None:
     policy = StopPolicy()
 
-    assert policy.target_observations == 500
+    assert policy.target_observations == 100
     assert policy.max_observations is None
 
-    status = policy.evaluate(499, min_observations=14)
+    status = policy.evaluate(99, min_observations=14)
     assert status.ready is False
     assert status.reason is StopReason.NOT_READY
     assert status.detail is None
 
-    status = policy.evaluate(500, min_observations=14)
+    status = policy.evaluate(100, min_observations=14)
     assert status.ready is True
     assert status.reason is StopReason.TARGET_OBSERVATIONS
     assert status.detail is not None
-    assert "500" in status.detail
+    assert "100" in status.detail
 
 
 def test_policy_waits_for_minimum_observations() -> None:

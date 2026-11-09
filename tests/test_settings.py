@@ -56,6 +56,7 @@ BASE_CONFIG: dict[str, dict[str, Any]] = {
         "focal_length_initial": 1800.0,
         "camera_distance_initial": 95.0,
         "loss_f_scale": 6.5,
+        "center_weighting": False,
     },
 }
 
@@ -161,8 +162,19 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.focal_length_initial == 1800.0
     assert settings.camera_distance_initial == 95.0
     assert settings.loss_f_scale == 6.5
-    assert settings.target_observations == 500
+    assert settings.center_weighting is False
+    assert settings.target_observations == 100
     assert settings.max_observations is None
+    assert settings.readiness_enabled is True
+    assert settings.readiness_checkpoint_interval == 10
+    assert settings.readiness_stable_checkpoints == 3
+    assert settings.readiness_min_inlier_fraction == 0.9
+    assert settings.readiness_focal_relative_tolerance == 0.001
+    assert settings.readiness_principal_point_tolerance_px == 0.05
+    assert settings.readiness_translation_tolerance_mm == 0.05
+    assert settings.readiness_rotation_tolerance_deg == 0.01
+    assert settings.readiness_home_tolerance_mm == 0.05
+    assert settings.readiness_distortion_tolerance == 0.0001
 
     # The parsed config is exposed as well.
     assert settings.config["analysis"]["n_iterations"] == 3
@@ -186,7 +198,10 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
     assert settings.outlier_cluster_guard is True
     assert settings.fit_every_n == 5
     assert settings.n_distortion_coefs == 0
-    assert settings.target_observations == 500
+    assert settings.center_weighting is True
+    assert settings.target_observations == 100
+    assert settings.readiness_enabled is True
+    assert settings.readiness_checkpoint_interval == 10
 
 
 def test_loads_stop_settings_and_overrides(context: ConfigContext) -> None:
@@ -220,6 +235,76 @@ def test_invalid_stop_settings_raise(context: ConfigContext) -> None:
 
     with pytest.raises(ValueError, match="max_observations"):
         context.make()
+
+
+def test_loads_readiness_settings_and_overrides(context: ConfigContext) -> None:
+    context.config["analysis.readiness"] = {
+        "enabled": False,
+        "checkpoint_interval": 20,
+        "stable_checkpoints": 2,
+        "min_inlier_fraction": 0.8,
+        "focal_relative_tolerance": 0.002,
+        "principal_point_tolerance_px": 0.1,
+        "translation_tolerance_mm": 0.2,
+        "rotation_tolerance_deg": 0.02,
+        "home_tolerance_mm": 0.3,
+        "distortion_tolerance": 0.0002,
+    }
+    context.write()
+
+    settings = context.make()
+    assert settings.readiness_enabled is False
+    assert settings.readiness_checkpoint_interval == 20
+    assert settings.readiness_stable_checkpoints == 2
+    assert settings.readiness_min_inlier_fraction == 0.8
+    assert settings.readiness_focal_relative_tolerance == 0.002
+    assert settings.readiness_principal_point_tolerance_px == 0.1
+    assert settings.readiness_translation_tolerance_mm == 0.2
+    assert settings.readiness_rotation_tolerance_deg == 0.02
+    assert settings.readiness_home_tolerance_mm == 0.3
+    assert settings.readiness_distortion_tolerance == 0.0002
+
+    overridden = context.make(
+        readiness_enabled=True,
+        readiness_checkpoint_interval=5,
+        readiness_stable_checkpoints=1,
+        readiness_min_inlier_fraction=0.95,
+        readiness_focal_relative_tolerance=0.0005,
+        readiness_principal_point_tolerance_px=0.02,
+        readiness_translation_tolerance_mm=0.01,
+        readiness_rotation_tolerance_deg=0.005,
+        readiness_home_tolerance_mm=0.01,
+        readiness_distortion_tolerance=0.00001,
+    )
+    assert overridden.readiness_enabled is True
+    assert overridden.readiness_checkpoint_interval == 5
+    assert overridden.readiness_stable_checkpoints == 1
+    assert overridden.readiness_min_inlier_fraction == 0.95
+    assert overridden.readiness_focal_relative_tolerance == 0.0005
+    assert overridden.readiness_principal_point_tolerance_px == 0.02
+    assert overridden.readiness_translation_tolerance_mm == 0.01
+    assert overridden.readiness_rotation_tolerance_deg == 0.005
+    assert overridden.readiness_home_tolerance_mm == 0.01
+    assert overridden.readiness_distortion_tolerance == 0.00001
+
+
+def test_invalid_readiness_settings_raise(context: ConfigContext) -> None:
+    cases = [
+        ("checkpoint_interval", 0),
+        ("stable_checkpoints", 0),
+        ("min_inlier_fraction", 0.0),
+        ("focal_relative_tolerance", 0.0),
+        ("principal_point_tolerance_px", -1.0),
+        ("translation_tolerance_mm", 0.0),
+        ("rotation_tolerance_deg", 0.0),
+        ("home_tolerance_mm", 0.0),
+        ("distortion_tolerance", 0.0),
+    ]
+    for name, value in cases:
+        context.config["analysis.readiness"] = {name: value}
+        context.write()
+        with pytest.raises(ValueError, match=name):
+            context.make()
 
 
 def test_config_file_accepts_string_and_path(context: ConfigContext) -> None:
@@ -332,6 +417,7 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
         focal_length_initial=1500.0,
         camera_distance_initial=120.0,
         loss_f_scale=2.5,
+        center_weighting=True,
         fix_cx_cy=False,
         debug=True,
         store_debug_images=True,
@@ -353,6 +439,7 @@ def test_public_option_names_override_toml_keys(context: ConfigContext) -> None:
     assert settings.focal_length_initial == 1500.0
     assert settings.camera_distance_initial == 120.0
     assert settings.loss_f_scale == 2.5
+    assert settings.center_weighting is True
     assert settings.fix_cx_cy is False
     assert settings.debug is True
     assert settings.store_debug_images is True
@@ -387,6 +474,7 @@ def test_optional_settings_use_defaults(context: ConfigContext) -> None:
         "focal_length_initial",
         "camera_distance_initial",
         "loss_f_scale",
+        "center_weighting",
     ):
         context.config["analysis.fit"].pop(key)
     context.write()
@@ -407,6 +495,7 @@ def test_optional_settings_use_defaults(context: ConfigContext) -> None:
     assert settings.focal_length_initial == 2000.0
     assert settings.camera_distance_initial == 80.0
     assert settings.loss_f_scale == 5.0
+    assert settings.center_weighting is True
 
 
 # ----------------------------------------------------------------------

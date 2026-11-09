@@ -24,7 +24,8 @@ session = CalibrationSession(
 | `min_observations` | `10 + n_distortion_coefs` | Minimum valid observations; can only be raised |
 | `fit_every_n` | `1` | Auto-fit after this many new observations; `None` disables auto-fit |
 | `apply_radius_filter` | `True` | Apply the 2.5σ radius filter before fitting |
-| `stop_policy` | from `Settings` | Readiness rule |
+| `stop_policy` | from `Settings` | Count floor and safety cap |
+| `readiness_policy` | from `Settings` | Saturation test layered on top of the count policy |
 
 The folder CLI and Ice server pass `settings.fit_every_n`; setting
 `[analysis] fit_every_n = 0` resolves to `None` and waits for `finish()`.
@@ -81,17 +82,24 @@ successful fit clears the error, increments `fit_count`, and resets
 - returns the last result when nothing new arrived and no error is pending;
 - otherwise performs one more fit.
 
-`finish_if_ready()` returns `None` unless the stop policy says ready.
+`finish_if_ready()` checks the count floor first. If it is reached, it obtains a
+current fit and then evaluates saturation. It returns `None` while the fit is
+still changing materially or cannot be evaluated yet.
 
 ## Readiness
 
-Readiness is independent of whether the latest fit has run:
+Readiness means **more images are unlikely to materially change the camera
+calibration**. It does not mean the absolute calibration error is below a
+threshold. In particular, it deliberately does not use
+`getOptimalNozzlePosition()` or any nozzle-position uncertainty.
 
-```python
-session.is_ready       # bool
-session.stop_reason    # StopReason
-session.stop_detail    # str | None
-```
+The policy has two layers:
+
+1. `StopPolicy` sets the minimum observation count and safety cap.
+2. `ReadinessPolicy` requires the fitted camera parameters to be stable over two
+   windows of fit checkpoints.
+
+### Count floor
 
 `StopPolicy.evaluate(n_observations, min_observations, explicit_detail=...)`
 checks in this order:
@@ -102,6 +110,91 @@ checks in this order:
 3. `target_observations` reached → `TARGET_OBSERVATIONS`;
 4. `max_observations` reached → `MAX_OBSERVATIONS`;
 5. otherwise → `NOT_READY`.
+
+The `TARGET_OBSERVATIONS` result only means the count floor is available; it is
+not yet final readiness when saturation checking is enabled. `EXPLICIT` and
+`MAX_OBSERVATIONS` force readiness so an operator can always finish a session;
+`readiness_status.forced` is then `True`.
+
+### Saturation test
+
+The first successful fit records a `FitSnapshot`; after that, a snapshot is
+recorded whenever the observation count crosses a multiple of
+`checkpoint_interval`. A snapshot contains:
+
+- focal lengths `fx`, `fy`;
+- principal point `cx`, `cy`;
+- active distortion coefficients;
+- rotation and translation of the camera extrinsic matrix;
+- `pos_home`, the fitted sphere home position.
+
+Nozzle position and nozzle uncertainty are not part of the snapshot.
+
+The policy compares the mean of the last `stable_checkpoints` snapshots with the
+mean of the previous `stable_checkpoints` snapshots. Readiness becomes true when
+every change is below its practical-change tolerance:
+
+| Quantity | Default tolerance |
+| --- | --- |
+| `fx`, `fy` | `0.1 %` relative |
+| `cx`, `cy` | `0.05 px` |
+| translation | `0.05 mm` |
+| rotation | `0.01°` |
+| `pos_home` | `0.05 mm` |
+| distortion coefficients | `1e-4` absolute |
+
+The defaults are packaged as:
+
+```toml
+[analysis.readiness]
+enabled = true
+checkpoint_interval = 10
+stable_checkpoints = 3
+min_inlier_fraction = 0.9
+focal_relative_tolerance = 0.001
+principal_point_tolerance_px = 0.05
+translation_tolerance_mm = 0.05
+rotation_tolerance_deg = 0.01
+home_tolerance_mm = 0.05
+distortion_tolerance = 0.0001
+```
+
+`stable_checkpoints = 3` therefore requires six checkpoints. With the packaged
+`fit_every_n = 5` and `checkpoint_interval = 10`, that is available by about 100
+observations.
+
+### Readiness results
+
+```python
+session.is_ready          # bool
+session.readiness_status  # ReadinessStatus
+session.stop_reason       # combined readiness reason
+session.stop_detail       # combined detail
+session.count_reason      # count-only stop reason
+session.count_detail      # count-only detail
+session.fit_history       # recorded FitSnapshot tuple
+```
+
+Reasons from `ReadinessPolicy`:
+
+| Reason | Meaning |
+| --- | --- |
+| `NOT_READY` | Count floor or minimum observations not reached |
+| `WAITING_FOR_CHECKPOINTS` | Not enough compatible fit checkpoints yet |
+| `STALE_FIT` | The latest fit is missing or older than the stored observations |
+| `FIT_FAILED` | The most recent fit raised an error |
+| `INSUFFICIENT_INLIERS` | Fewer than `min_inlier_fraction` of observations survived filtering |
+| `MIXED_DIRECTIONS` | The used observations mix top and bottom nozzle directions |
+| `NOT_SATURATED` | A fitted camera parameter is still changing above tolerance |
+| `SATURATED` | All fitted camera parameters are stable; readiness is true |
+| `EXPLICIT` / `MAX_OBSERVATIONS` | Forced readiness; saturation was not required |
+
+`ReadinessStatus` also exposes `detail`, `saturation_ratio` (the largest
+change/tolerance ratio), `failed_parameter`, and `forced`.
+
+Setting `[analysis.readiness] enabled = false` restores count-only readiness.
+The same fallback is used when automatic fitting is disabled
+(`fit_every_n = 0` or `None`), because there are no checkpoints to compare.
 
 `request_stop()` sets the explicit flag; it still requires the minimum number of
 observations before `is_ready` becomes true.
@@ -161,6 +254,9 @@ procedure.
 | `image_size_xy` | Largest `(width, height)` seen, including rejections |
 | `fit_observations` | Observations passed to the last fit |
 | `used_observations` | Observations that survived all filters |
+| `readiness_status` / `readiness_reason` / `readiness_detail` | Saturation-based readiness result |
+| `count_status` / `count_reason` / `count_detail` | Count-only stop-policy result |
+| `fit_history` | Recorded `FitSnapshot` checkpoints |
 
 ## Service wrapper
 
@@ -174,9 +270,10 @@ service.add_analysis(analysis, robot_position)
 service.add_observation(observation)
 ```
 
-It also exposes `is_ready`, `stop_reason`, `stop_detail`, `last_result`,
-`request_stop`, `finish`, and `finish_if_ready`. The public `service.session`
-can be used for inspection.
+It also exposes `is_ready`, `readiness_status`, `readiness_reason`,
+`readiness_detail`, `stop_reason`, `stop_detail`, `count_reason`,
+`count_detail`, `last_result`, `request_stop`, `finish`, and
+`finish_if_ready`. The public `service.session` can be used for inspection.
 
 `add_image_bytes`/`add_image_array` increment an internal image index and use it
 for debug names (`ice_0000.png`).

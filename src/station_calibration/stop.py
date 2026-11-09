@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 
-DEFAULT_TARGET_OBSERVATIONS = 500
+DEFAULT_TARGET_OBSERVATIONS = 100
 
 
 class StopReason(StrEnum):
@@ -24,6 +24,13 @@ class StopReason(StrEnum):
     TARGET_OBSERVATIONS = "target_observations"
     MAX_OBSERVATIONS = "max_observations"
     EXPLICIT = "explicit"
+    SATURATED = "saturated"
+    NOT_SATURATED = "not_saturated"
+    FIT_FAILED = "fit_failed"
+    STALE_FIT = "stale_fit"
+    INSUFFICIENT_INLIERS = "insufficient_inliers"
+    MIXED_DIRECTIONS = "mixed_directions"
+    WAITING_FOR_CHECKPOINTS = "waiting_for_checkpoints"
 
 
 @dataclass(frozen=True)

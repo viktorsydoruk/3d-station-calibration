@@ -15,6 +15,7 @@ src/station_calibration/
 ├─ debug.py                 DebugInfo printing helper
 ├─ settings.py              TOML-backed settings and overrides
 ├─ stop.py                  StopPolicy / StopReason / StopStatus
+├─ readiness.py             saturation checkpoints and readiness policy
 ├─ models.py                observation, rejection, and result dataclasses
 ├─ session.py               incremental calibration session
 ├─ service.py               image bytes/arrays -> analysis -> session
@@ -58,7 +59,7 @@ src/station_calibration/
 | Layer | Modules | Responsibility |
 | --- | --- | --- |
 | Domain | `models.py`, `stop.py` | Value objects and readiness rules |
-| Vision | `vision/*` | Image → sphere centre/radius/sigma/direction |
+| Vision | `vision/*` | Image → sphere centre/radius/sigma/direction and centre covariance |
 | Calibration | `calibration/*` | Camera model, fit, uncertainties |
 | Pipeline | `processes.py`, `robot.py` | Iterative fit, home shift, nozzle home |
 | Session | `session.py`, `service.py` | Fit policy, observation storage, readiness |
@@ -135,8 +136,9 @@ result = session.finish()
   observations.
 - **Fit policy is centralized.** `min_observations`, `fit_every_n`, and the
   radius filter live in the session, not in the frontends.
-- **Readiness is separate from fitting.** `is_ready` only evaluates the stop
-  policy; call `finish()` before reading results.
+- **Readiness is separate from fitting.** `is_ready` combines the count policy
+  with a saturation test over recorded fit checkpoints; call `finish()` before
+  reading results.
 - **Optional Ice.** The core package imports no Ice modules; the extra is only
   loaded by `station_calibration.ice`.
 - **Lazy plotting.** `station_calibration.__getattr__` imports `plots.py` on

@@ -17,6 +17,7 @@ from station_calibration import (
     ImageAnalysisResult,
     Settings,
     SphereObservation,
+    StopReason,
 )
 
 
@@ -203,6 +204,9 @@ def test_service_delegates_readiness_and_stop_request(tmp_path: Path) -> None:
     assert service.is_ready is False  # minimum observations are still required
     assert service.stop_detail is not None
     assert "operator finished" in service.stop_detail
+    assert service.readiness_reason is StopReason.NOT_READY
+    assert service.count_reason is StopReason.NOT_READY
+    assert service.readiness_status.ready is False
 
 
 def test_service_delegates_observation_and_result_accessors(

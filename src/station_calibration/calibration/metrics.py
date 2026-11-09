@@ -216,7 +216,10 @@ def calculate_RMSE(result: OptimizeResult,
     by the residual degrees of freedom (``m - n``), giving the residual standard
     error. The standardized value is ``nan`` when no degrees of freedom remain.
     """
-    residuals = np.asarray(result.fun, dtype=np.float64).reshape(-1)
+    residuals = np.asarray(
+        getattr(result, "raw_fun", result.fun),
+        dtype=np.float64,
+    ).reshape(-1)
     if residuals.size == 0:
         return float("nan")
     if not np.all(np.isfinite(residuals)):

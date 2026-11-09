@@ -17,6 +17,52 @@ import numpy as np
 from scipy.optimize import OptimizeResult
 
 
+def validate_center_covariance(
+    value: np.ndarray | None,
+) -> np.ndarray | None:
+    """Validate and copy a 2x2 centre covariance matrix.
+
+    A covariance supplied to the fit must be finite, symmetric, and positive
+    semidefinite. Tiny negative eigenvalues from round-off are clipped to zero;
+    materially indefinite matrices are rejected instead of silently producing
+    an invalid whitening transform.
+    """
+    if value is None:
+        return None
+
+    covariance = np.array(value, dtype=np.float64, copy=True)
+    if covariance.shape != (2, 2):
+        raise ValueError(
+            "center_covariance must have shape (2, 2), "
+            f"got {covariance.shape}"
+        )
+    if not np.all(np.isfinite(covariance)):
+        raise ValueError("center_covariance must contain only finite values")
+
+    if not np.allclose(covariance, covariance.T, rtol=1e-7, atol=1e-12):
+        raise ValueError("center_covariance must be symmetric")
+
+    covariance = 0.5 * (covariance + covariance.T)
+    eigenvalues = np.linalg.eigvalsh(covariance)
+    scale = max(1.0, float(eigenvalues[-1]))
+    if float(eigenvalues[0]) < -1e-9 * scale:
+        raise ValueError(
+            "center_covariance must be positive semidefinite, "
+            f"got eigenvalues {eigenvalues}"
+        )
+
+    # Clip small negative round-off so later Cholesky/whitening is well defined.
+    if float(eigenvalues[0]) < 0.0:
+        eigenvectors = np.linalg.eigh(covariance)[1]
+        covariance = (
+            eigenvectors
+            @ np.diag(np.maximum(eigenvalues, 0.0))
+            @ eigenvectors.T
+        )
+
+    return covariance
+
+
 # Blur sigmas are used as weights and as a radius-bias correction.  A small
 # constant offset keeps zero sigmas usable and reflects the sub-pixel uncertainty
 # that is not captured by the edge-profile fit.
@@ -44,6 +90,7 @@ class CalibrationObservation:
     direction: int
     image_shape: tuple[int, int]
     source: str | None = None
+    center_covariance: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         robot_position = np.array(self.robot_position, dtype=np.float64, copy=True)
@@ -80,10 +127,13 @@ class CalibrationObservation:
 
         object.__setattr__(self, "robot_position", robot_position)
         object.__setattr__(self, "image_center", image_center)
+        center_covariance = validate_center_covariance(self.center_covariance)
+
         object.__setattr__(self, "radius", radius)
         object.__setattr__(self, "sigma", sigma)
         object.__setattr__(self, "direction", direction)
         object.__setattr__(self, "image_shape", image_shape)
+        object.__setattr__(self, "center_covariance", center_covariance)
 
 
 @dataclass(frozen=True)

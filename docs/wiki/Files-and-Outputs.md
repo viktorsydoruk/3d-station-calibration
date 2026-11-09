@@ -83,7 +83,7 @@ failed run leaves the previous cache intact.
 Header:
 
 ```text
-Xr  Yr  Zr  Xc  Yc  radius  sigma border  image height  image width  nozzle_direction
+Xr  Yr  Zr  Xc  Yc  radius  sigma border  image height  image width  nozzle_direction  center_cov_xx  center_cov_xy  center_cov_yy
 ```
 
 | Column | Meaning |
@@ -95,11 +95,15 @@ Xr  Yr  Zr  Xc  Yc  radius  sigma border  image height  image width  nozzle_dire
 | `image height` | Image height in pixels |
 | `image width` | Image width in pixels |
 | `nozzle_direction` | `+1` top, `-1` bottom, `0` undefined |
+| `center_cov_xx`, `center_cov_xy`, `center_cov_yy` | Symmetric 2×2 centre covariance in pixels² from the circle fit |
 
-Invalid rows and radius outliers are stored as `NaN` in `radius` and
-`sigma border`; centre coordinates are kept when they were detected. On load, a
-row is valid only when all values are finite, `radius > 0`, `sigma >= 0`, the
-image shape is positive, and the direction is `±1`.
+Invalid rows and radius outliers are stored as `NaN` in `radius`,
+`sigma border`, and the covariance columns; centre coordinates are kept when
+they were detected. On load, a row is valid only when all values are finite,
+`radius > 0`, `sigma >= 0`, the image shape is positive, and the direction is
+`±1`. The covariance columns are optional: caches written by older versions
+contain only the first ten columns and load with `NaN` covariances, which
+disables centre weighting for that cache.
 
 Because the cache is already filtered, loading it disables the session's radius
 filter. Use `--no-load-stored-data` to re-analyze images and regenerate it.

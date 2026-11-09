@@ -94,3 +94,50 @@ def test_calibrate_camera_rejects_invalid_loss_f_scale(value: float) -> None:
             sigmas,
             loss_f_scale=value,
         )
+
+
+def test_calibrate_camera_accepts_center_covariances() -> None:
+    robot_positions, image_center_points, radii, sigmas = _arrays()
+    covariance = np.tile(
+        np.diag([1e-4, 1e-4]),
+        (len(robot_positions), 1, 1),
+    )
+
+    result = calibrate_camera(
+        robot_positions,
+        image_center_points,
+        radii,
+        sigmas,
+        center_covariances=covariance,
+    )
+
+    assert np.all(np.isfinite(result.x))
+    assert result.fun.size == 2 * len(robot_positions)
+    assert result.raw_fun.size == 2 * len(robot_positions)
+    assert np.all(np.isfinite(result.raw_fun))
+
+
+def test_calibrate_camera_rejects_invalid_center_covariances() -> None:
+    robot_positions, image_center_points, radii, sigmas = _arrays()
+
+    with pytest.raises(ValueError, match="center_covariances"):
+        calibrate_camera(
+            robot_positions,
+            image_center_points,
+            radii,
+            sigmas,
+            center_covariances=np.zeros((len(robot_positions), 2)),
+        )
+
+    indefinite = np.tile(
+        np.array([[1.0, 0.0], [0.0, -1.0]]),
+        (len(robot_positions), 1, 1),
+    )
+    with pytest.raises(ValueError, match="positive semidefinite"):
+        calibrate_camera(
+            robot_positions,
+            image_center_points,
+            radii,
+            sigmas,
+            center_covariances=indefinite,
+        )

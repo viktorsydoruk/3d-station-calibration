@@ -45,6 +45,7 @@ def analyze_image(image_gray: np.ndarray,
                   image_index: int | None = None,
                   debug_imagefile: Path | None = None,
                   store_debug_images: bool = False,
+                  estimate_center_covariance: bool = True,
                   ) -> ImageAnalysisResult:
     """
         Analyze one image and extract the sphere center, radius, edge blur and nozzle direction.
@@ -65,6 +66,7 @@ def analyze_image(image_gray: np.ndarray,
     :param image_index: optional image number used in debug output
     :param debug_imagefile: optional path for a debug image
     :param store_debug_images: whether successful results should also store a debug image
+    :param estimate_center_covariance: whether to propagate the circle-fit centre covariance
     :return: analysis result with an observation or a rejection reason
     """
     image_shape = (int(image_gray.shape[0]), int(image_gray.shape[1]))
@@ -105,12 +107,17 @@ def analyze_image(image_gray: np.ndarray,
         sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
         direction=direction,
         min_bg_pixels_on_edges=min_bg_pixels_on_edges,
+        return_covariance=estimate_center_covariance,
     )
 
     if sphere_params is None:
         return rejected("sphere is not found or out of FOV")
 
-    x_c_pos, y_c_pos, radius = sphere_params
+    if len(sphere_params) == 4:
+        x_c_pos, y_c_pos, radius, center_covariance = sphere_params
+    else:
+        x_c_pos, y_c_pos, radius = sphere_params
+        center_covariance = None
 
     # getting the sigmas of edge blurring
     sigma = get_blur_sigma(
@@ -144,7 +151,13 @@ def analyze_image(image_gray: np.ndarray,
         )
 
     return ImageAnalysisResult(
-        SphereObservation(x_c_pos, y_c_pos, radius, sigma),
+        SphereObservation(
+            x_c_pos,
+            y_c_pos,
+            radius,
+            sigma,
+            center_covariance=center_covariance,
+        ),
         direction,
         image_shape,
     )
@@ -226,6 +239,7 @@ def analyze_images(image_filenames: list[Path],
                    print_debug: DebugInfo = DebugInfo(),
                    store_debug_images: bool = False,
                    debug_folder: Path | None = None,
+                   estimate_center_covariance: bool = True,
                    ) -> list[ImageAnalysisResult]:
     """Analyze a list of image files one by one and return each analysis result."""
     analyses = []
@@ -254,6 +268,7 @@ def analyze_images(image_filenames: list[Path],
                 image_index=i,
                 debug_imagefile=debug_imagefile,
                 store_debug_images=store_debug_images,
+                estimate_center_covariance=estimate_center_covariance,
             )
         except MemoryError:
             raise

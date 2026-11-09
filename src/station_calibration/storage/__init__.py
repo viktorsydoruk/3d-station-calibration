@@ -8,11 +8,12 @@ __all__ = [
     "search_images",
     "store_all_points",
     "load_all_points",
+    "load_all_points_with_covariances",
     "RESULT_SCHEMA_VERSION",
     "calibration_document",
     "store_calibration",
 ]
 
 from .inputs import load_robot_positions, search_images
-from .points import load_all_points, store_all_points
+from .points import load_all_points, load_all_points_with_covariances, store_all_points
 from .results import RESULT_SCHEMA_VERSION, calibration_document, store_calibration

@@ -117,7 +117,8 @@ def residuals(params: np.ndarray,
               measured_image_points: np.ndarray,
               image_size: tuple = (2500, 2000),
               fix_cx_cy: bool = False,
-              n_distortion_coefs: int = 5) -> np.ndarray:
+              n_distortion_coefs: int = 5,
+              whitening: np.ndarray | None = None) -> np.ndarray:
     """
         Return x/y reprojection error for all measurements.
     :param params:
@@ -126,6 +127,7 @@ def residuals(params: np.ndarray,
     :param image_size:
     :param fix_cx_cy:
     :param n_distortion_coefs:
+    :param whitening: optional (N, 2, 2) matrices that standardise each residual
     :return:
     """
 
@@ -138,6 +140,9 @@ def residuals(params: np.ndarray,
     )
 
     error = predicted - measured_image_points
+
+    if whitening is not None:
+        error = np.einsum("nij,nj->ni", whitening, error)
 
     return np.ravel(error)
 

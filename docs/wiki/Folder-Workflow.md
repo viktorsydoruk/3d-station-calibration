@@ -70,7 +70,7 @@ python -m station_calibration "P:\3Dcalibration\3D_example"
 | `--store-debug-images` | Write per-image analysis images |
 | `--load-stored-data` | Reuse `output/CalibrationAllPoints.dat` if it exists |
 | `--no-load-stored-data` | Force re-analysis of the images |
-| `--target-observations N` | Override the readiness target (default 500) |
+| `--target-observations N` | Override the readiness count floor (default 100) |
 | `--max-observations N` | Set a hard readiness cap |
 
 Command-line values override the TOML file, and the TOML file overrides the
@@ -136,7 +136,7 @@ Typical rejection reasons:
   sigma, or an invalid image shape.
 
 Rejected images are listed in `session.rejections`; they do not count toward
-readiness or the 500-observation target.
+readiness or the observation count floor.
 
 ## Output summary
 

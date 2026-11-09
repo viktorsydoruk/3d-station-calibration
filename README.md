@@ -83,7 +83,8 @@ src/station_calibration/
 ├─ models.py              observations, rejections, fit results
 ├─ session.py             source-agnostic incremental calibration session
 ├─ service.py             image-bytes/raw arrays -> analysis -> session service
-├─ stop.py                readiness/stop policy
+├─ stop.py                count-based stop policy
+├─ readiness.py           saturation-based readiness policy
 ├─ vision/
 │  ├─ models.py           image observation value objects
 │  ├─ io.py               image loading/decoding
@@ -134,9 +135,10 @@ if service.is_ready:
 
 `add_image_bytes` and `add_image_array` perform the same single-image analysis as
 folder mode and feed the result into the shared session. Rejected images are
-recorded but do not count toward the 500-observation readiness target. Readiness
-is advisory: the session keeps accepting observations until the caller calls
-`finish()` (or aborts).
+recorded but do not count toward the readiness count floor. Readiness requires
+both the configured minimum count and a stable camera fit; it is advisory, so
+the session keeps accepting observations until the caller calls `finish()` (or
+aborts).
 
 ## Ice frontend (optional)
 

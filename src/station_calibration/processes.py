@@ -46,9 +46,11 @@ def _fit_camera(rel_robot_positions: np.ndarray,
                 settings: Settings,
                 focal_length_initial: float,
                 camera_distance_initial: float,
-                n_distortion_coefs: int
+                n_distortion_coefs: int,
+                center_covariances: np.ndarray | None = None,
                 ) -> tuple[OptimizeResult, np.ndarray, np.ndarray, np.ndarray]:
     """Run one calibration fit and unwrap the resulting camera model."""
+    covariance_mask = None if center_covariances is None else center_covariances[mask]
     result = calibrate_camera(
         rel_robot_positions[mask],
         center_points[mask],
@@ -60,6 +62,7 @@ def _fit_camera(rel_robot_positions: np.ndarray,
         fix_cx_cy=settings.fix_cx_cy,
         n_distortion_coefs=n_distortion_coefs,
         loss_f_scale=settings.loss_f_scale,
+        center_covariances=covariance_mask,
     )
     intrinsic_matrix, distortion, _, extrinsic_matrix = get_calibration(
         result.x,
@@ -80,7 +83,8 @@ def _fit_camera_with_distortion_fallback(rel_robot_positions: np.ndarray,
                                          focal_length_initial: float,
                                          camera_distance_initial: float,
                                          n_distortion_coefs: int,
-                                         print_debug: DebugInfo
+                                         print_debug: DebugInfo,
+                                         center_covariances: np.ndarray | None = None,
                                          ) -> tuple[OptimizeResult, np.ndarray, np.ndarray, np.ndarray, int]:
     """Fit the camera and refit without distortion if the model is not monotonic."""
     result, intrinsic_matrix, distortion, extrinsic_matrix = _fit_camera(
@@ -94,6 +98,7 @@ def _fit_camera_with_distortion_fallback(rel_robot_positions: np.ndarray,
         focal_length_initial,
         camera_distance_initial,
         n_distortion_coefs,
+        center_covariances=center_covariances,
     )
 
     if n_distortion_coefs != 0 and not check_distortion_monotonicity(
@@ -112,6 +117,7 @@ def _fit_camera_with_distortion_fallback(rel_robot_positions: np.ndarray,
             focal_length_initial,
             camera_distance_initial,
             n_distortion_coefs,
+            center_covariances=center_covariances,
         )
 
     return result, intrinsic_matrix, distortion, extrinsic_matrix, n_distortion_coefs
@@ -123,7 +129,9 @@ def get_calibration_data(robot_positions: np.ndarray,
                          sigmas: np.ndarray,
                          image_size_xy: tuple[int, int],
                          settings: Settings,
-                         print_debug: DebugInfo = DebugInfo()
+                         print_debug: DebugInfo = DebugInfo(),
+                         *,
+                         center_covariances: np.ndarray | None = None,
                          ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, OptimizeResult, float, np.ndarray, int]:
     # first estimation of the home position for the robotic arm, where the seed should be delivered
     pos_home = robot_positions.mean(axis=0)
@@ -134,6 +142,16 @@ def get_calibration_data(robot_positions: np.ndarray,
         raise ValueError(
             f"At least {min_points} valid measurements are required, got {n_points}"
         )
+
+    if not settings.center_weighting:
+        center_covariances = None
+    elif center_covariances is not None:
+        center_covariances = np.asarray(center_covariances, dtype=np.float64)
+        if center_covariances.shape != (n_points, 2, 2):
+            raise ValueError(
+                "center_covariances must have shape "
+                f"({n_points}, 2, 2), got {center_covariances.shape}"
+            )
 
     # initial parameters
     rel_robot_positions = robot_positions - pos_home
@@ -175,6 +193,7 @@ def get_calibration_data(robot_positions: np.ndarray,
                     camera_distance_initial,
                     n_dist_coefs,
                     print_debug,
+                    center_covariances=center_covariances,
                 )
             )
 
@@ -216,6 +235,7 @@ def get_calibration_data(robot_positions: np.ndarray,
                 camera_distance_initial,
                 n_dist_coefs,
                 print_debug,
+                center_covariances=center_covariances,
             )
         )
 

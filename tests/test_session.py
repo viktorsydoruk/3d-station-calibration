@@ -17,6 +17,8 @@ from station_calibration import (
     CalibrationObservation,
     CalibrationSession,
     ImageAnalysisResult,
+    ReadinessPolicy,
+    ReadinessTolerances,
     Settings,
     SphereObservation,
     StopPolicy,
@@ -32,10 +34,22 @@ def _settings(tmp_path: Path, **overrides) -> Settings:
         "n_distortion_coefs": 4,
         "focal_length_initial": 2000.0,
         "camera_distance_initial": 80.0,
-        "target_observations": 500,
+        "target_observations": 100,
     }
     options.update(overrides)
     return Settings(tmp_path, **options)
+
+
+def _fast_readiness(**overrides) -> ReadinessPolicy:
+    options = {
+        "enabled": True,
+        "checkpoint_interval": 1,
+        "stable_checkpoints": 1,
+        "min_inlier_fraction": 0.9,
+        "tolerances": ReadinessTolerances(),
+    }
+    options.update(overrides)
+    return ReadinessPolicy(**options)
 
 
 def _observation(
@@ -45,6 +59,7 @@ def _observation(
     sigma: float = 1.5,
     direction: int = 1,
     image_shape: tuple[int, int] = (2048, 2448),
+    center_covariance: np.ndarray | None = None,
 ) -> CalibrationObservation:
     return CalibrationObservation(
         robot_position=np.array([float(index), float(index % 7), 20.0 + float(index)]),
@@ -54,6 +69,7 @@ def _observation(
         direction=direction,
         image_shape=image_shape,
         source=f"image-{index}",
+        center_covariance=center_covariance,
     )
 
 
@@ -66,6 +82,9 @@ def fake_fit(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         fail=None,
         success=True,
         intrinsic=np.eye(3, dtype=np.float64),
+        extrinsic=np.eye(4, dtype=np.float64),
+        distortion=np.zeros(14, dtype=np.float64),
+        pos_home=None,
         rmse=0.0,
     )
 
@@ -77,6 +96,8 @@ def fake_fit(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         image_size_xy,
         settings,
         print_debug,
+        *,
+        center_covariances=None,
     ):
         if state.fail is not None:
             raise state.fail
@@ -95,14 +116,20 @@ def fake_fit(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
                 "sigmas": np.array(sigmas, copy=True),
                 "image_size_xy": image_size_xy,
                 "settings": settings,
+                "center_covariances": center_covariances,
             }
         )
+        pos_home = (
+            np.mean(robot_positions, axis=0)
+            if state.pos_home is None
+            else np.asarray(state.pos_home, dtype=np.float64)
+        )
         return (
-            np.mean(robot_positions, axis=0),
+            pos_home,
             np.array(center_points, copy=True),
             np.array(state.intrinsic, copy=True),
-            np.eye(4),
-            np.zeros(14),
+            np.array(state.extrinsic, copy=True),
+            np.array(state.distortion, copy=True),
             OptimizeResult(
                 x=np.zeros(8),
                 fun=np.zeros(2 * n_points),
@@ -496,7 +523,7 @@ def test_session_rejects_fit_that_drops_all_observations(
 def test_session_default_stop_policy_uses_settings(tmp_path: Path) -> None:
     session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
 
-    assert session.stop_policy.target_observations == 500
+    assert session.stop_policy.target_observations == 100
     assert session.stop_policy.max_observations is None
     assert session.stop_reason is StopReason.NOT_READY
     assert session.is_ready is False
@@ -606,3 +633,266 @@ def test_session_rejects_stop_target_below_minimum(tmp_path: Path) -> None:
             _settings(tmp_path),
             stop_policy=StopPolicy(target_observations=500, max_observations=13),
         )
+
+
+def test_session_passes_complete_center_covariances_to_fit(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+    covariance = np.array([[0.01, 0.002], [0.002, 0.02]])
+
+    for index in range(14):
+        session.add_observation(
+            _observation(index, center_covariance=covariance)
+        )
+    session.finish()
+
+    passed = fake_fit.calls[-1]["center_covariances"]
+    assert passed is not None
+    np.testing.assert_allclose(passed, np.tile(covariance, (14, 1, 1)))
+
+
+def test_calibration_observation_rejects_invalid_center_covariance() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        CalibrationObservation(
+            robot_position=np.zeros(3),
+            image_center=np.zeros(2),
+            radius=12.0,
+            sigma=1.5,
+            direction=1,
+            image_shape=(2048, 2448),
+            center_covariance=np.zeros((2, 3)),
+        )
+
+
+def test_session_falls_back_when_center_covariances_are_partial(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+    covariance = np.eye(2) * 0.01
+
+    for index in range(14):
+        session.add_observation(
+            _observation(
+                index,
+                center_covariance=covariance if index < 13 else None,
+            )
+        )
+    session.finish()
+
+    assert fake_fit.calls[-1]["center_covariances"] is None
+
+
+def _ready_session(
+    tmp_path: Path,
+    *,
+    target: int = 15,
+    **readiness_overrides,
+) -> CalibrationSession:
+    return CalibrationSession(
+        _settings(tmp_path),
+        fit_every_n=1,
+        stop_policy=StopPolicy(target_observations=target),
+        readiness_policy=_fast_readiness(**readiness_overrides),
+    )
+
+
+def test_session_becomes_ready_when_fit_parameters_saturate(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    fake_fit.intrinsic = np.diag([1000.0, 1000.0, 1.0])
+    fake_fit.extrinsic = np.eye(4)
+    session = _ready_session(tmp_path)
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    assert session.fit_count == 1
+    assert session.is_ready is False
+    assert session.readiness_reason is StopReason.NOT_READY
+
+    session.add_observation(_observation(14))
+
+    assert session.fit_count == 2
+    assert session.is_ready is True
+    assert session.readiness_reason is StopReason.SATURATED
+    assert len(session.fit_history) == 2
+
+
+def test_session_readiness_waits_for_enough_checkpoints(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = CalibrationSession(
+        _settings(tmp_path),
+        fit_every_n=1,
+        stop_policy=StopPolicy(target_observations=15),
+        readiness_policy=_fast_readiness(checkpoint_interval=10),
+    )
+
+    for index in range(15):
+        session.add_observation(_observation(index))
+
+    assert session.fit_count == 2
+    assert len(session.fit_history) == 1
+    assert session.is_ready is False
+    assert session.readiness_reason is StopReason.WAITING_FOR_CHECKPOINTS
+
+
+def test_session_stale_fit_blocks_readiness(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = _ready_session(tmp_path)
+
+    for index in range(15):
+        session.add_observation(_observation(index))
+    assert session.is_ready is True
+
+    session.add_observation(_observation(15), fit=False)
+
+    assert session.is_ready is False
+    assert session.readiness_reason is StopReason.STALE_FIT
+
+
+def test_session_failed_fit_blocks_readiness(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = _ready_session(tmp_path)
+
+    for index in range(15):
+        session.add_observation(_observation(index))
+    assert session.is_ready is True
+
+    fake_fit.fail = RuntimeError("fit failed")
+    with pytest.raises(RuntimeError, match="fit failed"):
+        session.fit()
+
+    assert session.is_ready is False
+    assert session.readiness_reason is StopReason.FIT_FAILED
+
+
+def test_session_too_few_inliers_blocks_readiness(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = _ready_session(tmp_path)
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    fake_fit.mask = np.array([True] * 5 + [False] * 10)
+    session.add_observation(_observation(14))
+
+    assert session.is_ready is False
+    assert session.readiness_reason is StopReason.INSUFFICIENT_INLIERS
+
+
+def test_session_mixed_directions_block_readiness(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = _ready_session(tmp_path)
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+    session.add_observation(_observation(14, direction=-1))
+
+    assert session.is_ready is False
+    assert session.readiness_reason is StopReason.MIXED_DIRECTIONS
+
+
+def test_session_explicit_stop_forces_readiness(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = CalibrationSession(
+        _settings(tmp_path),
+        fit_every_n=1,
+        stop_policy=StopPolicy(target_observations=100),
+        readiness_policy=_fast_readiness(),
+    )
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    session.request_stop("operator finished")
+
+    assert session.is_ready is True
+    assert session.readiness_reason is StopReason.EXPLICIT
+    assert session.readiness_status.forced is True
+
+
+def test_session_max_observations_forces_readiness(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = CalibrationSession(
+        _settings(tmp_path),
+        fit_every_n=1,
+        stop_policy=StopPolicy(target_observations=100, max_observations=14),
+        readiness_policy=_fast_readiness(),
+    )
+
+    for index in range(14):
+        session.add_observation(_observation(index))
+
+    assert session.is_ready is True
+    assert session.readiness_reason is StopReason.MAX_OBSERVATIONS
+    assert session.readiness_status.forced is True
+
+
+def test_session_disables_saturation_without_incremental_fits(
+    tmp_path: Path,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+
+    assert session.readiness_policy.enabled is False
+
+
+def test_session_finish_if_ready_waits_for_saturation(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = CalibrationSession(
+        _settings(tmp_path),
+        fit_every_n=1,
+        stop_policy=StopPolicy(target_observations=15),
+        readiness_policy=_fast_readiness(checkpoint_interval=10),
+    )
+
+    for index in range(15):
+        session.add_observation(_observation(index))
+
+    assert session.count_status.ready is True
+    assert session.finish_if_ready() is None
+    assert session.is_ready is False
+
+
+def test_session_finish_if_ready_returns_saturated_result(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    fake_fit.pos_home = np.zeros(3)
+    session = _ready_session(tmp_path)
+
+    for index in range(15):
+        session.add_observation(_observation(index))
+
+    result = session.finish_if_ready()
+
+    assert result is session.last_result
+    assert session.is_ready is True

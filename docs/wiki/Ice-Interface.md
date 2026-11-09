@@ -31,6 +31,11 @@ Operations:
 | `abort()` | client → server | Abort the active calibration and discard its in-memory state |
 | `finish()` | client → server | Force a final fit; return `true` when a result is available |
 
+`isReady()` becomes true only after the configured count floor is reached and the
+fitted camera parameters have stopped changing materially. It does not wait for
+nozzle-position uncertainty. Explicit and maximum-observation stops force
+readiness so the operator can always finish a session.
+
 ### Wire type layout
 
 ```text

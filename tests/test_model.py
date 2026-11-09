@@ -82,6 +82,26 @@ def test_project_points_and_residuals_round_trip() -> None:
     np.testing.assert_allclose(error, 0.0, atol=1e-10)
 
 
+def test_residuals_applies_per_observation_whitening() -> None:
+    params = _parameters()
+    robot_points = np.array([[0.0, 0.0, 0.0], [10.0, -5.0, 0.0]])
+    projected = project_points(params, robot_points)
+    measured = projected + np.array([[1.0, 2.0], [3.0, 4.0]])
+    whitening = np.array(
+        [
+            [[2.0, 0.0], [0.0, 4.0]],
+            [[0.5, 0.0], [0.0, 0.25]],
+        ]
+    )
+
+    error = residuals(params, robot_points, measured, whitening=whitening)
+
+    np.testing.assert_allclose(
+        error.reshape(2, 2),
+        np.einsum("nij,nj->ni", whitening, projected - measured),
+    )
+
+
 def test_get_calibration_returns_opencv_matrices() -> None:
     intrinsic, distortion, rvec, extrinsic = get_calibration(_parameters())
 

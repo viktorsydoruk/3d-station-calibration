@@ -177,6 +177,16 @@ def test_calculate_RMSE_returns_nan_for_nonfinite_residuals() -> None:
     assert np.isnan(calculate_RMSE(result, standardized=True))
 
 
+def test_calculate_RMSE_prefers_unweighted_residuals() -> None:
+    result = _result([10.0, 10.0], np.ones((2, 1)))
+    result.raw_fun = np.array([3.0, 4.0])
+
+    assert calculate_RMSE(result, standardized=False) == pytest.approx(
+        np.sqrt(12.5)
+    )
+    assert calculate_RMSE(result, standardized=True) == pytest.approx(5.0)
+
+
 def test_distortion_monotonicity_accepts_identity_and_decreasing_models() -> None:
     intrinsic = _intrinsic()
 

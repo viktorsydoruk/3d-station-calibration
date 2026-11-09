@@ -16,6 +16,7 @@ from station_calibration.storage import (
     RESULT_SCHEMA_VERSION,
     calibration_document,
     load_all_points,
+    load_all_points_with_covariances,
     load_robot_positions,
     search_images,
     store_all_points,
@@ -65,6 +66,61 @@ def test_point_cache_round_trip_preserves_float64(tmp_path: Path) -> None:
     np.testing.assert_array_equal(loaded[3], sigmas)
     np.testing.assert_array_equal(loaded[4], image_sizes)
     np.testing.assert_array_equal(loaded[5], directions)
+
+
+def test_point_cache_round_trip_preserves_center_covariances(tmp_path: Path) -> None:
+    robot_positions = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    center_points = np.array([[10.0, 20.0], [30.0, 40.0]])
+    radii = np.array([100.0, 101.0])
+    sigmas = np.array([2.0, 3.0])
+    image_sizes = np.array([[2000.0, 3000.0], [2000.0, 3000.0]])
+    directions = np.array([1, -1], dtype=np.int8)
+    covariances = np.array(
+        [
+            [[0.01, 0.002], [0.002, 0.02]],
+            [[0.03, -0.001], [-0.001, 0.04]],
+        ]
+    )
+
+    point_file = tmp_path / "all_points.dat"
+    store_all_points(
+        point_file,
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_sizes,
+        directions,
+        covariances,
+    )
+
+    loaded = load_all_points_with_covariances(point_file)
+
+    np.testing.assert_array_equal(loaded[0], robot_positions)
+    np.testing.assert_array_equal(loaded[1], center_points)
+    np.testing.assert_array_equal(loaded[2], radii)
+    np.testing.assert_array_equal(loaded[3], sigmas)
+    np.testing.assert_array_equal(loaded[4], image_sizes)
+    np.testing.assert_array_equal(loaded[5], directions)
+    np.testing.assert_allclose(loaded[6], covariances, atol=1e-15)
+
+
+def test_load_all_points_with_covariances_accepts_legacy_cache(
+    tmp_path: Path,
+) -> None:
+    point_file = tmp_path / "legacy.dat"
+    point_file.write_text(
+        "Xr\tYr\tZr\tXc\tYc\tradius\tsigma border\t"
+        "image height\timage width\tnozzle_direction\n"
+        "1\t2\t3\t10\t20\t100\t2\t2000\t3000\t1\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_all_points_with_covariances(point_file)
+
+    assert loaded[0].shape == (1, 3)
+    assert loaded[6].shape == (1, 2, 2)
+    assert np.all(np.isnan(loaded[6]))
 
 
 def test_point_cache_failure_leaves_existing_file_untouched(

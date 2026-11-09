@@ -88,11 +88,37 @@ configurable as `[analysis.fit] loss_f_scale` in pixels. `x_scale="jac"` gives
 parameter-aware scaling. There are no bounds and no analytical Jacobian.
 
 The fit also validates that `robot_positions` is `(N, 3)`, `image_center_points`
-is `(N, 2)`, the lengths match, and `N >= 10 + n_distortion_coefs`.
+is `(N, 2)`, the lengths match, and `N >= 10 + n_distortion_coefs`. Optional
+centre covariances must be finite, symmetric, and positive semidefinite; small
+negative round-off eigenvalues are clipped to zero.
 
-> The residuals are unweighted. `radii` and `sigmas` are used for the initial
-> rotation and by the home-shift stage, not as per-point weights in the camera
-> fit.
+### Centre covariance and weighting
+
+`fit_circle_with_covariance` estimates a 2×2 covariance for each image centre
+from the algebraic circle fit. With `[analysis.fit] center_weighting = true`
+(the default), the fit minimizes the generalized least-squares objective
+
+```text
+Σ r_iᵀ C_i⁻¹ r_i,
+```
+
+where `C_i` is the centre covariance of observation `i`. In practice the
+residuals are whitened as `L_i⁻¹ r_i` with `L_i L_iᵀ = C_i`, and SciPy works on
+the whitened vector. A single global factor is applied to all whitening
+matrices, derived from the initial unweighted fit, so that `loss_f_scale`
+remains expressed in the same pixel scale as before. That factor does not
+change the parameter estimate; it only preserves the meaning of the robust
+loss threshold. Consequently only the relative variation of the circle-fit
+covariance between images affects the estimate, not its absolute scale.
+
+The whitened `result.fun` and `result.jac` are used for the parameter
+covariance and the outlier test. The raw pixel residuals are stored in
+`result.raw_fun` and are used for RMSE reporting. If a stored point cache has no
+covariance columns, or only some observations have covariance, the fit falls
+back to the unweighted residual vector. The covariance refers to the raw
+circle-fit centre; the small apparent-centre correction is treated as
+deterministic. `radii` and `sigmas` remain in use for the initial rotation and
+the home-shift stage.
 
 ## Distortion fallback
 
@@ -157,11 +183,12 @@ then evaluates at most that many additional removal candidates.
 
 ### Outlier test
 
-For an ordinary least-squares fit, the residual covariance of point `i` is
-approximately `Cov(r_i) = σ² (I - H_ii)`, where
-`H = J (JᵀJ)⁻¹ Jᵀ` is the hat matrix and `J` is the fit Jacobian. The pipeline
-uses the robust scale `σ = 1.4826 · MAD(r)`, falling back to the standard
-`SSE / (m - p)` estimate when the median is degenerate. The score is
+For the fitted residual vector (whitened when centre covariance is available),
+the residual covariance of point `i` is approximately
+`Cov(r_i) = σ² (I - H_ii)`, where `H = J (JᵀJ)⁻¹ Jᵀ` is the hat matrix and `J`
+is the fit Jacobian. The pipeline uses the robust scale
+`σ = 1.4826 · MAD(r)`, falling back to the standard `SSE / (m - p)` estimate
+when the median is degenerate. The score is
 
 `d_i² = r_iᵀ Cov(r_i)⁻¹ r_i`.
 
@@ -169,7 +196,9 @@ Under the model, `d_i²` follows a chi-square distribution with two degrees of
 freedom. A point is a candidate when `d_i² > χ²₂(outlier_confidence)`. The
 default `outlier_confidence = 0.999` flags roughly one point in a thousand. The
 previous rule (`|dx| > 2σ` or `|dy| > 2σ`) flagged about 9% of Gaussian points
-and was not a calibrated statistical test.
+and was not a calibrated statistical test. When centre weighting is active, the
+score uses the whitened residual vector, so the candidate set can differ from an
+unweighted fit; the same spatial-cluster guard is applied.
 
 **Spatial-cluster guard.** A group of high-score points is not removed when it
 is packed into a small region of the robot workspace. The guard compares the
@@ -181,11 +210,11 @@ contiguous block has the same nearest-neighbour spacing as the rest of the
 grid but a much smaller overall spread.
 
 The scores are diagnostic approximations when the fit uses the `soft_l1`
-robust loss: the covariance formula assumes ordinary least squares. The robust
-scale keeps a few gross blunders from inflating the covariance and masking
-themselves. Real station data also contains model error, so the candidate count
-can exceed the nominal `0.1 %` rate; `max_outliers` (packaged default `10`) caps
-the number of removals.
+robust loss: the covariance formula assumes a linear least-squares problem,
+ordinary or generalized after whitening. The robust scale keeps a few gross
+blunders from inflating the covariance and masking themselves. Real station data
+also contains model error, so the candidate count can exceed the nominal `0.1 %`
+rate; `max_outliers` (packaged default `10`) caps the number of removals.
 
 ### Apparent-centre correction
 
@@ -226,15 +255,18 @@ pipeline adjusts centres after every fit and refits.
 | `rot_vec_std` | 3 | Rotation-vector components |
 | `tra_vec_std` | 3 | Translation components |
 
-The covariance formula assumes independent, identically distributed residuals
-and an ordinary least-squares objective. With `soft_l1` the reported values are
-indicative rather than exact.
+The covariance formula is evaluated on the fitted residuals and Jacobian. When
+centre covariance weighting is active those are the whitened quantities, so the
+formula is the usual generalized least-squares approximation. With `soft_l1`
+the reported values are indicative rather than exact, and they do not include
+model error that is common to all images.
 
 ## Metrics and reporting
 
 - `calculate_RMSE(result, standardized=False)` — `sqrt(SSE / m)`.
 - `calculate_RMSE(result, standardized=True)` — `sqrt(SSE / (m - n))`, `NaN` if
-  no degrees of freedom remain.
+  no degrees of freedom remain. RMSE uses `result.raw_fun` (pixel residuals)
+  when the fit was weighted, so it stays comparable across weighting modes.
 - `print_calibration` — matrices, distortion, optimizer status, and each
   parameter with its one-sigma value.
 - `back_projected_point` — project a 3D point into the image with the fitted

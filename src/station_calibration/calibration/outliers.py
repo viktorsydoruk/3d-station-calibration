@@ -59,8 +59,9 @@ def calculate_outlier_scores(result: OptimizeResult,
                              robust: bool = True) -> np.ndarray:
     """Return leverage-corrected squared Mahalanobis distances.
 
-    The fit minimizes a 2D residual vector ``r_i`` per observation. For an
-    ordinary least-squares fit the residual covariance is approximately
+    The fit minimizes a 2D residual vector ``r_i`` per observation. For a
+    linear least-squares fit (ordinary or generalized after whitening) the
+    residual covariance is approximately
 
     ``Cov(r) = sigma^2 * (I - H)``,
 

@@ -21,6 +21,18 @@ from typing import TypedDict
 from typing import Unpack
 
 from .models import DEFAULT_LOSS_F_SCALE
+from .readiness import (
+    DEFAULT_READINESS_CHECKPOINT_INTERVAL,
+    DEFAULT_READINESS_DISTORTION_TOLERANCE,
+    DEFAULT_READINESS_ENABLED,
+    DEFAULT_READINESS_FOCAL_RELATIVE_TOLERANCE,
+    DEFAULT_READINESS_HOME_TOLERANCE_MM,
+    DEFAULT_READINESS_MIN_INLIER_FRACTION,
+    DEFAULT_READINESS_PRINCIPAL_POINT_TOLERANCE_PX,
+    DEFAULT_READINESS_ROTATION_TOLERANCE_DEG,
+    DEFAULT_READINESS_STABLE_CHECKPOINTS,
+    DEFAULT_READINESS_TRANSLATION_TOLERANCE_MM,
+)
 from .stop import DEFAULT_TARGET_OBSERVATIONS
 
 
@@ -67,6 +79,7 @@ class PossibleOptions(TypedDict, total=False):
     focal_length_initial: float
     camera_distance_initial: float
     loss_f_scale: float
+    center_weighting: bool
     n_iterations: int
     allowed_outliers: float
     outlier_confidence: float
@@ -74,6 +87,16 @@ class PossibleOptions(TypedDict, total=False):
     target_observations: int
     max_observations: int | None
     fit_every_n: int | None
+    readiness_enabled: bool
+    readiness_checkpoint_interval: int
+    readiness_stable_checkpoints: int
+    readiness_min_inlier_fraction: float
+    readiness_focal_relative_tolerance: float
+    readiness_principal_point_tolerance_px: float
+    readiness_translation_tolerance_mm: float
+    readiness_rotation_tolerance_deg: float
+    readiness_home_tolerance_mm: float
+    readiness_distortion_tolerance: float
 
 
 class Settings:
@@ -110,6 +133,7 @@ class Settings:
     focal_length_initial: float
     camera_distance_initial: float
     loss_f_scale: float
+    center_weighting: bool
 
     n_iterations: int
     allowed_outliers: float
@@ -118,6 +142,16 @@ class Settings:
     target_observations: int
     max_observations: int | None
     fit_every_n: int | None
+    readiness_enabled: bool
+    readiness_checkpoint_interval: int
+    readiness_stable_checkpoints: int
+    readiness_min_inlier_fraction: float
+    readiness_focal_relative_tolerance: float
+    readiness_principal_point_tolerance_px: float
+    readiness_translation_tolerance_mm: float
+    readiness_rotation_tolerance_deg: float
+    readiness_home_tolerance_mm: float
+    readiness_distortion_tolerance: float
 
     def __init__(self,
                  folder_to_analyze: str | Path,
@@ -153,6 +187,7 @@ class Settings:
         self._init_sphere_projection()
         self._init_fit()
         self._init_stop()
+        self._init_readiness()
 
     # -----------------------------------------------------------------
     # Initialization helpers
@@ -360,6 +395,7 @@ class Settings:
             self._get(fit, "loss_f_scale", DEFAULT_LOSS_F_SCALE),
             "loss_f_scale",
         )
+        self.center_weighting = bool(self._get(fit, "center_weighting", True))
 
         if self.focal_length_initial <= 0:
             raise ValueError(
@@ -403,6 +439,147 @@ class Settings:
                 "max_observations must be positive or unset, got "
                 f"{self.max_observations}"
             )
+
+    def _init_readiness(self) -> None:
+        analysis = self._section("analysis")
+        readiness = analysis.get("readiness", {})
+        if not isinstance(readiness, dict):
+            raise TypeError(
+                "Config section '[analysis.readiness]' "
+                f"in {self.config_file_path} is not a table"
+            )
+
+        self.readiness_enabled = bool(
+            self._get(
+                readiness,
+                "enabled",
+                DEFAULT_READINESS_ENABLED,
+                override="readiness_enabled",
+            )
+        )
+        self.readiness_checkpoint_interval = int(
+            self._get(
+                readiness,
+                "checkpoint_interval",
+                DEFAULT_READINESS_CHECKPOINT_INTERVAL,
+                override="readiness_checkpoint_interval",
+            )
+        )
+        self.readiness_stable_checkpoints = int(
+            self._get(
+                readiness,
+                "stable_checkpoints",
+                DEFAULT_READINESS_STABLE_CHECKPOINTS,
+                override="readiness_stable_checkpoints",
+            )
+        )
+        self.readiness_min_inlier_fraction = _finite_float(
+            self._get(
+                readiness,
+                "min_inlier_fraction",
+                DEFAULT_READINESS_MIN_INLIER_FRACTION,
+                override="readiness_min_inlier_fraction",
+            ),
+            "readiness_min_inlier_fraction",
+        )
+        self.readiness_focal_relative_tolerance = _finite_float(
+            self._get(
+                readiness,
+                "focal_relative_tolerance",
+                DEFAULT_READINESS_FOCAL_RELATIVE_TOLERANCE,
+                override="readiness_focal_relative_tolerance",
+            ),
+            "readiness_focal_relative_tolerance",
+        )
+        self.readiness_principal_point_tolerance_px = _finite_float(
+            self._get(
+                readiness,
+                "principal_point_tolerance_px",
+                DEFAULT_READINESS_PRINCIPAL_POINT_TOLERANCE_PX,
+                override="readiness_principal_point_tolerance_px",
+            ),
+            "readiness_principal_point_tolerance_px",
+        )
+        self.readiness_translation_tolerance_mm = _finite_float(
+            self._get(
+                readiness,
+                "translation_tolerance_mm",
+                DEFAULT_READINESS_TRANSLATION_TOLERANCE_MM,
+                override="readiness_translation_tolerance_mm",
+            ),
+            "readiness_translation_tolerance_mm",
+        )
+        self.readiness_rotation_tolerance_deg = _finite_float(
+            self._get(
+                readiness,
+                "rotation_tolerance_deg",
+                DEFAULT_READINESS_ROTATION_TOLERANCE_DEG,
+                override="readiness_rotation_tolerance_deg",
+            ),
+            "readiness_rotation_tolerance_deg",
+        )
+        self.readiness_home_tolerance_mm = _finite_float(
+            self._get(
+                readiness,
+                "home_tolerance_mm",
+                DEFAULT_READINESS_HOME_TOLERANCE_MM,
+                override="readiness_home_tolerance_mm",
+            ),
+            "readiness_home_tolerance_mm",
+        )
+        self.readiness_distortion_tolerance = _finite_float(
+            self._get(
+                readiness,
+                "distortion_tolerance",
+                DEFAULT_READINESS_DISTORTION_TOLERANCE,
+                override="readiness_distortion_tolerance",
+            ),
+            "readiness_distortion_tolerance",
+        )
+
+        if self.readiness_checkpoint_interval < 1:
+            raise ValueError(
+                "readiness_checkpoint_interval must be positive, got "
+                f"{self.readiness_checkpoint_interval}"
+            )
+        if self.readiness_stable_checkpoints < 1:
+            raise ValueError(
+                "readiness_stable_checkpoints must be positive, got "
+                f"{self.readiness_stable_checkpoints}"
+            )
+        if not 0.0 < self.readiness_min_inlier_fraction <= 1.0:
+            raise ValueError(
+                "readiness_min_inlier_fraction must be in (0, 1], got "
+                f"{self.readiness_min_inlier_fraction}"
+            )
+        for name, value in (
+            (
+                "readiness_focal_relative_tolerance",
+                self.readiness_focal_relative_tolerance,
+            ),
+            (
+                "readiness_principal_point_tolerance_px",
+                self.readiness_principal_point_tolerance_px,
+            ),
+            (
+                "readiness_translation_tolerance_mm",
+                self.readiness_translation_tolerance_mm,
+            ),
+            (
+                "readiness_rotation_tolerance_deg",
+                self.readiness_rotation_tolerance_deg,
+            ),
+            (
+                "readiness_home_tolerance_mm",
+                self.readiness_home_tolerance_mm,
+            ),
+            (
+                "readiness_distortion_tolerance",
+                self.readiness_distortion_tolerance,
+            ),
+        ):
+            if value <= 0.0:
+                raise ValueError(f"{name} must be positive, got {value}")
 
     # -----------------------------------------------------------------
     # Properties with validation/transformation

@@ -75,9 +75,31 @@ camera_distance_initial = 80.0
 # soft_l1 transition scale in pixels; residual magnitudes above this are
 # downweighted while ordinary reprojection errors stay near quadratic
 loss_f_scale = 5.0
+# use the per-image circle-fit centre covariance as measurement weights;
+# caches written before covariance support existed fall back to an unweighted fit
+center_weighting = true
 
 [analysis.stop]
-# readiness target: report ready once this many valid observations are collected
-target_observations = 500
-# optional earlier readiness threshold (leave unset to disable)
+# minimum number of valid observations before saturation-based readiness is
+# evaluated; more observations are accepted if the fit has not saturated yet
+target_observations = 100
+# optional safety cap; reaching it forces readiness with a forced flag
 # max_observations = 600
+
+[analysis.readiness]
+# require the camera fit to stop changing materially before reporting ready;
+# set to false to restore count-only readiness
+enabled = true
+# record a fit checkpoint after this many new valid observations
+checkpoint_interval = 10
+# compare the mean of the last N checkpoints with the previous N checkpoints
+stable_checkpoints = 3
+# minimum fraction of valid observations that must survive filtering
+min_inlier_fraction = 0.9
+# practical-change tolerances between the two checkpoint windows
+focal_relative_tolerance = 0.001
+principal_point_tolerance_px = 0.05
+translation_tolerance_mm = 0.05
+rotation_tolerance_deg = 0.01
+home_tolerance_mm = 0.05
+distortion_tolerance = 0.0001

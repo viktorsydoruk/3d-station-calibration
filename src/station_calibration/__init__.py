@@ -31,6 +31,10 @@ __all__ = [
     "StopReason",
     "StopStatus",
     "DEFAULT_TARGET_OBSERVATIONS",
+    "FitSnapshot",
+    "ReadinessPolicy",
+    "ReadinessStatus",
+    "ReadinessTolerances",
     # Domain models and session
     "CalibrationObservation",
     "ObservationRejection",
@@ -84,6 +88,7 @@ __all__ = [
     "search_images",
     "store_all_points",
     "load_all_points",
+    "load_all_points_with_covariances",
     "RESULT_SCHEMA_VERSION",
     "calibration_document",
     "store_calibration",
@@ -125,6 +130,7 @@ from .storage import (
     RESULT_SCHEMA_VERSION,
     calibration_document,
     load_all_points,
+    load_all_points_with_covariances,
     load_robot_positions,
     search_images,
     store_all_points,
@@ -146,6 +152,12 @@ from .vision import (
     split_image,
 )
 from .processes import get_3D_and_2D_data, get_calibration_data
+from .readiness import (
+    FitSnapshot,
+    ReadinessPolicy,
+    ReadinessStatus,
+    ReadinessTolerances,
+)
 from .robot import find_robot_home_pos_shift, get_nozzle_end_home_position
 from .service import CalibrationService
 from .session import CalibrationSession

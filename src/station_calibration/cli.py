@@ -176,7 +176,11 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
                 closest_image_arg=closest_image_arg,
                 n_distortion_coefs=n_dist_coef,
                 debug_nozzle_and_home_pos=debug_nozzle_and_home_pos,
-                residuals=optimize_result.fun,
+                residuals=getattr(
+                    optimize_result,
+                    "raw_fun",
+                    optimize_result.fun,
+                ),
                 all_debug_data_to_store = all_debug_data_to_store,
                 debug_folder=settings.debug_folder,
             )

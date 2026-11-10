@@ -146,7 +146,9 @@ measured shift was 2.6–4.4 px. This is direct evidence that the refinement
 reaches the 50 % crossing.
 
 In the table, `radius_std@0` is the radius standard deviation at zero blur
-correction.
+correction. The sub-pixel columns show the uncapped optimum; the
+`subpixel_max_n_sigma` cap described below changes the sub-pixel diameter but
+not the camera fit or RMSE.
 
 | Dataset | `sigma` (px) | `n_sigma_est` | `radius_std@0` (mm) | Diameter (mm) | RMSE (px) |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -199,16 +201,45 @@ the same run the sub-pixel fit had a slightly lower RMSE (`4.508` vs
 uncertainties; its `n_sigma_est` fell from `0.93` to `0.61`, while the best
 corrected radius scatter rose from `0.0047` to `0.0090 mm`.
 
+#### Sub-pixel radius-correction cap
+
+The sub-pixel 50 % crossing removes most of the binary threshold bias, but the
+remaining empirical `n_sigma` correction can overcorrect the absolute diameter.
+The full 1 mm ceramic run is the clearest case: the raw sub-pixel diameter is
+`1.0109 mm`, the uncapped fit chooses `0.61 sigma` and reports `0.9746 mm`, and
+a `0.25 sigma` cap reports `0.9959 mm` (binary `0.9949 mm`). The camera fit and
+RMSE are unchanged by the cap; only the final sphere radius and nozzle offset
+change. The cap also increases the corrected radius scatter from `0.0090` to
+`0.0143 mm`, still between the uncapped sub-pixel value and the binary
+`0.0047 mm`.
+
+The cap was re-checked on sampled small-sphere folders (165–180 frames each)
+with the complete fitting procedure:
+
+| Dataset | Binary dia. (mm) | Sub-pixel uncapped (mm) | Sub-pixel capped (mm) |
+| --- | ---: | ---: | ---: |
+| small random A | 0.9529 | 0.9376 | 0.9561 |
+| small random B | 0.9835 | 0.9626 | 0.9865 |
+| old small B | 0.9851 | 0.9667 | 0.9959 |
+| ceramic (full) | 0.9949 | 0.9746 | 0.9959 |
+
+The cap moves the sub-pixel diameters toward the binary results and, where a
+1 mm nominal applies, close to the nominal value. It does not make the
+sub-pixel path more accurate than the binary mask on every folder, and the
+nominal diameter is not traceable; the cap is a correction for the known
+overcorrection, not evidence that sub-pixel edges should become the default.
+
 The evidence for the sub-pixel path is therefore still the reduced
 blur-dependent radius spread and the improved 6 mm repeatability, not the
 absolute diameter. The accuracy-scan folders have degenerate calibration
 geometry and were used only for detection comparison;
 `3D_small_20260929_POM` fails in both modes with a negative focal length.
 
-The packaged default remains `false`. The broad validation supports that choice
-until the extreme-defocus search window and the radius-filter scaling are
-hardened; enable it per station after checking the radius and diameter trends
-on a calibration run.
+The packaged default remains `false`. The cap removes the largest known
+overcorrection when sub-pixel edges are enabled, but the extreme-defocus search
+window and the radius-filter scaling remain open, and the absolute diameter
+still lacks a traceable reference. Enable it per station after checking the
+radius and diameter trends on a calibration run.
 
 ### 6. Edge blur (`sigma`)
 

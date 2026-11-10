@@ -39,6 +39,12 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   camera/home/centre fixed-point loop early when the centres stop moving. The
   extra refit is now only needed when the loop hits `n_iterations` without
   converging.
+- A `radial_scale` diagnostic in calibration results. `radial_scale_profile`
+  reports the fitted rational radial scale at the 0/25/50/75/100 % quantiles of
+  the observed ideal normalized radii, which is stable even when `k1` and `k2`
+  trade off against each other. `radial_distortion_scale` exposes the scale at
+  arbitrary radii, and both the folder `calibration_data.yaml` and the Ice
+  `calibration_result.yaml` include the profile.
 
 ### Fixed
 

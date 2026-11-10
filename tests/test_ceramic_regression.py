@@ -19,7 +19,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from station_calibration import DebugInfo, Settings, create_folder_session
+from station_calibration import (
+    DebugInfo,
+    Settings,
+    create_folder_session,
+    radial_scale_profile,
+)
 
 DATA_FILE = Path(__file__).parent / "data" / "CeramicAllPoints.dat"
 
@@ -90,3 +95,13 @@ def test_ceramic_pinhole_regression_matches_stored_calibration(
         result.extrinsic_matrix, EXPECTED_EXTRINSIC, rtol=1e-5, atol=1e-7
     )
     assert result.rmse == pytest.approx(EXPECTED_RMSE, rel=1e-6)
+
+    profile = radial_scale_profile(
+        result.center_points_adjusted[np.asarray(result.fit_mask, dtype=bool)],
+        result.intrinsic_matrix,
+        result.distortion,
+    )
+    assert profile is not None
+    assert len(profile["radii"]) == 5
+    assert profile["radii"] == sorted(profile["radii"])
+    np.testing.assert_allclose(profile["scale"], 1.0, atol=0.0)

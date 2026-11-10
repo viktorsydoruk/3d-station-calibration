@@ -585,6 +585,10 @@ def test_store_calibration_writes_nozzle_home_position(tmp_path: Path) -> None:
         observation_count=10,
         observations_used=9,
         sphere_home_position=np.array([4.0, 5.0, 6.0]),
+        radial_scale={
+            "radii": [0.0, 0.1],
+            "scale": [1.0, 0.99],
+        },
     )
 
     calibration = yaml.safe_load(
@@ -604,6 +608,10 @@ def test_store_calibration_writes_nozzle_home_position(tmp_path: Path) -> None:
         "rot_vec_std",
         "tra_vec_std",
         "distortion_std",
+    }
+    assert camera["radial_scale"] == {
+        "radii": [0.0, 0.1],
+        "scale": [1.0, 0.99],
     }
 
 
@@ -718,6 +726,7 @@ def test_main_stores_nozzle_end_home_position(
     np.testing.assert_allclose(
         captured["nozzle_home_position"], nozzle_home_position
     )
+    assert captured["radial_scale"]["scale"] == pytest.approx([1.0] * 5)
 
     nozzle_kwargs = captured["nozzle_kwargs"]
     assert len(nozzle_kwargs["radii"]) == len(observations) - 1

@@ -70,6 +70,8 @@ __all__ = [
     "get_calibration",
     "calibrate_camera",
     "check_distortion_monotonicity",
+    "radial_distortion_scale",
+    "radial_scale_profile",
     "back_projected_point",
     "calculate_RMSE",
     "calculate_calibration_errors",
@@ -123,6 +125,8 @@ from .calibration import (
     get_calibration,
     is_spatially_clustered,
     print_calibration,
+    radial_distortion_scale,
+    radial_scale_profile,
 )
 from .debug import DebugInfo
 from .models import (

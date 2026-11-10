@@ -17,6 +17,8 @@ from station_calibration import (
     calculate_errors,
     check_distortion_monotonicity,
     print_calibration,
+    radial_distortion_scale,
+    radial_scale_profile,
 )
 import station_calibration.calibration.initialization as initialization_module
 import station_calibration.calibration.metrics as metrics_module
@@ -277,6 +279,121 @@ def test_distortion_monotonicity_rejects_invalid_inputs() -> None:
     assert not check_distortion_monotonicity(
         np.zeros(14), _intrinsic(), (-1, 1000)
     )
+
+
+def test_radial_distortion_scale_is_one_for_a_pinhole_model() -> None:
+    radii = np.array([0.0, 0.05, 0.1])
+
+    np.testing.assert_allclose(
+        radial_distortion_scale(np.zeros(14), radii), 1.0
+    )
+
+
+def test_radial_distortion_scale_matches_the_polynomial_terms() -> None:
+    distortion = np.zeros(14)
+    distortion[0] = -0.1
+    distortion[1] = 0.02
+    radii = np.array([0.1, 0.2])
+
+    expected = 1.0 + distortion[0] * radii ** 2 + distortion[1] * radii ** 4
+
+    np.testing.assert_allclose(
+        radial_distortion_scale(distortion, radii), expected
+    )
+
+
+def test_radial_distortion_scale_matches_the_rational_denominator() -> None:
+    distortion = np.zeros(14)
+    distortion[5] = 0.5  # k4
+    radii = np.array([0.2])
+
+    expected = 1.0 / (1.0 + 0.5 * 0.2 ** 2)
+
+    np.testing.assert_allclose(
+        radial_distortion_scale(distortion, radii), expected
+    )
+
+
+def test_radial_distortion_scale_validates_inputs() -> None:
+    with pytest.raises(ValueError, match="one-dimensional"):
+        radial_distortion_scale(np.zeros(14), np.zeros((2, 2)))
+    with pytest.raises(ValueError, match="finite"):
+        radial_distortion_scale(np.zeros(14), np.array([0.0, np.nan]))
+    with pytest.raises(ValueError, match="non-negative"):
+        radial_distortion_scale(np.zeros(14), np.array([-0.1]))
+    with pytest.raises(ValueError, match="distortion"):
+        radial_distortion_scale(np.array([np.nan]), np.array([0.1]))
+
+
+def test_radial_scale_profile_samples_the_observed_radii() -> None:
+    intrinsic = _intrinsic()
+    centers = np.array(
+        [[500.0, 500.0], [600.0, 500.0], [700.0, 500.0]],
+        dtype=np.float64,
+    )
+
+    profile = radial_scale_profile(
+        centers, intrinsic, np.zeros(14), quantiles=(0.0, 0.5, 1.0)
+    )
+
+    assert profile is not None
+    np.testing.assert_allclose(profile["radii"], [0.0, 0.1, 0.2])
+    np.testing.assert_allclose(profile["scale"], [1.0, 1.0, 1.0])
+
+    empty_distortion = radial_scale_profile(
+        centers, intrinsic, np.array([]), quantiles=(0.0, 0.5, 1.0)
+    )
+
+    assert empty_distortion is not None
+    np.testing.assert_allclose(empty_distortion["scale"], [1.0, 1.0, 1.0])
+
+
+def test_radial_scale_profile_undistorts_before_sampling() -> None:
+    intrinsic = _intrinsic()
+    distortion = np.zeros(14)
+    distortion[0] = -0.1
+    ideal = np.array([[0.1, 0.05]])
+
+    projected, _ = cv2.projectPoints(
+        np.column_stack([ideal, np.ones(1)]),
+        np.zeros(3),
+        np.zeros(3),
+        intrinsic,
+        distortion,
+    )
+    profile = radial_scale_profile(
+        projected.reshape(-1, 2),
+        intrinsic,
+        distortion,
+        quantiles=(1.0,),
+    )
+
+    assert profile is not None
+    ideal_radius = float(np.linalg.norm(ideal))
+    np.testing.assert_allclose(profile["radii"], [ideal_radius], rtol=1e-6)
+    np.testing.assert_allclose(
+        profile["scale"],
+        [1.0 + distortion[0] * ideal_radius ** 2],
+        rtol=1e-6,
+    )
+
+
+def test_radial_scale_profile_returns_none_without_usable_points() -> None:
+    assert radial_scale_profile(np.empty((0, 2)), _intrinsic(), np.zeros(14)) is None
+    assert radial_scale_profile(np.zeros((2, 2)), np.eye(2), np.zeros(14)) is None
+    assert radial_scale_profile(
+        np.full((2, 2), np.nan), _intrinsic(), np.zeros(14)
+    ) is None
+
+
+def test_radial_scale_profile_validates_quantiles() -> None:
+    with pytest.raises(ValueError, match="quantiles"):
+        radial_scale_profile(
+            np.zeros((1, 2)),
+            _intrinsic(),
+            np.zeros(14),
+            quantiles=(0.0, 1.5),
+        )
 
 
 def _assert_proper_rotation(matrix: np.ndarray) -> None:

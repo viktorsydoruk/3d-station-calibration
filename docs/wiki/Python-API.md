@@ -11,7 +11,7 @@ depend on the internal module layout.
 | Domain and session | `CalibrationObservation`, `ObservationRejection`, `CalibrationResult`, `SIGMA_OFFSET`, `CalibrationSession`, `CalibrationService` |
 | Sources | `ObservationDataset`, `ObservationSource`, `FolderDataset`, `FolderCalibrationSource`, `create_folder_session`, `observations_to_arrays` |
 | Image analysis | `SphereObservation`, `ImageAnalysisResult`, `load_image`, `decode_image`, `split_image`, `analyze_image`, `analyze_image_array`, `analyze_image_bytes`, `analyze_images`, `get_sphere_centers_and_blur_sigmas`, `get_radius_outlier_mask`, `filtering_data_by_radius`, `adjust_image_center_points` |
-| Numerical pipeline | `get_calibration_data`, `get_3D_and_2D_data`, `print_calibration`, `get_calibration`, `calibrate_camera`, `check_distortion_monotonicity`, `back_projected_point`, `calculate_RMSE`, `calculate_calibration_errors` |
+| Numerical pipeline | `get_calibration_data`, `get_3D_and_2D_data`, `print_calibration`, `get_calibration`, `calibrate_camera`, `check_distortion_monotonicity`, `radial_distortion_scale`, `radial_scale_profile`, `back_projected_point`, `calculate_RMSE`, `calculate_calibration_errors` |
 | Robot/geometry | `find_robot_home_pos_shift`, `get_nozzle_end_home_position`, `find_proper_args_to_compare`, `fit_line_general_form`, `intersect_lines`, `calculate_errors` |
 | Uncertainty | `bootstrap_nozzle_home`, `NozzleBootstrapResult` |
 | I/O | `load_robot_positions`, `search_images`, `store_all_points`, `load_all_points`, `RESULT_SCHEMA_VERSION`, `calibration_document`, `store_calibration`, `NOZZLE_UNCERTAINTY_SCHEMA_VERSION`, `store_nozzle_uncertainty` |

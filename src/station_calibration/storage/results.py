@@ -40,6 +40,7 @@ def calibration_document(
     observations_used: int | None = None,
     sphere_home_position: np.ndarray | None = None,
     errors: Mapping[str, np.ndarray] | None = None,
+    radial_scale: Mapping[str, Any] | None = None,
     session: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the shared YAML/JSON-compatible calibration result document."""
@@ -70,6 +71,14 @@ def calibration_document(
             else {
                 name: _array_list(value)
                 for name, value in errors.items()
+            }
+        ),
+        "radial_scale": (
+            None
+            if radial_scale is None
+            else {
+                name: _array_list(value)
+                for name, value in radial_scale.items()
             }
         ),
     }
@@ -104,7 +113,8 @@ def store_calibration(nozzle_home_position: np.ndarray,
                       rmse: float | None = None,
                       observation_count: int | None = None,
                       observations_used: int | None = None,
-                      sphere_home_position: np.ndarray | None = None) -> None:
+                      sphere_home_position: np.ndarray | None = None,
+                      radial_scale: Mapping[str, Any] | None = None) -> None:
     """Write the folder-workflow calibration result as YAML."""
     document = calibration_document(
         nozzle_home_position=nozzle_home_position,
@@ -118,6 +128,7 @@ def store_calibration(nozzle_home_position: np.ndarray,
         observation_count=observation_count,
         observations_used=observations_used,
         sphere_home_position=sphere_home_position,
+        radial_scale=radial_scale,
         errors={
             "intrinsic_std": intrinsic_std,
             "rot_vec_std": rot_vec_std,

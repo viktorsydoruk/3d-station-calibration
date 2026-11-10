@@ -5,6 +5,8 @@
 
 __all__ = [
     "check_distortion_monotonicity",
+    "radial_distortion_scale",
+    "radial_scale_profile",
     "calculate_calibration_errors",
     "print_calibration",
     "back_projected_point",
@@ -25,6 +27,127 @@ def _radial_distortion_coefficients(distortion: np.ndarray) -> np.ndarray:
     if coefficients.size < 8:
         coefficients = np.pad(coefficients, (0, 8 - coefficients.size))
     return coefficients[[0, 1, 4, 5, 6, 7]]
+
+
+def _radial_scale_parts(
+    distortion: np.ndarray,
+    radii: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return the numerator and denominator of OpenCV's rational radial model."""
+    k1, k2, k3, k4, k5, k6 = _radial_distortion_coefficients(distortion)
+    r2 = np.asarray(radii, dtype=np.float64) ** 2
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        numerator = 1.0 + k1 * r2 + k2 * r2 ** 2 + k3 * r2 ** 3
+        denominator = 1.0 + k4 * r2 + k5 * r2 ** 2 + k6 * r2 ** 3
+    return numerator, denominator
+
+
+def radial_distortion_scale(distortion: np.ndarray,
+                            radii: np.ndarray) -> np.ndarray:
+    """Return the fitted radial scale at ideal normalized radii.
+
+    The scale is OpenCV's rational radial factor
+
+    ``(1 + k1*r**2 + k2*r**4 + k3*r**6) /
+    (1 + k4*r**2 + k5*r**4 + k6*r**6)``.
+
+    It is exactly 1 for a pinhole camera. Reporting this profile is more stable
+    than comparing individual coefficients, because ``k1`` and ``k2`` are
+    strongly correlated over a narrow field of view.
+
+    :param distortion: OpenCV distortion vector (k1, k2, p1, p2, k3, ...)
+    :param radii: ideal normalized radii (non-negative)
+    :return: radial scale, same shape as ``radii``
+    """
+    radii = np.asarray(radii, dtype=np.float64)
+    if radii.ndim != 1:
+        raise ValueError("radii must be a one-dimensional array")
+    if not np.all(np.isfinite(radii)):
+        raise ValueError("radii must contain only finite values")
+    if np.any(radii < 0.0):
+        raise ValueError("radii must be non-negative")
+
+    coefficients = np.asarray(distortion, dtype=np.float64).reshape(-1)
+    if not np.all(np.isfinite(coefficients)):
+        raise ValueError("distortion must contain only finite values")
+
+    numerator, denominator = _radial_scale_parts(coefficients, radii)
+    if (
+        not np.all(np.isfinite(numerator))
+        or not np.all(np.isfinite(denominator))
+        or np.any(np.abs(denominator) < 1e-12)
+    ):
+        raise ValueError("radial scale is not finite for these coefficients")
+    return numerator / denominator
+
+
+def radial_scale_profile(
+    center_points: np.ndarray,
+    intrinsic_matrix: np.ndarray,
+    distortion: np.ndarray,
+    *,
+    quantiles: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 1.0),
+) -> dict[str, list[float]] | None:
+    """Summarize the fitted radial scale at the observed normalized radii.
+
+    The measured centres are first undistorted to the ideal normalized plane
+    with ``cv2.undistortPoints``. The requested quantiles of those radii are
+    then evaluated with :func:`radial_distortion_scale`.
+
+    :param center_points: measured image centres in pixels
+    :param intrinsic_matrix: fitted intrinsic matrix
+    :param distortion: fitted OpenCV distortion vector
+    :param quantiles: radii quantiles to report, in ``[0, 1]``
+    :return: ``{"radii": [...], "scale": [...]}``, or ``None`` when no usable
+        centre points are available
+    """
+    points = np.asarray(center_points, dtype=np.float64)
+    intrinsic = np.asarray(intrinsic_matrix, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 2 or points.shape[0] == 0:
+        return None
+    if intrinsic.shape != (3, 3) or not np.all(np.isfinite(intrinsic)):
+        return None
+
+    finite = np.isfinite(points).all(axis=1)
+    points = points[finite]
+    if points.shape[0] == 0:
+        return None
+
+    quantile_values = np.asarray(quantiles, dtype=np.float64)
+    if (
+        quantile_values.ndim != 1
+        or quantile_values.size == 0
+        or not np.all(np.isfinite(quantile_values))
+        or np.any(quantile_values < 0.0)
+        or np.any(quantile_values > 1.0)
+    ):
+        raise ValueError(
+            "quantiles must be a non-empty one-dimensional array in [0, 1]"
+        )
+
+    coefficients = np.asarray(distortion, dtype=np.float64).reshape(-1)
+    if coefficients.size == 0:
+        coefficients = np.zeros(14, dtype=np.float64)
+    try:
+        normalized = cv2.undistortPoints(
+            points.reshape(-1, 1, 2),
+            intrinsic,
+            coefficients,
+        ).reshape(-1, 2)
+    except cv2.error:
+        return None
+
+    radii = np.linalg.norm(normalized, axis=1)
+    radii = radii[np.isfinite(radii)]
+    if radii.size == 0:
+        return None
+
+    selected = np.quantile(radii, quantile_values)
+    try:
+        scale = radial_distortion_scale(coefficients, selected)
+    except ValueError:
+        return None
+    return {"radii": selected.tolist(), "scale": scale.tolist()}
 
 
 def check_distortion_monotonicity(distortion: np.ndarray,
@@ -81,12 +204,8 @@ def check_distortion_monotonicity(distortion: np.ndarray,
     if not np.isfinite(r_max) or r_max <= 0.0:
         return False
 
-    k1, k2, k3, k4, k5, k6 = _radial_distortion_coefficients(distortion)
     r_val = np.linspace(0.0, r_max, 1001)
-    r2 = r_val ** 2
-
-    numerator = 1.0 + k1 * r2 + k2 * r2 ** 2 + k3 * r2 ** 3
-    denominator = 1.0 + k4 * r2 + k5 * r2 ** 2 + k6 * r2 ** 3
+    numerator, denominator = _radial_scale_parts(distortion, r_val)
     if (
         not np.all(np.isfinite(numerator))
         or not np.all(np.isfinite(denominator))

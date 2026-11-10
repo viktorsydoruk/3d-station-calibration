@@ -20,6 +20,7 @@ from .calibration import (
     back_projected_point,
     calculate_calibration_errors,
     print_calibration,
+    radial_scale_profile,
 )
 from .debug import DebugInfo
 from .models import CalibrationObservation, CalibrationResult
@@ -196,6 +197,11 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
             fix_cx_cy=settings.fix_cx_cy,
             n_distortion_coefs=n_dist_coef,
         )
+        radial_scale = radial_scale_profile(
+            inlier_center_points,
+            intrinsic_matrix,
+            distortion,
+        )
 
         store_calibration(
             nozzle_home_position=nozzle_end_home_pos,
@@ -213,6 +219,7 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
             observation_count=result.observation_count,
             observations_used=result.n_used,
             sphere_home_position=pos_home,
+            radial_scale=radial_scale,
         )
 
         _write_nozzle_uncertainty_report(
@@ -239,6 +246,16 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
                 fix_cx_cy=settings.fix_cx_cy,
                 n_distortion_coefs=n_dist_coef
             )
+            if radial_scale is not None:
+                print_debug(
+                    "Radial scale at observed normalized radii: "
+                    + ", ".join(
+                        f"{radius:.4f} -> {scale:.6f}"
+                        for radius, scale in zip(
+                            radial_scale["radii"], radial_scale["scale"]
+                        )
+                    )
+                )
             back_projected_home_pos = back_projected_point(
                 nozzle_end_home_pos - pos_home,
                 intrinsic_matrix,

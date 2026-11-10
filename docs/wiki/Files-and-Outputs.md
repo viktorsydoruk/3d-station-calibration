@@ -192,12 +192,30 @@ camera:
     - ...
     distortion_std:
     - ...
+  radial_scale:
+    radii:
+    - 0.0
+    - 0.014
+    - 0.028
+    - 0.042
+    - 0.056
+    scale:
+    - 1.0
+    - 0.9999
+    - 0.9995
+    - 0.9987
+    - 0.9965
 ```
 
 Notes:
 
 - `resolution` is `[width, height]`.
 - `distortion_coefficients` always has 14 entries; inactive ones are zero.
+- `radial_scale` reports the fitted radial distortion at the observed field
+  rather than relying on the strongly correlated individual coefficients. The
+  `radii` are ideal normalized image radii; `scale` is OpenCV's rational
+  distorted/ideal factor at each radius. The profile is `1.0` for a pinhole fit.
+  It is `null` when no inlier centres are available.
 - `intrinsic_std[0][2]` and `[1][2]` are populated only when
   `fix_cx_cy = false`.
 - Structurally fixed intrinsic entries, including `intrinsic_std[2][2]`, are

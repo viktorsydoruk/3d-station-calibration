@@ -246,6 +246,10 @@ def test_calibration_document_includes_optional_session_metadata() -> None:
         observations_used=8,
         sphere_home_position=np.array([4.0, 5.0, 6.0]),
         errors={"intrinsic_std": np.eye(3)},
+        radial_scale={
+            "radii": np.array([0.0, 0.1]),
+            "scale": np.array([1.0, 0.99]),
+        },
         session={"procedure_id": 7},
     )
 
@@ -261,6 +265,12 @@ def test_calibration_document_includes_optional_session_metadata() -> None:
     np.testing.assert_allclose(
         document["camera"]["errors"]["intrinsic_std"],
         np.eye(3).tolist(),
+    )
+    assert document["camera"]["radial_scale"]["radii"] == pytest.approx(
+        [0.0, 0.1]
+    )
+    assert document["camera"]["radial_scale"]["scale"] == pytest.approx(
+        [1.0, 0.99]
     )
 
 

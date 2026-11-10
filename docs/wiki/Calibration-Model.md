@@ -141,6 +141,22 @@ If the check fails, `get_calibration_data` refits with
 `n_distortion_coefs = 0`. The `CalibrationResult.n_distortion_coefs` and the YAML
 output then reflect the fallback value, even if the configured value was larger.
 
+## Radial-scale diagnostic
+
+Over the station calibration's narrow field of view, `k1`, `k2`, and the higher
+radial terms are strongly correlated: very different coefficient vectors can
+describe almost the same lens. Individual coefficients are therefore a poor
+summary of how much distortion the fit actually applies.
+
+Each result records a `radial_scale` profile in
+`calibration_data.yaml` and the Ice `calibration_result.yaml`. The helper
+`radial_scale_profile` undistorts the inlier image centres to the ideal
+normalized plane, takes the 0, 25, 50, 75, and 100 % quantiles of their radii,
+and evaluates the rational scale above at those radii. `radial_distortion_scale`
+evaluates the same expression at arbitrary radii. The profile is `1.0` for a
+pinhole fit and changes smoothly with radius for a radial model, so it is stable
+under coefficient reparameterization.
+
 ## Iterative pipeline
 
 `get_calibration_data` is the whole numerical pipeline:

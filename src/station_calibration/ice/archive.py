@@ -24,6 +24,7 @@ import yaml
 
 from .. import __version__
 from ..atomic import atomic_write_text
+from ..calibration import radial_scale_profile
 from ..storage import calibration_document
 
 __all__ = ["SessionArchive"]
@@ -188,6 +189,18 @@ class SessionArchive:
             "csv_filename": self.csv_filename,
         }
         rmse_value = getattr(result, "rmse", None)
+        radial_scale = None
+        adjusted_centers = getattr(result, "center_points_adjusted", None)
+        fit_mask = getattr(result, "fit_mask", None)
+        if adjusted_centers is not None and fit_mask is not None:
+            centers = np.asarray(adjusted_centers, dtype=np.float64)
+            mask = np.asarray(fit_mask, dtype=bool)
+            if centers.shape[:1] == mask.shape:
+                radial_scale = radial_scale_profile(
+                    centers[mask],
+                    result.intrinsic_matrix,
+                    result.distortion,
+                )
         data = calibration_document(
             nozzle_home_position=None,
             intrinsic_matrix=result.intrinsic_matrix,
@@ -199,6 +212,7 @@ class SessionArchive:
             observation_count=int(getattr(result, "observation_count", 0)),
             observations_used=int(getattr(result, "n_used", 0)),
             sphere_home_position=getattr(result, "pos_home", None),
+            radial_scale=radial_scale,
             session=session_metadata,
         )
         path = self._session_dir / RESULT_FILENAME

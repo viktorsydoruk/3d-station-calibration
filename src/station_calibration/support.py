@@ -3,8 +3,15 @@
 
 """Support functions"""
 
+import math
+from typing import overload
+
 import numpy as np
 from scipy.optimize import OptimizeResult
+
+
+#: One-sigma uncertainties are reported with this many significant digits.
+ERROR_SIGNIFICANT_DIGITS = 2
 
 
 def find_proper_args_to_compare(robot_positions: np.ndarray,
@@ -99,3 +106,58 @@ def calculate_errors(result: OptimizeResult) -> np.ndarray:
     # Round-off can make a numerically zero variance slightly negative.
     variances = np.where(variances >= 0.0, variances, np.nan)
     return np.sqrt(variances)
+
+
+def _decimal_place(sigma: float) -> int | None:
+    """Return the ``round`` decimal place implied by a two-digit sigma."""
+    if not math.isfinite(sigma) or sigma <= 0.0:
+        return None
+    return (ERROR_SIGNIFICANT_DIGITS - 1) - math.floor(math.log10(sigma))
+
+
+def _positive_zero(value: float) -> float:
+    """Normalise ``-0.0`` to ``0.0`` so the serialized output has one zero."""
+    return 0.0 if value == 0.0 else value
+
+
+@overload
+def reported(value: float, sigma: float) -> tuple[float, float]: ...
+
+
+@overload
+def reported(value: float, sigma: None) -> tuple[float, None]: ...
+
+
+def reported(value: float, sigma: float | None) -> tuple[float, float | None]:
+    """Round a measurement and its one-sigma to the same decimal place.
+
+    The uncertainty keeps :data:`ERROR_SIGNIFICANT_DIGITS` significant digits
+    and the value is rounded to the last digit of that uncertainty, following
+    the usual measurement-reporting convention. Values whose uncertainty is
+    missing, ``nan``, or ``0`` are returned unchanged: they carry no
+    uncertainty information, so rounding them would claim precision that was
+    never estimated.
+    """
+    value = float(value)
+    if sigma is None:
+        return value, None
+
+    sigma = float(sigma)
+    place = _decimal_place(sigma)
+    if place is None or not math.isfinite(value):
+        return value, sigma
+    return _positive_zero(round(value, place)), _positive_zero(round(sigma, place))
+
+
+def reported_error(sigma: float) -> float:
+    """Round a one-sigma that has no matching value in the report."""
+    sigma = float(sigma)
+    place = _decimal_place(sigma)
+    if place is None:
+        return sigma
+    return _positive_zero(round(sigma, place))
+
+
+def format_number(value: float) -> str:
+    """Render a float with the shortest exact round-trip representation."""
+    return str(float(value))

@@ -32,8 +32,19 @@ from .sources.folder import (
     observations_to_arrays,
 )
 from .storage import store_calibration, store_nozzle_uncertainty
-from .support import calculate_errors
+from .support import calculate_errors, format_number, reported, reported_error
 from .uncertainty import bootstrap_nozzle_home
+
+
+def _format_position(values: np.ndarray, decimals: int = 3) -> str:
+    """Format a millimetre position for the console with micrometre resolution."""
+    array = np.asarray(values, dtype=np.float64).ravel()
+    rendered = []
+    for value in array:
+        text = f"{float(value):.{decimals}f}"
+        # Avoid the ``-0.000`` spelling for values that round to zero.
+        rendered.append(text[1:] if text.startswith("-") and float(text) == 0.0 else text)
+    return "[" + ", ".join(rendered) + "]"
 
 
 def _write_nozzle_uncertainty_report(
@@ -57,6 +68,10 @@ def _write_nozzle_uncertainty_report(
             n_bootstrap=settings.uncertainty_n_bootstrap,
             seed=settings.uncertainty_seed,
         )
+        nozzle_home = np.asarray(nozzle_home_position, dtype=np.float64)
+        bootstrap_std = np.broadcast_to(
+            np.asarray(bootstrap.std, dtype=np.float64), nozzle_home.shape
+        )
         metadata = {
             "source": str(settings.main_folder),
             "fit": {
@@ -73,9 +88,10 @@ def _write_nozzle_uncertainty_report(
                 sphere_home_position, dtype=np.float64
             ).tolist(),
             "sphere_diameter_mm": float(sphere_diameter_mm),
-            "nozzle_home_position": np.asarray(
-                nozzle_home_position, dtype=np.float64
-            ).tolist(),
+            "nozzle_home_position": [
+                reported(value, error)[0]
+                for value, error in zip(nozzle_home, bootstrap_std)
+            ],
         }
         report_path = store_nozzle_uncertainty(
             report=bootstrap.as_dict(),
@@ -97,8 +113,9 @@ def _write_nozzle_uncertainty_report(
         )
     print(
         "Nozzle uncertainty (1 sigma): "
-        f"std = [{', '.join(f'{float(value):.6f}' for value in bootstrap.std)}] mm, "
-        f"norm = {bootstrap.norm_std:.6f} mm; report: {report_path}"
+        f"std = [{', '.join(format_number(reported_error(value)) for value in bootstrap.std)}] mm, "
+        f"norm = {format_number(reported_error(bootstrap.norm_std))} mm; "
+        f"report: {report_path}"
     )
     return report_path
 
@@ -234,8 +251,11 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
         if settings.debug:
             from .plots import visualize_results
 
-            print_debug(f"Sphere center home position: {pos_home}, estimated sphere diameter: {sphere_diam_mm: 0.3f} mm")
-            print_debug(f"Nozzle center home position: {nozzle_end_home_pos}")
+            print_debug(
+                f"Sphere center home position: {_format_position(pos_home)} mm, "
+                f"estimated sphere diameter: {sphere_diam_mm: 0.3f} mm"
+            )
+            print_debug(f"Nozzle center home position: {_format_position(nozzle_end_home_pos)} mm")
 
             closest_image_arg = int(np.argmin(np.sqrt(np.sum((inlier_robot_positions-nozzle_end_home_pos[None, :])**2, axis=1))))
 

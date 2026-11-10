@@ -296,7 +296,8 @@ model error that is common to all images.
   no degrees of freedom remain. RMSE uses `result.raw_fun` (pixel residuals)
   when the fit was weighted, so it stays comparable across weighting modes.
 - `print_calibration` — matrices, distortion, optimizer status, and each
-  parameter with its one-sigma value.
+  parameter as `value +/- sigma`, rounded to two significant digits of the
+  one-sigma.
 - `back_projected_point` — project a 3D point into the image with the fitted
   model.
 

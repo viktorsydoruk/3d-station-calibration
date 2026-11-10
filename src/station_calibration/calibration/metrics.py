@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 from scipy.optimize import OptimizeResult
 
-from ..support import calculate_errors
+from ..support import calculate_errors, format_number, reported
 from .model import get_calibration, params_names
 
 
@@ -298,8 +298,22 @@ def print_calibration(result: OptimizeResult,
         fix_cx_cy=fix_cx_cy,
         n_distortion_coefs=n_distortion_coefs
     )
-    for each_err, each_value, each_name in zip(calculate_errors(result), result.x, names):
-        print(f"{each_name:>6}: {each_value:>15.5f} +/- {each_err:0.5f}")
+    measurements = [
+        (each_name, reported(each_value, each_err))
+        for each_err, each_value, each_name in zip(
+            calculate_errors(result),
+            result.x,
+            names,
+        )
+    ]
+    value_width = max(
+        len(format_number(each_value)) for _, (each_value, _) in measurements
+    )
+    for each_name, (each_value, each_err) in measurements:
+        print(
+            f"{each_name:>6}: {format_number(each_value):>{value_width}} +/- "
+            f"{format_number(each_err)}"
+        )
 
 
 def back_projected_point(robot_pos: np.ndarray,

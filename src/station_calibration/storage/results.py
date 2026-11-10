@@ -6,6 +6,7 @@
 __all__ = [
     "RESULT_SCHEMA_VERSION",
     "NOZZLE_UNCERTAINTY_SCHEMA_VERSION",
+    "NOZZLE_HOME_DECIMALS",
     "calibration_document",
     "store_calibration",
     "store_nozzle_uncertainty",
@@ -20,10 +21,14 @@ import numpy as np
 import yaml
 
 from ..atomic import atomic_write_text
+from ..support import reported, reported_error
 
 
 RESULT_SCHEMA_VERSION = 1
 NOZZLE_UNCERTAINTY_SCHEMA_VERSION = 1
+
+#: The nozzle home position is reported in millimetres with micrometre resolution.
+NOZZLE_HOME_DECIMALS = 3
 
 
 def calibration_document(
@@ -43,13 +48,52 @@ def calibration_document(
     radial_scale: Mapping[str, Any] | None = None,
     session: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build the shared YAML/JSON-compatible calibration result document."""
+    """Build the shared YAML/JSON-compatible calibration result document.
+
+    Values with a one-sigma estimate are rounded to
+    :data:`~station_calibration.support.ERROR_SIGNIFICANT_DIGITS` significant
+    digits of that uncertainty. The nozzle home position keeps micrometre
+    resolution, and values without an uncertainty are written with their full
+    float precision.
+    """
+    uncertainties: Mapping[str, Any] = {} if errors is None else errors
+
+    intrinsic_values, intrinsic_errors = _paired_values(
+        intrinsic_matrix, uncertainties.get("intrinsic_std")
+    )
+    distortion_values, distortion_errors = _paired_values(
+        distortion_coefficients, uncertainties.get("distortion_std")
+    )
+    extrinsic_array = np.asarray(extrinsic_matrix, dtype=np.float64)
+    translation_values, translation_errors = _paired_values(
+        extrinsic_array[:3, 3], uncertainties.get("tra_vec_std")
+    )
+    # Rotation and translation share one homogeneous matrix, but the fitted
+    # one-sigma values describe the rotation vector, not the rotation-matrix
+    # entries, so only the translation column is rounded here.
+    extrinsic_values = _array_list(extrinsic_array)
+    for row, translation in enumerate(translation_values):
+        extrinsic_values[row][3] = translation
+
+    camera_errors: dict[str, Any] | None = None
+    if errors is not None:
+        rounded_errors = {
+            "intrinsic_std": intrinsic_errors,
+            "rot_vec_std": _error_list(uncertainties.get("rot_vec_std")),
+            "tra_vec_std": translation_errors,
+            "distortion_std": distortion_errors,
+        }
+        camera_errors = {
+            name: rounded_errors.get(name, _array_list(value))
+            for name, value in uncertainties.items()
+        }
+
     camera: dict[str, Any] = {
         "model": model,
         "resolution": [int(value) for value in image_xy],
-        "intrinsic_matrix": _array_list(intrinsic_matrix),
-        "extrinsic_matrix": _array_list(extrinsic_matrix),
-        "distortion_coefficients": _array_list(distortion_coefficients),
+        "intrinsic_matrix": intrinsic_values,
+        "extrinsic_matrix": extrinsic_values,
+        "distortion_coefficients": distortion_values,
         "n_distortion_coefs": (
             None if n_distortion_coefs is None else int(n_distortion_coefs)
         ),
@@ -65,14 +109,7 @@ def calibration_document(
             if sphere_home_position is None
             else _array_list(sphere_home_position)
         ),
-        "errors": (
-            None
-            if errors is None
-            else {
-                name: _array_list(value)
-                for name, value in errors.items()
-            }
-        ),
+        "errors": camera_errors,
         "radial_scale": (
             None
             if radial_scale is None
@@ -90,7 +127,7 @@ def calibration_document(
         "home_position": (
             None
             if nozzle_home_position is None
-            else _array_list(nozzle_home_position)
+            else _decimals_list(nozzle_home_position, NOZZLE_HOME_DECIMALS)
         ),
     }
     document["camera"] = camera
@@ -167,3 +204,49 @@ def store_nozzle_uncertainty(
 
 def _array_list(value: np.ndarray) -> list[Any]:
     return np.asarray(value, dtype=np.float64).tolist()
+
+
+def _paired_values(
+    values: np.ndarray,
+    errors: np.ndarray | None,
+) -> tuple[list[Any], list[Any] | None]:
+    """Round values and their one-sigma errors to the same decimal place."""
+    array = np.asarray(values, dtype=np.float64)
+    if errors is None:
+        return array.tolist(), None
+
+    error_array = np.asarray(errors, dtype=np.float64)
+    if error_array.shape != array.shape:
+        raise ValueError(
+            f"error array shape {error_array.shape} does not match value shape "
+            f"{array.shape}"
+        )
+    pairs = [
+        reported(value, error)
+        for value, error in zip(array.ravel(), error_array.ravel())
+    ]
+    rounded_values = np.array([pair[0] for pair in pairs], dtype=np.float64)
+    rounded_errors = np.array([pair[1] for pair in pairs], dtype=np.float64)
+    return rounded_values.reshape(array.shape).tolist(), rounded_errors.reshape(
+        array.shape
+    ).tolist()
+
+
+def _error_list(errors: np.ndarray | None) -> list[Any] | None:
+    """Round a standalone one-sigma array to two significant digits."""
+    if errors is None:
+        return None
+    array = np.asarray(errors, dtype=np.float64)
+    rounded = [reported_error(value) for value in array.ravel()]
+    return np.array(rounded, dtype=np.float64).reshape(array.shape).tolist()
+
+
+def _decimals_list(values: np.ndarray, decimals: int) -> list[Any]:
+    """Round every entry to a fixed number of decimal places."""
+    array = np.asarray(values, dtype=np.float64)
+    rounded = []
+    for value in array.ravel():
+        entry = round(float(value), decimals)
+        # Avoid surfacing ``-0.0`` for values that round to zero.
+        rounded.append(0.0 if entry == 0.0 else entry)
+    return np.array(rounded, dtype=np.float64).reshape(array.shape).tolist()

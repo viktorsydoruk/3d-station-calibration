@@ -66,6 +66,14 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - The stored-point-cloud calibration regression snapshot moved slightly
   (focal lengths by about 0.05 %) because the centre correction now accounts for
   lens distortion. The lens model itself is unchanged.
+- Stored calibration results no longer repeat meaningless digits. Values with a
+  fitted one-sigma are rounded to two significant digits of that uncertainty,
+  with the estimate rounded to the same decimal place; the nozzle home position
+  keeps micrometre (1 µm) resolution. The extrinsic rotation block, the sphere
+  home position, `rmse`, and `radial_scale` keep full precision because no
+  one-sigma estimate exists for them, and `CalibrationAllPoints.dat` is
+  unchanged. The console parameter table now prints `value +/- sigma` with the
+  same rule, and debug position printouts use micrometre resolution.
 
 ## [2026.11.10.0] - 2026-11-10
 

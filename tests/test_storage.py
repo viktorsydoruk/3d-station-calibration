@@ -274,6 +274,99 @@ def test_calibration_document_includes_optional_session_metadata() -> None:
     )
 
 
+def test_calibration_document_rounds_values_to_their_uncertainty() -> None:
+    intrinsic_matrix = np.array(
+        [
+            [14788.043071123456, 0.0, 1250.0000001],
+            [0.0, 14783.061016987, 1000.0000002],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    extrinsic_matrix = np.array(
+        [
+            [0.999999, 0.001234, -0.000987, 315.487391203948],
+            [-0.001233, 0.999998, 0.001111, -111.520987654321],
+            [0.000988, -0.001110, 0.999999, -35.572123456789],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+
+    document = calibration_document(
+        nozzle_home_position=np.array([315.487391203948, -111.520987654321, -35.572123456789]),
+        intrinsic_matrix=intrinsic_matrix,
+        extrinsic_matrix=extrinsic_matrix,
+        distortion_coefficients=np.array([-1.23456789012e-05, 2.3456789e-07]),
+        image_xy=(2500, 2000),
+        n_distortion_coefs=2,
+        errors={
+            "intrinsic_std": np.array(
+                [
+                    [0.123, 0.0, 0.08],
+                    [0.0, 0.13, 0.0],
+                    [0.0, 0.0, 0.0],
+                ]
+            ),
+            "rot_vec_std": np.array([0.00031, 0.00028, 0.00041]),
+            "tra_vec_std": np.array([0.021, 0.023, 0.019]),
+            "distortion_std": np.array([3.1e-08, 2.7e-09]),
+        },
+    )
+
+    camera = document["camera"]
+    assert camera["intrinsic_matrix"][0][0] == pytest.approx(14788.04)
+    assert camera["intrinsic_matrix"][1][1] == pytest.approx(14783.06)
+    assert camera["errors"]["intrinsic_std"][0][0] == pytest.approx(0.12)
+    assert camera["distortion_coefficients"][0] == pytest.approx(-1.2346e-05)
+    assert camera["errors"]["distortion_std"][0] == pytest.approx(3.1e-08)
+    # The extrinsic translation column shares the fitted translation errors.
+    assert [row[3] for row in camera["extrinsic_matrix"][:3]] == pytest.approx(
+        [315.487, -111.521, -35.572]
+    )
+    assert camera["errors"]["tra_vec_std"] == pytest.approx([0.021, 0.023, 0.019])
+    # The rotation block keeps full precision: rot_vec_std does not describe
+    # the rotation-matrix entries.
+    assert camera["extrinsic_matrix"][0][0] == 0.999999
+    assert camera["errors"]["rot_vec_std"] == pytest.approx([0.00031, 0.00028, 0.00041])
+
+
+def test_calibration_document_rounds_nozzle_home_to_micrometres() -> None:
+    document = calibration_document(
+        nozzle_home_position=np.array([315.487391203948, -111.520987654321, -1.0e-05]),
+        intrinsic_matrix=np.eye(3),
+        extrinsic_matrix=np.eye(4),
+        distortion_coefficients=np.zeros(1),
+        image_xy=(2500, 2000),
+    )
+
+    assert document["nozzle"]["home_position"] == [315.487, -111.521, 0.0]
+
+
+def test_calibration_document_keeps_full_precision_without_errors() -> None:
+    document = calibration_document(
+        nozzle_home_position=np.array([1.0, 2.0, 3.0]),
+        intrinsic_matrix=np.array([[14788.043071123456, 0.0, 0.0]] * 3),
+        extrinsic_matrix=np.eye(4),
+        distortion_coefficients=np.array([-1.23456789012e-05]),
+        image_xy=(100, 200),
+    )
+
+    assert document["camera"]["intrinsic_matrix"][0][0] == 14788.043071123456
+    assert document["camera"]["distortion_coefficients"] == [-1.23456789012e-05]
+    assert document["camera"]["errors"] is None
+
+
+def test_calibration_document_rejects_mismatched_error_shapes() -> None:
+    with pytest.raises(ValueError, match="does not match value shape"):
+        calibration_document(
+            nozzle_home_position=None,
+            intrinsic_matrix=np.eye(3),
+            extrinsic_matrix=np.eye(4),
+            distortion_coefficients=np.zeros(1),
+            image_xy=(100, 200),
+            errors={"intrinsic_std": np.zeros(4)},
+        )
+
+
 def test_store_nozzle_uncertainty_writes_sidecar_json(tmp_path: Path) -> None:
     report_path = store_nozzle_uncertainty(
         report={

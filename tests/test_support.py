@@ -10,10 +10,14 @@ import pytest
 from scipy.optimize import OptimizeResult
 
 from station_calibration.support import (
+    ERROR_SIGNIFICANT_DIGITS,
     calculate_errors,
     find_proper_args_to_compare,
     fit_line_general_form,
+    format_number,
     intersect_lines,
+    reported,
+    reported_error,
 )
 
 
@@ -94,3 +98,92 @@ def test_calculate_errors_returns_nan_for_overflowing_residuals() -> None:
 
     with np.errstate(over="ignore"):
         assert np.all(np.isnan(calculate_errors(result)))
+
+
+def test_reported_rounds_value_to_two_significant_error_digits() -> None:
+    value, error = reported(14788.043071123456, 0.1234)
+
+    assert value == pytest.approx(14788.04)
+    assert error == pytest.approx(0.12)
+    assert format_number(value).count(".") == 1
+
+
+def test_reported_keeps_small_magnitudes_intact() -> None:
+    value, error = reported(-1.23456789012e-05, 3.1e-08)
+
+    assert value == pytest.approx(-1.2346e-05, rel=1e-3)
+    assert error == pytest.approx(3.1e-08)
+
+
+def test_reported_uses_the_same_place_for_value_and_error() -> None:
+    value, error = reported(315.487391203948, 0.021)
+
+    assert value == pytest.approx(315.487)
+    # Two significant digits of 0.021 are 0.021, so the last value digit is
+    # the third decimal.
+    assert error == pytest.approx(0.021)
+    assert round(value, 3) == value
+
+
+@pytest.mark.parametrize("sigma", [None, 0.0, float("nan"), float("inf")])
+def test_reported_leaves_values_without_a_usable_sigma_untouched(
+    sigma: float | None,
+) -> None:
+    value, error = reported(1.2345678901234, sigma)
+
+    assert value == 1.2345678901234
+    if sigma is None:
+        assert error is None
+    elif np.isnan(sigma):
+        assert np.isnan(error)
+    else:
+        assert error == sigma
+
+
+def test_reported_leaves_non_finite_values_untouched() -> None:
+    value, error = reported(float("nan"), 0.1)
+
+    assert np.isnan(value)
+    assert error == 0.1
+
+
+def test_reported_normalises_negative_zero() -> None:
+    value, error = reported(-3.0e-12, 1.0e-3)
+
+    assert value == 0.0
+    assert np.copysign(1.0, value) > 0.0
+    assert error == pytest.approx(1.0e-3)
+
+
+def test_reported_keeps_all_value_digits_for_an_implausibly_small_sigma() -> None:
+    value, error = reported(1.0, 1.0e-9)
+
+    assert value == 1.0
+    assert error == pytest.approx(1.0e-9)
+
+
+def test_error_significant_digits_defaults_to_two() -> None:
+    assert ERROR_SIGNIFICANT_DIGITS == 2
+
+
+def test_reported_error_rounds_standalone_sigmas() -> None:
+    assert reported_error(0.0003141592653) == pytest.approx(0.00031)
+    assert reported_error(0.021) == pytest.approx(0.021)
+    assert reported_error(0.0) == 0.0
+    assert reported_error(-0.0) == 0.0
+    assert np.isnan(reported_error(float("nan")))
+    assert reported_error(float("inf")) == float("inf")
+
+
+def test_format_number_renders_the_shortest_round_trip_value() -> None:
+    assert format_number(1.0) == "1.0"
+    assert format_number(315.487) == "315.487"
+    assert format_number(1.0e-9) == "1e-09"
+    assert format_number(np.float64(-0.0)) == "-0.0"
+
+
+def test_format_number_matches_the_reported_value_text() -> None:
+    value, error = reported(14788.043071123456, 0.1234)
+
+    assert format_number(value) == "14788.04"
+    assert format_number(error) == "0.12"

@@ -11,6 +11,7 @@ __all__ = [
     "load_all_points_with_covariances",
     "RESULT_SCHEMA_VERSION",
     "NOZZLE_UNCERTAINTY_SCHEMA_VERSION",
+    "NOZZLE_HOME_DECIMALS",
     "calibration_document",
     "store_calibration",
     "store_nozzle_uncertainty",
@@ -19,6 +20,7 @@ __all__ = [
 from .inputs import load_robot_positions, search_images
 from .points import load_all_points, load_all_points_with_covariances, store_all_points
 from .results import (
+    NOZZLE_HOME_DECIMALS,
     NOZZLE_UNCERTAINTY_SCHEMA_VERSION,
     RESULT_SCHEMA_VERSION,
     calibration_document,

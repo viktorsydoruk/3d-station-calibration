@@ -126,11 +126,11 @@ camera:
   - 2500
   - 2000
   intrinsic_matrix:
-  - - 14788.043071
+  - - 14788.04
     - 0.0
     - 1250.0
   - - 0.0
-    - 14783.061016
+    - 14783.06
     - 1000.0
   - - 0.0
     - 0.0
@@ -168,7 +168,7 @@ camera:
   - 0.0
   - 0.0
   n_distortion_coefs: 4
-  rmse: 0.213
+  rmse: 0.2134
   observation_count: 500
   observations_used: 487
   sphere_home_position:
@@ -177,15 +177,15 @@ camera:
   - 80.9
   errors:
     intrinsic_std:
-    - - dfx
+    - - 0.12
       - 0.0
-      - 0.0
+      - 0.08
     - - 0.0
-      - dfy
-      - 0.0
+      - 0.13
+      - 0.09
     - - 0.0
       - 0.0
-      - 1.0
+      - 0.0
     rot_vec_std:
     - ...
     tra_vec_std:
@@ -210,6 +210,14 @@ camera:
 Notes:
 
 - `resolution` is `[width, height]`.
+- Values with a one-sigma estimate — `intrinsic_matrix`, the translation column
+  of `extrinsic_matrix`, `distortion_coefficients`, and every `errors` entry — are
+  rounded to two significant digits of that uncertainty; each estimate uses the
+  same decimal place as its error. `nozzle.home_position` is rounded to 1 µm
+  (three decimals). Entries without an uncertainty keep full float precision:
+  the rotation block of `extrinsic_matrix`, `sphere_home_position`, `rmse`, and
+  `radial_scale`. The Ice archive writes `errors: null`, so that document keeps
+  full precision as well.
 - `distortion_coefficients` always has 14 entries; inactive ones are zero.
 - `radial_scale` reports the fitted radial distortion at the observed field
   rather than relying on the strongly correlated individual coefficients. The
@@ -243,11 +251,11 @@ RMSE, the sphere home and diameter, and the bootstrap summary:
   "diagnostic": "nozzle_home_residual_bootstrap",
   "fit": {"observation_count": 492, "observations_used": 482, "rmse": 4.32},
   "bootstrap_config": {"n_bootstrap": 500, "seed": 0},
-  "nozzle_home_position": [315.487, -111.521, -35.572],
-  "original": [315.487, -111.521, -35.572],
-  "mean": [315.488, -111.498, -35.573],
-  "bias": [0.0005, 0.0228, -0.0008],
-  "std": [0.0024, 0.0613, 0.0055],
+  "nozzle_home_position": [315.4874, -111.521, -35.5721],
+  "original": [315.4874, -111.521, -35.5721],
+  "mean": [315.4881, -111.499, -35.5732],
+  "bias": [0.0005, 0.023, -0.0008],
+  "std": [0.0024, 0.061, 0.0055],
   "covariance": [[...], [...], [...]],
   "samples": [[...], ...],
   "lower_1sigma": [...],
@@ -255,8 +263,12 @@ RMSE, the sphere home and diameter, and the bootstrap summary:
 }
 ```
 
-The values are millimetres. A failed optional bootstrap prints a warning and
-does not invalidate the already stored calibration.
+The values are millimetres. The summary vectors (`original`, `mean`, `bias`,
+`std`, the 1σ/2σ bounds, and the axis spreads) are rounded to two significant
+digits of the bootstrap one-sigma; `samples` and `covariance` keep full
+precision because they describe the replicate distribution. A failed optional
+bootstrap prints a warning and does not invalidate the already stored
+calibration.
 
 ## Per-image debug images
 
@@ -299,7 +311,8 @@ With `debug = true` the CLI prints:
 - the sphere home and estimated diameter;
 - the nozzle home;
 - the closest image index;
-- the full parameter table with one-sigma values;
+- the full parameter table as `value +/- sigma`, rounded to two significant
+  digits of the one-sigma;
 - the back-projected home position.
 
 Errors are printed with a traceback and re-raised, so the process exits non-zero.

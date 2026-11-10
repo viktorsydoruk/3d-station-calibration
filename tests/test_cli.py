@@ -351,3 +351,11 @@ def test_write_nozzle_uncertainty_report_warns_on_failure(
     assert "nozzle uncertainty bootstrap failed: synthetic failure" in (
         capsys.readouterr().out
     )
+
+
+def test_format_position_uses_micrometre_resolution() -> None:
+    assert cli._format_position(
+        np.array([315.487391203948, -111.520987654321, -1.0e-05])
+    ) == "[315.487, -111.521, 0.000]"
+    assert cli._format_position(np.array([[1.0, 2.0, 3.0]])) == "[1.000, 2.000, 3.000]"
+    assert cli._format_position(np.array([1.2345]), decimals=1) == "[1.2]"

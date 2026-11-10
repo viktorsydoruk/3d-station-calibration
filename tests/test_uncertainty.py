@@ -396,3 +396,39 @@ def test_nozzle_axis_and_statistics_handle_degenerate_inputs() -> None:
     )
     assert np.allclose(statistics[2], np.zeros((3, 3)))
     assert statistics[4] == 0.0
+
+
+def test_bootstrap_summary_rounds_to_two_std_digits() -> None:
+    result = uncertainty.NozzleBootstrapResult(
+        original=np.array([315.487391203948, -111.520987654321, -35.572123456789]),
+        samples=np.zeros((1, 3)),
+        mean=np.array([315.4881, -111.4987, -35.5732]),
+        bias=np.array([0.0005, 0.0228, -0.0008]),
+        covariance=np.eye(3),
+        std=np.array([0.0024, 0.0613, 0.0055]),
+        norm_std=0.0617,
+        axis=np.array([0.0, 1.0, 0.0]),
+        along_std=0.0613,
+        perpendicular_std=0.0037,
+        lower_1sigma=np.array([315.485, -111.582, -35.578]),
+        upper_1sigma=np.array([315.490, -111.437, -35.567]),
+        lower_2sigma=np.array([315.483, -111.643, -35.583]),
+        upper_2sigma=np.array([315.492, -111.376, -35.562]),
+        n_requested=8,
+        n_success=8,
+        n_failed=0,
+        failure_messages=(),
+    )
+
+    payload = result.as_dict()
+
+    assert payload["original"] == pytest.approx([315.4874, -111.521, -35.5721])
+    assert payload["mean"] == pytest.approx([315.4881, -111.499, -35.5732])
+    assert payload["bias"] == pytest.approx([0.0005, 0.023, -0.0008])
+    assert payload["std"] == pytest.approx([0.0024, 0.061, 0.0055])
+    assert payload["norm_std"] == pytest.approx(0.062)
+    assert payload["along_std"] == pytest.approx(0.061)
+    assert payload["perpendicular_std"] == pytest.approx(0.0037)
+    # Replicate distribution data keeps full precision.
+    assert payload["samples"] == [[0.0, 0.0, 0.0]]
+    assert payload["covariance"] == np.eye(3).tolist()

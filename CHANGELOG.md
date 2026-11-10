@@ -6,6 +6,8 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 ## [Unreleased]
 
+## [2026.11.10.0] - 2026-11-10
+
 ### Added
 
 - First tagged calendar-version release, generated from Git tags by `hatch-vcs`.

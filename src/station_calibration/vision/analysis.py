@@ -21,6 +21,7 @@ import numpy as np
 from ..debug import DebugInfo
 from .debug import _store_debug_image, debug_images_storing
 from .detection import (
+    _background_prefix,
     estimate_direction,
     find_the_sphere_on_mask,
     get_bg_noise_threshold,
@@ -30,6 +31,29 @@ from .detection import (
 )
 from .io import decode_image, load_image, split_image
 from .models import ImageAnalysisResult, SphereObservation
+
+
+def _background_stats_line(image_gray: np.ndarray,
+                           direction: int,
+                           bg_height_px: int,
+                           percentile: float,
+                           threshold: float,
+                           foreground_fraction: float) -> str:
+    """Format background-estimation diagnostics for the debug output."""
+    values = _background_prefix(
+        image_gray,
+        bg_height_px=bg_height_px,
+        direction=direction,
+    )
+    median = float(np.median(values))
+    mad = float(np.median(np.abs(values - median)))
+    percentile_value = float(np.percentile(values, percentile))
+    rows = values.size // int(image_gray.shape[1])
+    return (
+        f"BG_stats: median={median:0.1f}, MAD={mad:0.2f}, "
+        f"p{percentile:g}={percentile_value:0.1f}, thr={threshold:0.1f}, "
+        f"rows={rows}, fg={foreground_fraction:0.2%}"
+    )
 
 
 def analyze_image(image_gray: np.ndarray,
@@ -139,6 +163,18 @@ def analyze_image(image_gray: np.ndarray,
 
     # getting foreground mask for the nozzle with a ball only (removing the other islands)
     forground_mask = get_forground_mask(image_gray, bg_thr)
+    if print_debug.debug:
+        foreground_fraction = float(np.count_nonzero(forground_mask)) / forground_mask.size
+        print_debug(
+            _background_stats_line(
+                image_gray,
+                direction,
+                bg_height_px,
+                bg_color_est_perc,
+                bg_thr,
+                foreground_fraction,
+            )
+        )
 
     # searching the sphere on the foreground mask. Keep the binary-mask radius
     # as a method-independent reference for the radius outlier filter; sub-pixel

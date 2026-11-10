@@ -107,6 +107,29 @@ def test_analyze_image_extracts_synthetic_sphere() -> None:
     assert np.all(np.linalg.eigvalsh(observation.center_covariance) > 0.0)
 
 
+def test_analyze_image_debug_prints_background_stats(capsys: pytest.CaptureFixture[str]) -> None:
+    image_gray, _ = _synthetic_image()
+
+    quiet_kwargs = _analysis_kwargs()
+    quiet_kwargs["print_debug"] = DebugInfo(False)
+    analyze_image(image_gray, **quiet_kwargs)
+    assert "BG_stats:" not in capsys.readouterr().out
+
+    debug_kwargs = _analysis_kwargs()
+    debug_kwargs["print_debug"] = DebugInfo(True)
+    result = analyze_image(image_gray, **debug_kwargs)
+    output = capsys.readouterr().out
+
+    assert result.reason is None
+    assert "BG_stats:" in output
+    assert "median=" in output
+    assert "MAD=" in output
+    assert "p99.9=" in output
+    assert "thr=30.0" in output
+    assert "rows=" in output
+    assert "fg=" in output
+
+
 def test_fit_circle_with_covariance_matches_geometric_circle() -> None:
     rng = np.random.default_rng(42)
     angles = np.linspace(0.0, 2.0 * np.pi, 200, endpoint=False)

@@ -21,6 +21,12 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - Direct `estimate_direction` tests for top/bottom scenes, flat frames, short
   frames, and invalid arguments, plus background-estimation regression tests
   for a bright object inside the background band.
+- A `BG_stats` debug line with the selected band median, MAD, percentile,
+  threshold, prefix length, and foreground fraction. It makes threshold
+  failures distinguishable from missing-sphere failures.
+- `scripts/background_regression.py`, a manual real-data check that compares
+  the percentile, floored MAD, and fixed-threshold methods on the accepted
+  dark-background calibration folders.
 
 ### Fixed
 

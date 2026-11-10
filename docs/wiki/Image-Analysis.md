@@ -317,6 +317,33 @@ filter for stored data.
 | Rough centre unstable | Increase `n_move_aver` |
 | Noisy sigma | Increase `blur_est_border_thickness` |
 
+### Background diagnostics
+
+With `debug = true`, every frame prints a `BG_stats` line next to `BG_thr`:
+
+```text
+BG_stats: median=17.0, MAD=0.00, p99.999=19.0, thr=19.0, rows=10, fg=3.42%
+```
+
+`rows` is the selected quietest-prefix length and `fg` is the foreground
+fraction of the final mask. A very small `rows` value with a stable threshold
+is harmless; a threshold close to the image maximum or a large `fg` points to a
+background-estimation problem rather than a missing sphere.
+
+### Real-data regression
+
+`scripts/background_regression.py` samples the accepted dark-background
+folders and compares `"percentile"`, floored `"mad"`, and the fixed 30 DN
+reference. It reports success counts, threshold and radius stability, paired
+centre/radius differences, and the accuracy residuals after linear trend
+removal. It needs the laboratory data and is intentionally not part of the test
+suite:
+
+```bash
+uv run python scripts/background_regression.py --samples 60
+uv run python scripts/background_regression.py --dataset accuracy_test_x --csv bg.csv
+```
+
 ## Performance
 
 The hot paths are vectorized:

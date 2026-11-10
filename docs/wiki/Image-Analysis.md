@@ -182,12 +182,28 @@ relative deviation more often. The affected fits still improve, but a
 scale-invariant or depth-aware filter would retain more observations.
 
 The absolute diameter shifts by `-0.72 %` on the 2 mm set, `-0.26 %` on the
-2.3 mm set, and roughly `-2 %` on the smallest spheres. Without a ground-truth
-diameter these cannot be called corrections; the evidence for the sub-pixel
-path is the reduced blur-dependent radius spread and the improved 6 mm
-repeatability. The accuracy-scan folders have degenerate calibration geometry
-and were used only for detection comparison; `3D_small_20260929_POM` fails in
-both modes with a negative focal length.
+2.3 mm set, and roughly `-2 %` on the smallest spheres. Without a traceable
+reference diameter these cannot be called corrections; the producer's nominal
+diameter is a sanity check, not a metrology-grade reference.
+
+A full 500-image run of the 1 mm ceramic folder
+(`3D_small_20260929_ceramic`) gave 489 used observations and `0.9949 mm` with
+the binary mask versus 481 used observations and `0.9746 mm` with sub-pixel
+edges. The producer
+quotes a 1 mm nominal diameter, but the measurement method and tolerance are
+not available. The binary result is 0.51 % low and the sub-pixel result 2.54 %
+low; the `0.0203 mm` difference is about 1.9 sigma of the bootstrap along-axis
+uncertainty (`0.0106 mm`), so this is an indicative check rather than proof. On
+the same run the sub-pixel fit had a slightly lower RMSE (`4.508` vs
+`4.555 px`), but used eight fewer observations and had larger formal
+uncertainties; its `n_sigma_est` fell from `0.93` to `0.61`, while the best
+corrected radius scatter rose from `0.0047` to `0.0090 mm`.
+
+The evidence for the sub-pixel path is therefore still the reduced
+blur-dependent radius spread and the improved 6 mm repeatability, not the
+absolute diameter. The accuracy-scan folders have degenerate calibration
+geometry and were used only for detection comparison;
+`3D_small_20260929_POM` fails in both modes with a negative focal length.
 
 The packaged default remains `false`. The broad validation supports that choice
 until the extreme-defocus search window and the radius-filter scaling are

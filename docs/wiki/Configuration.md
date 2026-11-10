@@ -158,10 +158,13 @@ Ranges: `n_move_aver >= 1`, `0 <= sphere_center_to_nozzle_part <= 1`,
 
 `subpixel_edges = true` refines the sphere silhouette to the 50 % intensity
 crossing between the local background and the sphere interior. The binary mask
-supplies the rough circle and the search window; the refinement samples radial
-profiles around the sphere, estimates a local background and interior level on
-each ray, and trims inconsistent crossings before the final circle fit. Because
-the binary mask threshold sits near the background level, its contour lies
+supplies the rough circle and an initial search window; the refinement samples
+radial profiles around the sphere, estimates a local background and interior
+level on each ray, and trims inconsistent crossings before the final circle fit.
+If the profiles do not resolve the edge transition, or the outer/inner
+plateaus are not flat, the search expands once (capped at half the binary
+radius); if the crossings remain unreliable, the binary circle is retained.
+Because the binary mask threshold sits near the background level, its contour lies
 roughly `~1 sigma` outside the true silhouette; the offset grows with defocus.
 The sub-pixel path removes most of that radius bias. On the well-focused real
 2 mm and 6 mm sets the empirical blur correction dropped to `0`, the
@@ -177,12 +180,12 @@ black-background validation.
 `subpixel_max_n_sigma` caps the empirical `n_sigma` term when
 `subpixel_edges = true`. The raw 50 % crossing already removes most of the
 binary threshold bias; the remaining correction can overcorrect the absolute
-diameter. On the full 1 mm ceramic run the uncapped fit chose `0.65 sigma` and
-reported `0.9727 mm`, while a `0.25 sigma` cap reported `0.9968 mm` (binary
+diameter. On the full 1 mm ceramic run the uncapped fit chose `0.485 sigma` and
+reported `0.9784 mm`, while a `0.25 sigma` cap reported `0.9923 mm` (binary
 `0.9949 mm`). The cap changes only the final sphere radius and nozzle offset,
 not the camera fit or RMSE. It trades some radius-vs-blur consistency for
-absolute diameter: the ceramic corrected radius scatter is `0.0155 mm` at the
-cap, `0.0096 mm` uncapped, and `0.0047 mm` for the binary mask. Set a larger
+absolute diameter: the ceramic corrected radius scatter is `0.0114 mm` at the
+cap, `0.0089 mm` uncapped, and `0.0047 mm` for the binary mask. Set a larger
 value to approach the uncapped optimum, or `0` to disable the correction.
 
 ## `[analysis.fit]`

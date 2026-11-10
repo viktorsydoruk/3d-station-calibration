@@ -11,6 +11,7 @@ from scipy.optimize import OptimizeResult
 
 from station_calibration.support import (
     ERROR_SIGNIFICANT_DIGITS,
+    MAX_VALUE_SIGNIFICANT_DIGITS,
     calculate_errors,
     find_proper_args_to_compare,
     fit_line_general_form,
@@ -155,15 +156,23 @@ def test_reported_normalises_negative_zero() -> None:
     assert error == pytest.approx(1.0e-3)
 
 
-def test_reported_keeps_all_value_digits_for_an_implausibly_small_sigma() -> None:
+def test_reported_keeps_an_error_below_the_value_resolution() -> None:
     value, error = reported(1.0, 1.0e-9)
 
     assert value == 1.0
     assert error == pytest.approx(1.0e-9)
 
 
-def test_error_significant_digits_defaults_to_two() -> None:
+def test_reported_caps_the_value_at_eight_significant_digits() -> None:
+    value, error = reported(1.2345678901234, 1.0e-12)
+
+    assert value == pytest.approx(1.2345679)
+    assert error == pytest.approx(1.0e-12)
+
+
+def test_reported_significant_digit_limits() -> None:
     assert ERROR_SIGNIFICANT_DIGITS == 2
+    assert MAX_VALUE_SIGNIFICANT_DIGITS == 8
 
 
 def test_reported_error_rounds_standalone_sigmas() -> None:

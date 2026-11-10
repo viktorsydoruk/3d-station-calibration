@@ -14,6 +14,7 @@ available later.
 from __future__ import annotations
 
 import csv
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -161,8 +162,19 @@ class SessionArchive:
         self._csv_file.flush()
         return image_path
 
-    def write_result(self, result: Any) -> Path | None:
-        """Write the latest calibration result if a session has already started."""
+    def write_result(
+        self,
+        result: Any,
+        *,
+        errors: Mapping[str, np.ndarray] | None = None,
+    ) -> Path | None:
+        """Write the latest calibration result if a session has already started.
+
+        ``errors`` carries the fitted one-sigma arrays (``intrinsic_std``,
+        ``rot_vec_std``, ``tra_vec_std``, ``distortion_std``) so the archived
+        document is rounded like the folder workflow's result and exposes the
+        same uncertainties.
+        """
         if self._session_dir is None:
             return None
 
@@ -213,6 +225,7 @@ class SessionArchive:
             observations_used=int(getattr(result, "n_used", 0)),
             sphere_home_position=getattr(result, "pos_home", None),
             radial_scale=radial_scale,
+            errors=errors,
             session=session_metadata,
         )
         path = self._session_dir / RESULT_FILENAME

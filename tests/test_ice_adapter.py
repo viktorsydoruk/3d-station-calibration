@@ -336,7 +336,13 @@ def test_adapter_archives_session_images_csv_and_result(
     assert result["schema_version"] == 1
     assert result["nozzle"]["home_position"] is None
     assert result["camera"]["intrinsic_matrix"][0][0] == pytest.approx(100.0)
-    assert "errors" in result["camera"]
+    assert set(result["camera"]["errors"]) == {
+        "intrinsic_std",
+        "rot_vec_std",
+        "tra_vec_std",
+        "distortion_std",
+    }
+    assert result["camera"]["errors"]["tra_vec_std"] == pytest.approx([0.4, 0.5, 0.6])
     assert result["session"]["image_count"] == 1
     assert result["session"]["procedure_id"] == 1
     assert result["session"]["config_file"] == str(session / "config.toml")
@@ -349,6 +355,65 @@ def test_adapter_archives_session_images_csv_and_result(
     assert metadata["session"]["procedure_id"] == 1
     assert metadata["session"]["session_folder"] == str(session)
     assert metadata["session"]["config_file"] == str(session / "config.toml")
+
+
+def test_session_archive_writes_supplied_errors(tmp_path) -> None:
+    archive = SessionArchive(tmp_path)
+    archive.start()
+    result = SimpleNamespace(
+        intrinsic_matrix=np.array(
+            [
+                [14788.043071123456, 0.0, 1250.0],
+                [0.0, 14783.061016987, 1000.0],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        extrinsic_matrix=np.array(
+            [
+                [1.0, 0.0, 0.0, 315.487391203948],
+                [0.0, 1.0, 0.0, -111.520987654321],
+                [0.0, 0.0, 1.0, -35.572123456789],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+        distortion=np.zeros(14),
+        n_distortion_coefs=0,
+        pos_home=np.zeros(3),
+        image_size_xy=(2500, 2000),
+        observation_count=5,
+        n_used=5,
+        rmse=0.213456789,
+    )
+
+    archive.write_result(
+        result,
+        errors={
+            "intrinsic_std": np.array(
+                [
+                    [0.123, 0.0, 0.08],
+                    [0.0, 0.13, 0.09],
+                    [0.0, 0.0, 0.0],
+                ]
+            ),
+            "rot_vec_std": np.array([0.00031, 0.00028, 0.00041]),
+            "tra_vec_std": np.array([0.021, 0.023, 0.019]),
+            "distortion_std": np.zeros(14),
+        },
+    )
+
+    document = yaml.safe_load(
+        (tmp_path / "calibration_result.yaml").read_text(encoding="utf-8")
+    )
+    camera = document["camera"]
+    assert camera["intrinsic_matrix"][0][0] == pytest.approx(14788.04)
+    assert camera["errors"]["intrinsic_std"][0][0] == pytest.approx(0.12)
+    assert [row[3] for row in camera["extrinsic_matrix"][:3]] == pytest.approx(
+        [315.487, -111.521, -35.572]
+    )
+    assert camera["errors"]["tra_vec_std"] == pytest.approx([0.021, 0.023, 0.019])
+    # Without an uncertainty the rotation block keeps full precision.
+    assert camera["extrinsic_matrix"][0][0] == 1.0
+    assert document["nozzle"]["home_position"] is None
 
 
 @pytest.mark.parametrize(

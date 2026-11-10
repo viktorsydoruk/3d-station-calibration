@@ -12,6 +12,8 @@ from scipy.optimize import OptimizeResult
 
 #: One-sigma uncertainties are reported with this many significant digits.
 ERROR_SIGNIFICANT_DIGITS = 2
+#: A reported value never keeps more significant digits than this.
+MAX_VALUE_SIGNIFICANT_DIGITS = 8
 
 
 def find_proper_args_to_compare(robot_positions: np.ndarray,
@@ -120,6 +122,13 @@ def _positive_zero(value: float) -> float:
     return 0.0 if value == 0.0 else value
 
 
+def _value_place(value: float) -> int | None:
+    """Return the ``round`` place that keeps the value's leading digits."""
+    if value == 0.0:
+        return None
+    return (MAX_VALUE_SIGNIFICANT_DIGITS - 1) - math.floor(math.log10(abs(value)))
+
+
 @overload
 def reported(value: float, sigma: float) -> tuple[float, float]: ...
 
@@ -137,6 +146,11 @@ def reported(value: float, sigma: float | None) -> tuple[float, float | None]:
     missing, ``nan``, or ``0`` are returned unchanged: they carry no
     uncertainty information, so rounding them would claim precision that was
     never estimated.
+
+    A value keeps at most :data:`MAX_VALUE_SIGNIFICANT_DIGITS` significant
+    digits. An uncertainty below that resolution keeps its own two digits
+    instead of collapsing to zero, which flags a covariance that is smaller
+    than the value can meaningfully resolve.
     """
     value = float(value)
     if sigma is None:
@@ -146,7 +160,13 @@ def reported(value: float, sigma: float | None) -> tuple[float, float | None]:
     place = _decimal_place(sigma)
     if place is None or not math.isfinite(value):
         return value, sigma
-    return _positive_zero(round(value, place)), _positive_zero(round(sigma, place))
+
+    limit = _value_place(value)
+    value_place = place if limit is None else min(place, limit)
+    return (
+        _positive_zero(round(value, value_place)),
+        _positive_zero(round(sigma, place)),
+    )
 
 
 def reported_error(sigma: float) -> float:

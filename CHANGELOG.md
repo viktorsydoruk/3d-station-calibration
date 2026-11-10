@@ -74,6 +74,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   one-sigma estimate exists for them, and `CalibrationAllPoints.dat` is
   unchanged. The console parameter table now prints `value +/- sigma` with the
   same rule, and debug position printouts use micrometre resolution.
+- The Ice archive now writes `camera.errors` with the fitted one-sigma arrays
+  instead of `null`, so `calibration_result.yaml` is rounded exactly like the
+  folder workflow's `calibration_data.yaml`.
 
 ## [2026.11.10.0] - 2026-11-10
 

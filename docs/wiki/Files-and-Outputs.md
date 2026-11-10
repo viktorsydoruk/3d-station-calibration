@@ -71,9 +71,10 @@ later tooling:
 top level, with the latest matrices, distortion coefficients, resolution, RMSE,
 and observation counts under `camera`. It is updated whenever a fitted result is
 available and is written atomically. The Ice archive has no nozzle measurement at
-write time, so `nozzle.home_position` and `camera.errors` are `null`; the folder
-workflow fills both. `session.yaml` records the procedure ID, the date/config/data
-paths, session start and end times, package version, and image count.
+write time, so `nozzle.home_position` is `null`; `camera.errors` carries the
+fitted one-sigma arrays in both workflows. `session.yaml` records the procedure
+ID, the date/config/data paths, session start and end times, package version,
+and image count.
 
 ## Point cache
 
@@ -216,8 +217,8 @@ Notes:
   same decimal place as its error. `nozzle.home_position` is rounded to 1 µm
   (three decimals). Entries without an uncertainty keep full float precision:
   the rotation block of `extrinsic_matrix`, `sphere_home_position`, `rmse`, and
-  `radial_scale`. The Ice archive writes `errors: null`, so that document keeps
-  full precision as well.
+  `radial_scale`. Both workflows apply the same rule, and a value never keeps
+  more than eight significant digits.
 - `distortion_coefficients` always has 14 entries; inactive ones are zero.
 - `radial_scale` reports the fitted radial distortion at the observed field
   rather than relying on the strongly correlated individual coefficients. The

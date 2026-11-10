@@ -356,7 +356,21 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
 
     def _remember_result(self, result: Any | None) -> None:
         if result is not None and self._archive is not None:
-            self._archive.write_result(result)
+            self._archive.write_result(result, errors=self._result_errors(result))
+
+    def _result_errors(self, result: Any) -> dict[str, np.ndarray] | None:
+        """Return the fitted one-sigma arrays keyed like the result document."""
+        if getattr(result, "optimize_result", None) is None:
+            return None
+        intrinsic_std, distortion_std, rot_vec_std, tra_vec_std = (
+            self._calibration_errors(result)
+        )
+        return {
+            "intrinsic_std": intrinsic_std,
+            "rot_vec_std": rot_vec_std,
+            "tra_vec_std": tra_vec_std,
+            "distortion_std": distortion_std,
+        }
 
     def _require_service(self) -> Any:
         if self._service is None:

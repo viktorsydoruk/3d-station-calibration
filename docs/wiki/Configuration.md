@@ -161,11 +161,13 @@ profiles around the sphere, estimates a local background and interior level on
 each ray, and trims inconsistent crossings before the final circle fit. Because
 the binary mask threshold sits near the background level, its contour lies
 roughly `~1 sigma` outside the true silhouette; the offset grows with defocus.
-The sub-pixel path removes that radius bias without changing the centre
-accuracy. On real 2 mm and 6 mm sphere sets the empirical blur correction
-dropped to `0`, the diameter repeatability across independent scans improved,
-and the calibration RMSE changed by at most `0.2 px`. See
-[Image Analysis](Image-Analysis).
+The sub-pixel path removes most of that radius bias. On the well-focused real
+2 mm and 6 mm sets the empirical blur correction dropped to `0`, the
+scan-to-scan diameter spread of the 6 mm sphere fell from `0.013 mm` to
+`0.005 mm`, and the calibration RMSE changed by about `0.2 px`; the centre
+moves by only a few tenths of a pixel. On strongly defocused spheres the
+correction is partial and the radius filter can flag extra high-radius frames.
+See [Image Analysis](Image-Analysis) for the broad black-background validation.
 
 ## `[analysis.fit]`
 

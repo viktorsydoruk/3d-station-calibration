@@ -126,9 +126,73 @@ range) the empirical blur correction `n_sigma_est` drops from `0.69 sigma` to
 `0`, and the radius consistency at zero correction improves from `0.027 mm` to
 `0.006 mm`. On two independent 6 mm sphere scans the estimated diameter becomes
 more repeatable (`5.972` / `5.977 mm` versus `5.982` / `5.969 mm`), while the
-calibration RMSE changes between `-0.20 px` and `+0.06 px`. The packaged
-default remains `false`; enable it per station after checking the radius and
-diameter trends on a calibration run.
+calibration RMSE changes between `-0.20 px` and `+0.06 px`.
+
+#### Broad validation (black backgrounds)
+
+A wider A/B run covered 14 calibration folders and 2,307 frames whose darker
+200-row background band had a median below 25 DN (the fixed detection threshold
+is 30 DN). Folders with a gray (~30 DN) or bright (~163 DN) background were
+excluded. Detection parity was essentially exact: 2,166 binary vs 2,165
+sub-pixel detections; only `3D_oldsmallseeds` contributed two binary-only and
+one sub-pixel-only frame.
+
+On 692 well-focused observations (folder-mean `sigma` 2.9–5.7 px) the sub-pixel
+radius moved inward by `4.17 px` on average; the mean per-frame correction was
+`0.85 sigma`.
+On the 6 mm high-contrast set the fixed 30 DN threshold sits at 12–13 % of the
+local edge range; a Gaussian edge predicts a 2.6–4.3 px outward bias, and the
+measured shift was 2.6–4.4 px. This is direct evidence that the refinement
+reaches the 50 % crossing.
+
+In the table, `radius_std@0` is the radius standard deviation at zero blur
+correction.
+
+| Dataset | `sigma` (px) | `n_sigma_est` | `radius_std@0` (mm) | Diameter (mm) | RMSE (px) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 6 mm A | 2.9 | 1.09 → 0.00 | 0.0104 → 0.0043 | 5.9691 → 5.9772 | 1.052 → 1.062 |
+| 6 mm B | 3.4 | 0.77 → 0.00 | 0.0152 → 0.0063 | 5.9822 → 5.9724 | 1.247 → 1.043 |
+| 2 mm | 5.0 | 0.69 → 0.00 | 0.0274 → 0.0057 | 1.9849 → 1.9706 | 1.428 → 1.484 |
+| 2.3 mm A | 5.7 | 0.73 → 0.04 | 0.0401 → 0.0053 | 2.3660 → 2.3583 | 1.201 → 1.274 |
+| 2.3 mm B | 5.1 | 0.73 → 0.00 | 0.0397 → 0.0047 | 2.3678 → 2.3633 | 1.123 → 1.309 |
+| small random A | 10.2 | 0.85 → 0.57 | 0.0341 → 0.0192 | 0.9529 → 0.9376 | 4.265 → 4.326 |
+| small random B | 10.1 | 0.89 → 0.65 | 0.0342 → 0.0208 | 0.9835 → 0.9626 | 3.732 → 3.570 |
+| ceramic | 9.8 | 0.97 → 0.61 | 0.0384 → 0.0208 | 0.9925 → 0.9753 | 4.370 → 3.679 |
+| old small A | 31.0 | 0.28 → 0.28 | 0.0649 → 0.0675 | 1.0331 → 1.0123 | 2.693 → 2.657 |
+| old small B | 10.8 | 0.81 → 0.69 | 0.0282 → 0.0220 | 0.9851 → 0.9667 | 2.753 → 2.704 |
+
+The same-sphere scan-to-scan diameter spread improves for the 6 mm sphere
+(`0.0131 mm` → `0.0048 mm`), the small random pair (`0.0306` → `0.0250 mm`),
+and the old small pair (`0.0480` → `0.0456 mm`). The 2.3 mm pair was already
+very consistent with the binary mask (`0.0018 mm`) and remains within
+`0.0050 mm` with sub-pixel edges; both are within about 0.2 %. RMSE changes are
+mixed and small (typically less than `0.3 px`, up to `0.7 px` on the blurriest
+sets).
+
+The blur correction is partial for strongly defocused spheres
+(folder-mean `sigma` 9.8–31 px: mean per-frame correction `0.59 sigma`) and
+unreliable for extreme-defocus frames (`sigma` 70–120 px), where the
+`0.2 * radius` search window no longer spans the edge transition. The radius filter flags more sub-pixel
+observations: 22 binary vs 37 sub-pixel across the run, with the extra cases
+concentrated on small spheres. The extra points are high-radius frames, not
+depth-related (`corr(radius, z)` is approximately zero), and are likely
+nozzle/edge contamination. Because the filter uses an absolute
+`2.5 sigma` threshold, a method with a smaller mean radius can reject the same
+relative deviation more often. The affected fits still improve, but a
+scale-invariant or depth-aware filter would retain more observations.
+
+The absolute diameter shifts by `-0.72 %` on the 2 mm set, `-0.26 %` on the
+2.3 mm set, and roughly `-2 %` on the smallest spheres. Without a ground-truth
+diameter these cannot be called corrections; the evidence for the sub-pixel
+path is the reduced blur-dependent radius spread and the improved 6 mm
+repeatability. The accuracy-scan folders have degenerate calibration geometry
+and were used only for detection comparison; `3D_small_20260929_POM` fails in
+both modes with a negative focal length.
+
+The packaged default remains `false`. The broad validation supports that choice
+until the extreme-defocus search window and the radius-filter scaling are
+hardened; enable it per station after checking the radius and diameter trends
+on a calibration run.
 
 ### 6. Edge blur (`sigma`)
 

@@ -118,8 +118,35 @@ sphere_radius = mean((radius - n_sigma_est * sigma) * coef)
 The factor `2` converts radius to diameter; the scan picks the blur correction
 that makes the physical diameter most consistent across depths. With
 `[analysis.sphere_projection] subpixel_edges = true` the detected radius is
-already close to the 50 % silhouette, so the scan normally returns
-`n_sigma_est = 0` and the correction only absorbs residual blur bias.
+already close to the 50 % silhouette, so the residual correction is usually
+small; on the full ceramic set it was `0.485 sigma`.
+
+The scan is a grid approximation to the least-squares slope of
+`2 * radius * coef` on `2 * sigma * coef`. An optional bootstrap estimates the
+sampling uncertainty of that optimum:
+
+```python
+get_nozzle_end_home_position(
+    ...,
+    n_sigma_bootstrap=4000,
+    n_sigma_bootstrap_seed=0,
+)
+```
+
+This is off by default because it repeats the scan for every replicate. The
+bootstrap resamples observations with replacement while keeping the inlier set
+and `coef_for_radii` fixed. It reports a percentile interval under
+`debug["n_sigma_estimation"]["confidence"]`:
+
+- `ci_low` / `ci_high`: 95 % interval for the grid optimum (`n_sigma_opt`)
+- `continuous_opt` / `continuous_ci_low` / `continuous_ci_high`: the same for
+  the equivalent least-squares slope, which is not limited by the grid step
+- `bootstrap_std` / `continuous_bootstrap_std`: bootstrap standard deviations
+- `n_bootstrap` / `n_valid`: requested and usable replicates
+
+The interval describes random sampling error conditional on the fitted scale
+model and the chosen inliers. It does not include scale-model error, a wrong
+sphere diameter, or systematic edge-extraction bias.
 
 ### 3. Offset from sphere centre to nozzle tip
 
@@ -211,7 +238,7 @@ gate.
 | Key | Content |
 | --- | --- |
 | `scaling_visualization` | `z_pos`, `mm/px`, quadratic fit coefficients |
-| `n_sigma_estimation` | sigma grid and diameter standard deviation |
+| `n_sigma_estimation` | sigma grid, diameter standard deviation, and optional bootstrap confidence interval |
 | `sphere_radius_estimation` | depths, radii, sigmas, scale coefficients, chosen sigma |
 | `sphere_radius_vs_depth` | the same data with the zero-depth scale |
 

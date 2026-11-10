@@ -52,6 +52,11 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   `scripts/bootstrap_nozzle.py` runner remains available. Robot positions and
   the original inlier set stay fixed, the diagnostic is disabled by default,
   and it does not change the stored calibration or the readiness decision.
+- Optional bootstrap confidence interval for the sphere-radius blur correction
+  through `get_nozzle_end_home_position(..., n_sigma_bootstrap=...)`; it is off
+  by default and does not change the fitted diameter. The full ceramic
+  validation interval is above the packaged `0.25 sigma` cap, which remains a
+  conservative guardrail pending a traceable sphere reference.
 - A versioned, shared result document for the folder CLI and Ice archive, with
   consistent `schema_version`, `nozzle`, and `camera` sections.
 - GitLab CI now installs ZeroC Ice from the official Debian repository and runs

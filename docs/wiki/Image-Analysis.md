@@ -247,6 +247,19 @@ sub-pixel path more accurate than the binary mask on every folder, and the
 nominal diameter is not traceable; the cap is a correction for the known
 overcorrection, not evidence that sub-pixel edges should become the default.
 
+A percentile bootstrap of the `n_sigma_opt` scan quantifies the sampling
+uncertainty of the empirical correction. On the full ceramic run (489
+observations, 4,000 replicates, seed 0) the grid interval was
+`[0.444, 0.525]`; the equivalent continuous least-squares interval was
+`[0.457, 0.514]` around a continuous optimum of `0.486`. The point estimate was
+`0.485`. Both intervals lie entirely above the `0.25 sigma` cap, so the cap is
+not a statistical estimate of the observed optimum on this dataset. It remains
+a deliberately conservative guardrail: the bootstrap is conditional on the
+fitted scale model and the selected inliers, and it does not include a
+traceable sphere diameter or systematic edge-extraction bias. The packaged
+default and the cap therefore remain unchanged until certified reference
+spheres are available.
+
 The evidence for the sub-pixel path is therefore still the reduced
 blur-dependent radius spread and the improved 6 mm repeatability, not the
 absolute diameter. The accuracy-scan folders have degenerate calibration

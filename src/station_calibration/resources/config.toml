@@ -30,6 +30,9 @@ sort_image_names_by_mtime = true
 [analysis]
 # number of iterations to perform for camera calibrations (includes adjustments of center points and robotic arm home pos)
 n_iterations = 3
+# stop the inner camera/home/centre fixed-point loop when the largest centre
+# shift between two iterations is at most this many pixels (n_iterations is a cap)
+center_shift_tolerance = 0.01
 # maximum allowed outliers (0 - not allowed outlier detection, < 1 - part of number of points, >=1 - allowed number of outliers
 max_outliers = 10
 # confidence level of the 2D chi-square outlier test; points above this

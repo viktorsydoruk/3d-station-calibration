@@ -693,6 +693,8 @@ def test_n_distortion_coefs_rejects_unsupported_values(
     ("section", "key", "value", "expected_message"),
     [
         ("analysis", "n_iterations", 0, "n_iterations"),
+        ("analysis", "center_shift_tolerance", -0.1, "center_shift_tolerance"),
+        ("analysis", "center_shift_tolerance", float("nan"), "center_shift_tolerance"),
         ("analysis", "max_outliers", -0.1, "allowed_outliers"),
         ("analysis", "max_outliers", float("nan"), "allowed_outliers"),
         ("analysis", "outlier_confidence", 0.0, "outlier_confidence"),

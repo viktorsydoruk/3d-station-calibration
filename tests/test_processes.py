@@ -55,6 +55,7 @@ def fake_pipeline(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     state = SimpleNamespace(
         fit_calls=[],
         adjust_calls=0,
+        adjust_distortions=[],
         check_results=[],
     )
 
@@ -95,8 +96,13 @@ def fake_pipeline(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             base_extrinsic.copy(),
         )
 
-    def fake_adjust_center_points(image_center_points, radii, intrinsic_matrix):
+    def fake_adjust_center_points(
+        image_center_points, radii, intrinsic_matrix, distortion=None
+    ):
         state.adjust_calls += 1
+        state.adjust_distortions.append(
+            None if distortion is None else np.array(distortion, copy=True)
+        )
         return np.array(image_center_points, copy=True) + np.array([5.0, -3.0])
 
     def fake_check_distortion(distortion, intrinsic_matrix, image_size_xy):
@@ -173,6 +179,30 @@ def test_pipeline_forwards_loss_f_scale(
     )
 
 
+def test_pipeline_forwards_distortion_to_centre_adjustment(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+) -> None:
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
+
+    get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path),
+        DebugInfo(False),
+    )
+
+    assert fake_pipeline.adjust_distortions
+    for distortion in fake_pipeline.adjust_distortions:
+        assert distortion is not None
+        assert distortion.shape == (14,)
+        assert distortion[0] == pytest.approx(-1e-7)
+        np.testing.assert_array_equal(distortion[1:], np.zeros(13))
+
+
 def test_final_refit_uses_adjusted_center_points(
     tmp_path: Path,
     fake_pipeline: SimpleNamespace,
@@ -201,6 +231,65 @@ def test_final_refit_uses_adjusted_center_points(
     np.testing.assert_allclose(
         result[1], center_points + np.array([5.0, -3.0])
     )
+
+
+def test_center_adjustment_stops_when_it_converges(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+) -> None:
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
+
+    result = get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path, n_iterations=5),
+        DebugInfo(False),
+    )
+
+    # The fake shift is constant, so the second adjustment produces no change.
+    assert fake_pipeline.adjust_calls == 2
+    assert len(fake_pipeline.fit_calls) == 2
+    np.testing.assert_allclose(
+        fake_pipeline.fit_calls[-1]["center_points"],
+        center_points + np.array([5.0, -3.0]),
+    )
+    np.testing.assert_allclose(
+        result[1], center_points + np.array([5.0, -3.0])
+    )
+
+
+def test_center_adjustment_refits_when_it_does_not_converge(
+    tmp_path: Path,
+    fake_pipeline: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def growing_adjust(image_center_points, radii, intrinsic_matrix, distortion=None):
+        fake_pipeline.adjust_calls += 1
+        return (
+            np.array(image_center_points, copy=True)
+            + fake_pipeline.adjust_calls * np.array([5.0, -3.0])
+        )
+
+    monkeypatch.setattr(processes, "adjust_image_center_points", growing_adjust)
+    robot_positions, center_points, radii, sigmas, image_size_xy = _make_data()
+
+    get_calibration_data(
+        robot_positions,
+        center_points,
+        radii,
+        sigmas,
+        image_size_xy,
+        _settings(tmp_path, n_iterations=3),
+        DebugInfo(False),
+    )
+
+    # Every iteration moves the centres by the same amount, so the loop exhausts
+    # its cap and the extra refit makes the returned matrices match the centres.
+    assert fake_pipeline.adjust_calls == 3
+    assert len(fake_pipeline.fit_calls) == 4
 
 
 def test_small_allowed_outlier_fraction_still_runs_a_fit(
@@ -688,13 +777,13 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
 
     np.testing.assert_allclose(
         pos_home,
-        np.array([315.4901712371497, -111.52137043930243, -35.08113896105615]),
+        np.array([315.490236126626, -111.52136323004267, -35.08141421549006]),
         rtol=1e-6,
         atol=1e-3,
     )
     np.testing.assert_allclose(
         [intrinsic[0, 0], intrinsic[1, 1]],
-        [22000.968301554833, 21723.396608092873],
+        [21990.616776478746, 21712.625889722414],
         rtol=1e-6,
     )
     assert intrinsic[0, 2] == 1224.0
@@ -704,7 +793,7 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
     # check at the nanometre scale without making it platform-dependent.
     np.testing.assert_allclose(
         extrinsic[:3, 3],
-        [-1.243445171204292e-04, 4.525225150326526e-04, 7.353737262475748e01],
+        [-1.3095725360578333e-04, 4.7335731467729349e-04, 7.3497147925270880e01],
         rtol=1e-5,
         atol=1e-6,
     )
@@ -715,16 +804,16 @@ def test_stored_point_cloud_regression(tmp_path: Path) -> None:
     np.testing.assert_allclose(
         distortion[:4],
         [
-            -5.785585378343614e-01,
-            -2.536041213352001e02,
-            -2.685658088476287e-02,
-            6.293788374856212e-03,
+            -4.4336386841186931e-01,
+            -2.5891894205396926e02,
+            -2.6742170503251825e-02,
+            6.2950725017611418e-03,
         ],
         rtol=5e-3,
         atol=1e-6,
     )
     np.testing.assert_allclose(distortion[4:], np.zeros(10))
-    assert rmse == pytest.approx(4.366936342185351, rel=1e-6)
+    assert rmse == pytest.approx(4.368977777458385, rel=1e-6)
 
 
 def test_stored_point_cloud_regression_without_distortion(tmp_path: Path) -> None:

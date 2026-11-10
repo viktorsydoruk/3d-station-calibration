@@ -27,6 +27,18 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - `scripts/background_regression.py`, a manual real-data check that compares
   the percentile, floored MAD, and fixed-threshold methods on the accepted
   dark-background calibration folders.
+- Distortion-aware apparent-centre correction. `adjust_image_center_points`
+  accepts the OpenCV distortion coefficients, evaluates the angle-bisector
+  relation in the undistorted normalised image plane, and projects the corrected
+  centre back to distorted pixels. `get_calibration_data` now passes the current
+  lens model into the centre-adjustment step.
+- Tests for the apparent-centre correction, including a synthetic
+  tangent-cone sphere model in both pinhole and radially distorted scenes, plus
+  an end-to-end synthetic calibration that recovers a known camera model.
+- `center_shift_tolerance` (`[analysis]`, default `0.01` px) stops the inner
+  camera/home/centre fixed-point loop early when the centres stop moving. The
+  extra refit is now only needed when the loop hits `n_iterations` without
+  converging.
 
 ### Fixed
 
@@ -45,6 +57,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - The background prefix selection is shared by `get_bg_value` (percentile) and
   the new `get_bg_noise_threshold` (robust MAD), so both methods use exactly
   the same rows.
+- The stored-point-cloud calibration regression snapshot moved slightly
+  (focal lengths by about 0.05 %) because the centre correction now accounts for
+  lens distortion. The lens model itself is unchanged.
 
 ## [2026.11.10.0] - 2026-11-10
 

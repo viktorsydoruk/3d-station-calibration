@@ -90,6 +90,7 @@ class PossibleOptions(TypedDict, total=False):
     loss_f_scale: float
     center_weighting: bool
     n_iterations: int
+    center_shift_tolerance: float
     allowed_outliers: float
     outlier_confidence: float
     outlier_cluster_guard: bool
@@ -153,6 +154,7 @@ class Settings:
     center_weighting: bool
 
     n_iterations: int
+    center_shift_tolerance: float
     allowed_outliers: float
     outlier_confidence: float
     outlier_cluster_guard: bool
@@ -318,6 +320,10 @@ class Settings:
     def _init_analysis(self) -> None:
         analysis = self._section("analysis")
         self.n_iterations = int(self._get(analysis, "n_iterations"))
+        self.center_shift_tolerance = _finite_float(
+            self._get(analysis, "center_shift_tolerance", 0.01),
+            "center_shift_tolerance",
+        )
         self.allowed_outliers = _finite_float(
             self._get(analysis, "max_outliers", override="allowed_outliers"),
             "allowed_outliers (max_outliers)",
@@ -333,6 +339,11 @@ class Settings:
 
         if self.n_iterations < 1:
             raise ValueError(f"n_iterations must be at least 1, got {self.n_iterations}")
+        if self.center_shift_tolerance < 0:
+            raise ValueError(
+                "center_shift_tolerance must be non-negative, got "
+                f"{self.center_shift_tolerance}"
+            )
         if self.allowed_outliers < 0:
             raise ValueError(
                 f"allowed_outliers (max_outliers) must be non-negative, got {self.allowed_outliers}"

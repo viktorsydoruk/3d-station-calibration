@@ -96,7 +96,8 @@ Python attribute aliases differ where the TOML name is more descriptive:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `n_iterations` | `3` | Inner camera/home/centre adjustment iterations (must be ≥ 1) |
+| `n_iterations` | `3` | Maximum inner camera/home/centre adjustment iterations (must be ≥ 1) |
+| `center_shift_tolerance` | `0.01` | Stop the inner fixed-point loop once the largest centre shift between two iterations is at most this many pixels (must be ≥ 0) |
 | `max_outliers` | `10` | Outlier policy, see below (must be ≥ 0) |
 | `outlier_confidence` | `0.999` | Confidence level of the 2D chi-square outlier test (must be in `(0, 1)`) |
 | `outlier_cluster_guard` | `true` | Keep high-score candidates that form a compact spatial cluster |
@@ -320,6 +321,7 @@ debug_folder = "diagnostics"
 
 [analysis]
 n_iterations = 4
+center_shift_tolerance = 0.01
 max_outliers = 0.02
 outlier_confidence = 0.999
 outlier_cluster_guard = true

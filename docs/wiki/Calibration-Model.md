@@ -149,13 +149,16 @@ output then reflect the fallback value, even if the configured value was larger.
 2. Determine the number of outlier-removal iterations from
    `max_outliers` / `allowed_outliers`.
 3. For each outlier iteration:
-   1. Repeat `n_iterations` times:
+   1. Repeat at most `n_iterations` times:
       - fit the camera on the current mask;
       - estimate the home shift and update `X_home` / `X_rel`;
       - adjust the apparent image centres with `adjust_image_center_points`;
-      - carry the fitted `fx` and `t_z` into the next fit as initial values.
-   2. Refit once after the last centre adjustment, so the returned matrices
-      correspond to the returned centres.
+      - carry the fitted `fx` and `t_z` into the next fit as initial values;
+      - stop early when the largest centre shift since the previous iteration is
+        at most `center_shift_tolerance` (default `0.01` px).
+   2. If the loop did not converge, refit once after the last centre adjustment,
+      so the returned matrices correspond to the returned centres. A converged
+      loop already returns a fit and centres that agree within the tolerance.
    3. Compute residual vectors `(dx, dy)` per point.
    4. Record the candidate if its RMSE is better than the previous best.
    5. Compute the leverage-corrected squared Mahalanobis distance for every
@@ -221,8 +224,17 @@ rate; `max_outliers` (packaged default `10`) caps the number of removals.
 `adjust_image_center_points` uses the angle-bisector relation. The observed
 silhouette centre of a projected sphere is not exactly the projection of its 3D
 centre; the correction shifts the measured centre using the apparent radius and
-the focal lengths, with the principal point as reference. This is why the
-pipeline adjusts centres after every fit and refits.
+the focal lengths, with the principal point as reference.
+
+The angle-bisector relation is a pinhole relation, so the function maps the
+measured centre and the four apparent silhouette borders to the undistorted
+normalised image plane when a distortion model is supplied, applies the
+correction there, and projects the result back to the measured (distorted) pixel
+space. Passing `distortion=None` or an all-zero coefficient array preserves the
+pinhole fast path. Because the correction is sub-pixel and the lens model is
+fitted as part of the same loop, the pipeline adjusts centres after every fit
+(current distortion included) and refits; the fixed-point iteration converges
+within the configured `n_iterations`.
 
 ## Outlier mask and result
 

@@ -177,6 +177,7 @@ def get_calibration_data(robot_positions: np.ndarray,
     for removal_index in range(max_removals + 1):
         focal_length_initial = settings.focal_length_initial
         camera_distance_initial = settings.camera_distance_initial
+        converged = False
         for _ in range(settings.n_iterations):
 
             # calibration of the camera (estimation of intrinsic, extrinsic, distortion parameters)
@@ -210,34 +211,46 @@ def get_calibration_data(robot_positions: np.ndarray,
             pos_home += pos_home_shift
             rel_robot_positions -= pos_home_shift
 
+            previous_center_points = center_points_adjusted
             center_points_adjusted = adjust_image_center_points(
                 center_points,
                 radii,
                 intrinsic_matrix,
+                distortion=distortion,
             )
+            center_shift = float(np.max(np.linalg.norm(
+                (center_points_adjusted - previous_center_points)[mask],
+                axis=1,
+            )))
+            print_debug(f"maximum center shift: {center_shift:.4f} px")
 
             focal_length_initial = intrinsic_matrix[0, 0]
             camera_distance_initial = extrinsic_matrix[2, 3]
 
-        # The loop above adjusts the center points after the last fit. Refit once
-        # more so that the returned matrices and error correspond to the points
-        # that are returned as well.
-        result, intrinsic_matrix, distortion, extrinsic_matrix, n_dist_coefs = (
-            _fit_camera_with_distortion_fallback(
-                rel_robot_positions,
-                center_points_adjusted,
-                radii,
-                sigmas,
-                mask,
-                image_size_xy,
-                settings,
-                focal_length_initial,
-                camera_distance_initial,
-                n_dist_coefs,
-                print_debug,
-                center_covariances=center_covariances,
+            if center_shift <= settings.center_shift_tolerance:
+                converged = True
+                break
+
+        if not converged:
+            # The loop above adjusts the center points after the last fit. Refit
+            # once more so that the returned matrices and error correspond to the
+            # points that are returned as well.
+            result, intrinsic_matrix, distortion, extrinsic_matrix, n_dist_coefs = (
+                _fit_camera_with_distortion_fallback(
+                    rel_robot_positions,
+                    center_points_adjusted,
+                    radii,
+                    sigmas,
+                    mask,
+                    image_size_xy,
+                    settings,
+                    focal_length_initial,
+                    camera_distance_initial,
+                    n_dist_coefs,
+                    print_debug,
+                    center_covariances=center_covariances,
+                )
             )
-        )
 
         rmse = calculate_RMSE(result, standardized=False)
         if (

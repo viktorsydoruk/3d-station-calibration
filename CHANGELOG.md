@@ -54,9 +54,10 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   and it does not change the stored calibration or the readiness decision.
 - Optional bootstrap confidence interval for the sphere-radius blur correction
   through `get_nozzle_end_home_position(..., n_sigma_bootstrap=...)`; it is off
-  by default and does not change the fitted diameter. The full ceramic
-  validation interval is above the packaged `0.25 sigma` cap, which remains a
-  conservative guardrail pending a traceable sphere reference.
+  by default and does not change the fitted diameter. With the blur-aware
+  sub-pixel search the full ceramic interval is `[0, 0.081]` on the grid and
+  `[0.004, 0.064]` continuously, below the packaged `0.25 sigma` cap; the cap
+  remains a conservative guardrail rather than a statistical estimate.
 - A versioned, shared result document for the folder CLI and Ice archive, with
   consistent `schema_version`, `nozzle`, and `camera` sections.
 - GitLab CI now installs ZeroC Ice from the official Debian repository and runs
@@ -98,6 +99,15 @@ calendar versioning in the form `YYYY.MM.DD.N`.
   extra high-radius frames; the reference filter keeps the binary set while the
   sub-pixel radius still feeds the fit. On the full ceramic folder this restored
   the binary fit-observation count (489 instead of 481).
+- Sub-pixel edge refinement now chooses a blur-aware radial search window on
+  the first attempt instead of starting at `0.2 * radius` and retrying only
+  after too few rays survive. The window is
+  `max(0.2 * radius, 3 * sigma, 1.5 * 0.2 * radius)`, capped at half the binary
+  radius; `edge_search_px` remains an explicit override. On the same 479
+  matched ceramic observations this reduced the residual `n_sigma_opt` from
+  `0.485` to `0.040` and changed the capped diameter from `0.9921 mm` to
+  `0.9960 mm`; the full production adaptive fit reports `0.9962 mm` against a
+  `0.999 mm` micrometer reference.
 - The package version is now derived from Git tags instead of a static value in
   `pyproject.toml`.
 - All production Slice contracts now live under `ice/`; the stub generator moved

@@ -119,7 +119,14 @@ The factor `2` converts radius to diameter; the scan picks the blur correction
 that makes the physical diameter most consistent across depths. With
 `[analysis.sphere_projection] subpixel_edges = true` the detected radius is
 already close to the 50 % silhouette, so the residual correction is usually
-small; on the full ceramic set it was `0.485 sigma`.
+small. With the blur-aware search window the full ceramic set chose
+`n_sigma_opt = 0.040`, and the packaged `0.25 sigma` cap was not binding; the
+continuous bootstrap interval was `[0.004, 0.064]`. The resulting diameter was
+`0.9962 mm`, about `2.8 um` below the `0.999 mm` micrometer midpoint of the
+ceramic balls; at zero correction it was `0.9985 mm`, within `0.5 um`. The
+earlier fixed `0.2 * radius` window left a much larger residual correction
+(`0.485 sigma` on the same folder), which was a truncated-search artefact
+rather than a physical edge offset.
 
 The scan is a grid approximation to the least-squares slope of
 `2 * radius * coef` on `2 * sigma * coef`. An optional bootstrap estimates the

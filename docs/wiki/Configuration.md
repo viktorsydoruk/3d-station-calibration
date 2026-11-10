@@ -158,12 +158,18 @@ Ranges: `n_move_aver >= 1`, `0 <= sphere_center_to_nozzle_part <= 1`,
 
 `subpixel_edges = true` refines the sphere silhouette to the 50 % intensity
 crossing between the local background and the sphere interior. The binary mask
-supplies the rough circle and an initial search window; the refinement samples
-radial profiles around the sphere, estimates a local background and interior
-level on each ray, and trims inconsistent crossings before the final circle fit.
-If the profiles do not resolve the edge transition, or the outer/inner
-plateaus are not flat, the search expands once (capped at half the binary
-radius); if the crossings remain unreliable, the binary circle is retained.
+supplies the rough circle; the refinement samples radial profiles around the
+sphere, estimates a local background and interior level on each ray, and trims
+inconsistent crossings before the final circle fit. The radial search window is
+blur-aware from the first attempt: it is the largest of `0.2 * radius`,
+`3 * sigma`, and `1.5 * 0.2 * radius`, capped at half the binary radius. A fixed
+20 % window can truncate the inner edge plateau and bias the crossing outward on
+defocused spheres. If the profiles still do not resolve the edge transition, or
+the outer/inner plateaus are not flat, the search retries once at the half-radius
+cap; if the crossings remain unreliable, the binary circle is retained.
+`edge_search_px` on `find_the_sphere_on_mask` is an explicit override and
+disables both the blur-aware choice and the retry.
+
 Because the binary mask threshold sits near the background level, its contour lies
 roughly `~1 sigma` outside the true silhouette; the offset grows with defocus.
 The sub-pixel path removes most of that radius bias. On the well-focused real
@@ -179,14 +185,22 @@ black-background validation.
 
 `subpixel_max_n_sigma` caps the empirical `n_sigma` term when
 `subpixel_edges = true`. The raw 50 % crossing already removes most of the
-binary threshold bias; the remaining correction can overcorrect the absolute
-diameter. On the full 1 mm ceramic run the uncapped fit chose `0.485 sigma` and
-reported `0.9784 mm`, while a `0.25 sigma` cap reported `0.9923 mm` (binary
-`0.9949 mm`). The cap changes only the final sphere radius and nozzle offset,
-not the camera fit or RMSE. It trades some radius-vs-blur consistency for
-absolute diameter: the ceramic corrected radius scatter is `0.0114 mm` at the
-cap, `0.0089 mm` uncapped, and `0.0047 mm` for the binary mask. Set a larger
-value to approach the uncapped optimum, or `0` to disable the correction.
+binary threshold bias; an overly wide search window used to leave a strong
+residual radius-vs-blur trend and a large empirical correction. Across the
+full broad A/B run the adaptive `n_sigma_opt` was `0.000-0.162`, so the
+`0.25 sigma` cap never bound. With the
+blur-aware first window, the full 1 mm ceramic run chose `n_sigma_opt = 0.040`
+and reported `0.9962 mm`; the `0.25 sigma` cap was not binding, and the
+equivalent continuous bootstrap interval was `[0.004, 0.064]` (grid
+`[0, 0.081]`). At zero empirical correction the adaptive diameter was
+`0.9985 mm`, so the residual correction is only a `2.3 um` adjustment. The
+binary production fit on the same folder reported `0.9949 mm`. A micrometer
+measurement of the ceramic balls gives `0.998-1.000 mm` (midpoint
+`0.999 mm`), so the uncorrected adaptive result is within `0.5 um`, the
+corrected adaptive result is about `2.8 um` low, and the binary result is
+about `4.1 um` low. The cap changes only the final sphere radius and nozzle
+offset, not the camera fit or RMSE. Keep the cap as a guardrail against a
+pathological dataset; do not tune it to hit a nominal diameter.
 
 ## `[analysis.fit]`
 

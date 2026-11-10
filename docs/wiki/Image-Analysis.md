@@ -106,9 +106,9 @@ Passing `subpixel_edges=True` to `analyze_image`, `analyze_images`, or
 `get_sphere_centers_and_blur_sigmas`, or setting `subpixel_edges = true` in
 `[analysis.sphere_projection]`, refines the sphere silhouette to the
 **50 % intensity crossing** between the local background and the sphere
-interior. The binary mask still supplies the rough circle and the search
-window. The refinement then samples 360 radial profiles and locates the
-crossing on each ray by linear interpolation. Because every ray crosses the
+interior. The binary mask still supplies the rough circle and the radius scale
+for the blur-aware search window. The refinement then samples 360 radial
+profiles and locates the crossing on each ray by linear interpolation. Because every ray crosses the
 edge normally, the noisy, nearly horizontal top and bottom rows of a row-wise
 scan no longer contribute. Each ray estimates its own background and interior
 level, which handles a smooth illumination gradient; rays on the nozzle side
@@ -124,155 +124,113 @@ a radius error of `+5.7 px` at `sigma = 5 px` becomes about `-0.1 px`) without
 changing the centre accuracy. On a real 2 mm sphere set (124 poses, 8 mm depth
 range) the empirical blur correction `n_sigma_est` drops from `0.69 sigma` to
 `0`, and the radius consistency at zero correction improves from `0.027 mm` to
-`0.008 mm`. On two independent 6 mm sphere scans the estimated diameter becomes
-more repeatable (`5.976` / `5.971 mm` versus `5.969` / `5.982 mm`), while the
-calibration RMSE changes between `-0.20 px` and `+0.12 px`.
+`0.008 mm`. On two independent 6 mm sphere scans the adaptive diameter becomes
+more repeatable (`5.972` / `5.966 mm` versus `5.969` / `5.982 mm`), while the
+calibration RMSE changes by `+0.12` and `+0.01 px`.
 
 #### Broad validation (black backgrounds)
 
-A wider A/B run covered 14 calibration folders and 2,307 frames whose darker
-200-row background band had a median below 25 DN (the fixed detection threshold
-is 30 DN). Folders with a gray (~30 DN) or bright (~163 DN) background were
-excluded. Detection parity was essentially exact: 2,166 binary vs 2,167
-sub-pixel detections; only `3D_oldsmallseeds` contributed a sub-pixel-only
-frame, and there were no binary-only frames.
+The blur-aware search was validated in a full A/B run over 11 calibration
+folders and 4,184 source frames. No frames were sampled. An image was included
+only when the darker of its 200-row top/bottom background bands had a median
+below 25 DN (the fixed detection threshold is 30 DN); this selected 3,684
+frames. `3D_small20260914random` has a gray background and contributed no
+selected frames. The same selected-image subset was analyzed in both modes and
+fed to the complete calibration fit. The accuracy-scan folders have degenerate
+calibration geometry and were excluded from the fit comparison;
+`3D_small_20260929_POM` fails in both modes with a non-positive focal length.
 
-On 692 well-focused observations (folder-mean `sigma` 2.9–5.7 px) the sub-pixel
-radius moved inward by `4.30 px` on average; the mean per-frame correction was
-`0.87 sigma`.
-On the 6 mm high-contrast set the fixed 30 DN threshold sits at 12–13 % of the
-local edge range; a Gaussian edge predicts a 2.6–4.3 px outward bias, and the
-measured shift was 3.4–3.8 px. This is direct evidence that the refinement
-reaches the 50 % crossing.
+Detection parity was essentially exact: 3,373 binary and 3,374 adaptive
+detections; 3,373 frames were detected by both, with one sub-pixel-only frame
+(`3D_oldsmallseeds`) and no binary-only frames. On the 3,373 common frames the
+adaptive radius moved inward by `7.05 px` on average, or `0.75 sigma` per
+frame; this is the expected binary-threshold bias. The shift reached about
+`-11 px` on the strongly defocused old-small set and `-3` to `-5 px` on the
+well-focused 2 mm and 6 mm sets.
 
-In the table, `radius_std@0` is the radius standard deviation at zero blur
-correction. The sub-pixel columns show the uncapped optimum; the
-`subpixel_max_n_sigma` cap described below changes the sub-pixel diameter but
-not the camera fit or RMSE.
+In the table, `sigma` is the folder-mean binary blur, the binary diameter uses
+the production uncapped `n_sigma` correction, and the adaptive diameter uses
+the `0.25 sigma` cap. The cap never bound on the adaptive path: the largest
+`n_sigma_opt` was `0.162`, so the adaptive capped and uncapped diameters are
+identical.
 
-| Dataset | `sigma` (px) | `n_sigma_est` | `radius_std@0` (mm) | Diameter (mm) | RMSE (px) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 6 mm A | 2.9 | 1.09 → 0.00 | 0.0104 → 0.0059 | 5.9691 → 5.9761 | 1.052 → 1.173 |
-| 6 mm B | 3.4 | 0.77 → 0.00 | 0.0152 → 0.0068 | 5.9822 → 5.9712 | 1.247 → 1.042 |
-| 2 mm | 5.0 | 0.69 → 0.00 | 0.0274 → 0.0082 | 1.9849 → 1.9667 | 1.428 → 1.485 |
-| 2.3 mm A | 5.7 | 0.73 → 0.00 | 0.0401 → 0.0050 | 2.3660 → 2.3593 | 1.201 → 1.276 |
-| 2.3 mm B | 5.1 | 0.73 → 0.00 | 0.0397 → 0.0054 | 2.3678 → 2.3606 | 1.123 → 1.310 |
-| small random A | 10.2 | 0.85 → 0.44 | 0.0341 → 0.0165 | 0.9529 → 0.9417 | 4.265 → 4.220 |
-| small random B | 10.1 | 0.89 → 0.53 | 0.0342 → 0.0180 | 0.9835 → 0.9666 | 3.732 → 3.554 |
-| ceramic | 9.8 | 0.97 → 0.53 | 0.0384 → 0.0190 | 0.9925 → 0.9772 | 4.370 → 4.364 |
-| old small A | 31.0 | 0.28 → 0.32 | 0.0649 → 0.0668 | 1.0331 → 0.9976 | 2.693 → 2.843 |
-| old small B | 10.8 | 0.81 → 0.57 | 0.0282 → 0.0174 | 0.9851 → 0.9715 | 2.753 → 2.716 |
+| Dataset | `sigma` (px) | Binary dia. (mm) | Adaptive dia. (mm) | Binary RMSE (px) | Adaptive RMSE (px) | `n_sigma_opt` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 6 mm A | 2.9 | 5.9691 | 5.9720 | 1.052 | 1.174 | 0.000 |
+| 6 mm B | 3.4 | 5.9822 | 5.9661 | 1.247 | 1.259 | 0.000 |
+| 2 mm | 5.0 | 1.9849 | 1.9573 | 1.428 | 1.469 | 0.000 |
+| 2.3 mm A | 5.7 | 2.3660 | 2.3543 | 1.201 | 1.415 | 0.000 |
+| 2.3 mm B | 5.1 | 2.3677 | 2.3564 | 1.203 | 1.283 | 0.000 |
+| small random A | 10.2 | 0.9527 | 0.9575 | 4.752 | 4.714 | 0.000 |
+| small random B | 10.4 | 0.9832 | 0.9845 | 4.473 | 4.254 | 0.081 |
+| old small A | 30.5 | 1.0331 | 0.9922 | 2.693 | 2.522 | 0.121 |
+| old small B | 10.7 | 0.9851 | 0.9906 | 2.728 | 2.665 | 0.162 |
+| ceramic | 10.0 | 0.9949 | 0.9962 | 4.555 | 4.538 | 0.040 |
 
-The same-sphere scan-to-scan diameter spread improves for the 6 mm sphere
-(`0.0131 mm` → `0.0049 mm`), the small random pair (`0.0306` → `0.0249 mm`),
-and the old small pair (`0.0480` → `0.0261 mm`). The 2.3 mm pair was already
-very consistent with the binary mask (`0.0018 mm`) and becomes `0.0013 mm`
-with sub-pixel edges; both are within about 0.1 %. RMSE changes are mixed and
-small (at most about `0.2 px` on these folders).
+Adaptive RMSE was lower on 5 of 10 folders, with a median change of
+`-0.002 px` and a range from `-0.219` to `+0.214 px`. It was worse on the
+2 mm and both 2.3 mm scans by `0.04-0.21 px`, and better on both small-random,
+both old-small, and ceramic sets. The 6 mm A/B RMSE asymmetry remains: the
+adaptive path does not remove the `+0.12 px` change on 6 mm A or the
+`5.966/5.972 mm` absolute offset from the 6 mm nominal. The same-sphere
+scan-to-scan spread improves for the 6 mm pair (`0.0130 -> 0.0059 mm`), small
+random pair (`0.0305 -> 0.0270 mm`), and old small pair
+(`0.0480 -> 0.0017 mm`); the 2.3 mm pair was already consistent
+(`0.0017 -> 0.0021 mm`). The 6 mm asymmetry is therefore not explained by the
+search window alone.
 
-The blur correction is partial for strongly defocused spheres
-(folder-mean `sigma` 9.8–31 px: mean per-frame correction about `0.6 sigma`).
-For extreme-defocus frames (`sigma` 70–120 px) the default `0.2 * radius`
-search window can be narrower than the edge transition. The radial scan now
-requires the 20 %, 50 %, and 80 % crossings to lie inside the profile and the
-outer/inner plateaus to be flat; when too few rays pass, it retries once with a
-blur-aware window capped at half the binary radius. If the retry still has too
-few reliable rays, or the fitted points do not survive the MAD trim, the binary
-circle is retained. A biased sub-pixel circle that makes the border-sigma fit
-fail also falls back to the binary circle. This removed the previous detection
-penalty on the extreme-defocus folder: all 103 binary detections now also
-produce sub-pixel observations, with one additional sub-pixel-only frame
-(previously two frames were binary-only and one was sub-pixel-only).
+The fixed `0.2 * radius` window was the dominant source of the residual
+radius-vs-sigma trend. On the same 489 ceramic frames and the same 479 fit
+observations, the old window gave `n_sigma_opt = 0.485`, a capped diameter of
+`0.9921 mm`, and `RMSE = 4.2729 px`; the blur-aware window gave
+`n_sigma_opt = 0.040`, `0.9960 mm`, and `4.2562 px`. At zero empirical
+correction the adaptive diameter is `0.9983 mm`. The current window starts at
+`max(0.2 * radius, 3 * sigma, 1.5 * 0.2 * radius)`, is capped at half the binary
+radius, retries once at the cap, and honours an explicit `edge_search_px`
+override. If too few rays pass, or the fitted circle is biased enough to make
+the border-sigma fit fail, the binary circle is retained.
 
-Before the reference filter, the radius filter flagged 22 binary
-vs 38 sub-pixel observations across the broad run, with the extra cases
-concentrated on small spheres. The extra points were high-radius frames, not
-depth-related (`corr(radius, z)` is approximately zero), and are likely
-nozzle/edge contamination. Because the filter uses an absolute `2.5 sigma`
-threshold, a method with a smaller mean radius rejected the same relative
-deviation more often. The filter now uses the binary-mask radius as a
-method-independent reference when sub-pixel edges are enabled; the sub-pixel
-radius still feeds the fit. On the full ceramic folder this restored the binary
-fit-observation count (`489` vs `481` before) and brought the camera fit and
-RMSE close to the binary result (`4.558` vs `4.555 px`).
+The raw 50 % crossing is not the only bias: the residual `n_sigma` correction
+is still dataset-dependent, although it is now small on the well-focused sets.
+On the full 1 mm ceramic run the binary production result is `0.9949 mm`, the
+adaptive result is `0.9962 mm`, and the zero-correction adaptive result is
+`0.9985 mm`. A micrometer measured the two ceramic balls several times at
+`0.998`, `0.999`, and `1.000 mm` with `1 um` resolution; the exact ball used in
+the dataset is not recorded, but the full range is only `2 um`, so the
+reference midpoint is `0.999 +/- 0.001 mm`. Relative to that midpoint the
+adaptive result is about `2.8 um` low, the zero-correction adaptive result is
+about `0.5 um` low, and the binary result is about `4.1 um` low. The older
+fixed-window capped result (`0.9921 mm`, `6.9 um` low) and the old uncapped
+result (`0.9782 mm`, `20.8 um` low) are superseded. The exact ball identity
+and the micrometer calibration record remain open metrology items.
 
-The absolute diameter shifts by about `-0.9 %` on the 2 mm set, `-0.3 %` on the
-2.3 mm set, and `-1 %` to `-3 %` on the smallest spheres. Without a traceable
-reference diameter these cannot be called corrections; the producer's nominal
-diameter is a sanity check, not a metrology-grade reference.
-
-A full 500-image run of the 1 mm ceramic folder
-(`3D_small_20260929_ceramic`) gave 489 used observations and `0.9949 mm` with
-the binary mask versus 489 used observations and `0.9923 mm` with sub-pixel
-edges and the `0.25 sigma` cap. The uncapped sub-pixel result at the same
-observations is `0.9784 mm`; the raw 50 % crossing without any empirical blur
-correction is `1.0071 mm`. The producer
-quotes a 1 mm nominal diameter, but the measurement method and tolerance are
-not available. The binary result is 0.51 % low, the capped sub-pixel result
-0.77 % low, and the uncapped result 2.16 % low. The `0.0166 mm`
-binary-uncapped difference is about 1.6 sigma of the bootstrap along-axis
-uncertainty (`0.0106 mm`); the capped difference (`0.0026 mm`) is well inside
-it, so this is an indicative check rather than proof. On the same run the
-sub-pixel fit had essentially the same RMSE (`4.558` vs `4.555 px`) with the
-same observation count; its `n_sigma_opt` was `0.485` (capped at `0.25`), while
-the best corrected radius scatter was `0.0089 mm` versus `0.0047 mm` for the
-binary mask. The zero-correction scatter was `0.0168 mm` for the sub-pixel
-path.
+A percentile bootstrap of the adaptive `n_sigma_opt` scan on the full ceramic
+production run (489 fit observations, 4,000 replicates, seed 0) gave a grid
+interval of `[0, 0.081]` and a continuous interval of `[0.004, 0.064]` around a
+continuous optimum of `0.033`; the grid point estimate was `0.040`. The interval is
+conditional on the fitted scale model and the selected inliers and excludes
+systematic edge-extraction, illumination, reflectivity, and sphere-diameter
+errors. It does not justify tuning the cap or the correction to reproduce the
+micrometer value.
 
 #### Sub-pixel radius-correction cap
 
-The sub-pixel 50 % crossing removes most of the binary threshold bias, but the
-remaining empirical `n_sigma` correction can overcorrect the absolute diameter.
-The full 1 mm ceramic run is the clearest case: the raw sub-pixel diameter is
-`1.0071 mm`, the uncapped fit chooses `0.485 sigma` and reports `0.9784 mm`,
-and a `0.25 sigma` cap reports `0.9923 mm` (binary `0.9949 mm`). The camera fit
-and RMSE are unchanged by the cap; only the final sphere radius and nozzle
-offset change. The cap also increases the corrected radius scatter from
-`0.0089` to `0.0114 mm`, still between the uncapped sub-pixel value and the
-binary `0.0047 mm`.
+With the blur-aware search, the sub-pixel `n_sigma_opt` was `0.000-0.162`
+across the broad folders, so the `0.25 sigma` cap never bound and the cap
+changes neither the camera fit nor RMSE. On the full ceramic set the residual
+correction is only `2.3 um` of diameter; the raw result is already within the
+micrometer range. Keep `subpixel_max_n_sigma = 0.25` as a guardrail against a
+pathological dataset, but do not lower it to force a nominal diameter. The cap
+is not a statistical estimate of the observed optimum and should be revisited
+only with a larger traceable reference set.
 
-The cap was re-checked on sampled small-sphere folders (165–180 frames each)
-with the complete fitting procedure and the binary-reference radius filter:
-
-| Dataset | Binary dia. (mm) | Sub-pixel uncapped (mm) | Sub-pixel capped (mm) |
-| --- | ---: | ---: | ---: |
-| small random A | 0.9529 | 0.9417 | 0.9534 |
-| small random B | 0.9835 | 0.9666 | 0.9833 |
-| old small B | 0.9851 | 0.9715 | 0.9921 |
-| ceramic (full) | 0.9949 | 0.9784 | 0.9923 |
-
-The cap moves the sub-pixel diameters toward the binary results and, where a
-1 mm nominal applies, close to the nominal value. It does not make the
-sub-pixel path more accurate than the binary mask on every folder, and the
-nominal diameter is not traceable; the cap is a correction for the known
-overcorrection, not evidence that sub-pixel edges should become the default.
-
-A percentile bootstrap of the `n_sigma_opt` scan quantifies the sampling
-uncertainty of the empirical correction. On the full ceramic run (489
-observations, 4,000 replicates, seed 0) the grid interval was
-`[0.444, 0.525]`; the equivalent continuous least-squares interval was
-`[0.457, 0.514]` around a continuous optimum of `0.486`. The point estimate was
-`0.485`. Both intervals lie entirely above the `0.25 sigma` cap, so the cap is
-not a statistical estimate of the observed optimum on this dataset. It remains
-a deliberately conservative guardrail: the bootstrap is conditional on the
-fitted scale model and the selected inliers, and it does not include a
-traceable sphere diameter or systematic edge-extraction bias. The packaged
-default and the cap therefore remain unchanged until certified reference
-spheres are available.
-
-The evidence for the sub-pixel path is therefore still the reduced
-blur-dependent radius spread and the improved 6 mm repeatability, not the
-absolute diameter. The accuracy-scan folders have degenerate calibration
-geometry and were used only for detection comparison;
-`3D_small_20260929_POM` fails in both modes with a negative focal length.
-
-The packaged default remains `false`. The cap removes the largest known
-overcorrection when sub-pixel edges are enabled, the reference radius filter
-keeps the same observations as the binary mask on the full ceramic folder, and
-the extreme-defocus path now retries with a wider search and falls back to the
-binary circle when the profile is not trustworthy. The absolute diameter still
-lacks a traceable reference, so enable it per station after checking the radius
-and diameter trends on a calibration run.
+The evidence for the sub-pixel path is the reduced blur-dependent radius
+spread, the improved repeatability of the 6 mm, small-random, and old-small
+pairs, and the removal of the search-window artefact. It is not a universal
+RMSE improvement: the 2 mm and 2.3 mm fits became slightly worse. The packaged
+default therefore remains `false`; enable it per station after checking a
+black-background calibration run, a reference-sphere diameter, the radius-vs-
+sigma trend, and the bootstrap interval.
 
 ### 6. Edge blur (`sigma`)
 

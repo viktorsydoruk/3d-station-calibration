@@ -218,7 +218,12 @@ Notes:
   (three decimals). Entries without an uncertainty keep full float precision:
   the rotation block of `extrinsic_matrix`, `sphere_home_position`, `rmse`, and
   `radial_scale`. Both workflows apply the same rule, and a value never keeps
-  more than eight significant digits.
+  more than eight significant digits. All of these numbers are the defaults of
+  the `[output]` section: `error_significant_digits`, `nozzle_home_decimals`, and
+  `max_value_significant_digits` change the precision, and
+  `round_stored_results = false` writes the file at full `float64` precision
+  while keeping only the console rounded. See
+  [Configuration](Configuration#output).
 - `distortion_coefficients` always has 14 entries; inactive ones are zero.
 - `radial_scale` reports the fitted radial distortion at the observed field
   rather than relying on the strongly correlated individual coefficients. The
@@ -267,7 +272,8 @@ RMSE, the sphere home and diameter, and the bootstrap summary:
 The values are millimetres. The summary vectors (`original`, `mean`, `bias`,
 `std`, the 1σ/2σ bounds, and the axis spreads) are rounded to two significant
 digits of the bootstrap one-sigma; `samples` and `covariance` keep full
-precision because they describe the replicate distribution. A failed optional
+precision because they describe the replicate distribution. The digit count and
+the `round_stored_results` switch follow the `[output]` settings. A failed optional
 bootstrap prints a warning and does not invalidate the already stored
 calibration.
 
@@ -313,7 +319,8 @@ With `debug = true` the CLI prints:
 - the nozzle home;
 - the closest image index;
 - the full parameter table as `value +/- sigma`, rounded to two significant
-  digits of the one-sigma;
+  digits of the one-sigma (`[output] error_significant_digits`, where `0` prints
+  the full values);
 - the back-projected home position.
 
 Errors are printed with a traceback and re-raised, so the process exits non-zero.

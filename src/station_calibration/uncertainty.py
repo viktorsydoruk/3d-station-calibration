@@ -39,7 +39,7 @@ from .models import (
 from .processes import get_calibration_data
 from .robot import get_nozzle_end_home_position
 from .settings import Settings
-from .support import reported, reported_error
+from .support import DEFAULT_REPORT_PRECISION, ReportPrecision
 
 __all__ = [
     "NozzleBootstrapResult",
@@ -75,14 +75,20 @@ class NozzleBootstrapResult:
     failure_messages: tuple[str, ...]
     mode: str = "residual"
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(
+        self,
+        *,
+        precision: ReportPrecision = DEFAULT_REPORT_PRECISION,
+    ) -> dict[str, Any]:
         """Return a JSON-serializable summary.
 
-        The summary vectors are rounded to two significant digits of their
-        bootstrap one-sigma. ``samples`` and ``covariance`` keep full precision
-        because they describe the replicate distribution rather than a single
-        reported measurement.
+        The summary vectors are rounded with ``precision`` to two significant
+        digits of their bootstrap one-sigma by default. ``samples`` and
+        ``covariance`` keep full precision because they describe the replicate
+        distribution rather than a single reported measurement.
+        ``precision.round_stored_results`` switches the rounding off.
         """
+        precision = precision.for_storage()
         std = np.asarray(self.std, dtype=np.float64)
         return {
             "mode": self.mode,
@@ -91,28 +97,32 @@ class NozzleBootstrapResult:
             "n_failed": self.n_failed,
             "failure_messages": list(self.failure_messages),
             "samples": self.samples.tolist(),
-            "original": _reported_vector(self.original, std),
-            "mean": _reported_vector(self.mean, std),
-            "bias": _reported_vector(self.bias, std),
-            "std": [reported_error(value) for value in std],
-            "norm_std": reported_error(self.norm_std),
+            "original": _reported_vector(self.original, std, precision),
+            "mean": _reported_vector(self.mean, std, precision),
+            "bias": _reported_vector(self.bias, std, precision),
+            "std": [precision.reported_error(value) for value in std],
+            "norm_std": precision.reported_error(self.norm_std),
             "covariance": self.covariance.tolist(),
             "axis": self.axis.tolist(),
-            "along_std": reported_error(self.along_std),
-            "perpendicular_std": reported_error(self.perpendicular_std),
-            "lower_1sigma": _reported_vector(self.lower_1sigma, std),
-            "upper_1sigma": _reported_vector(self.upper_1sigma, std),
-            "lower_2sigma": _reported_vector(self.lower_2sigma, std),
-            "upper_2sigma": _reported_vector(self.upper_2sigma, std),
+            "along_std": precision.reported_error(self.along_std),
+            "perpendicular_std": precision.reported_error(self.perpendicular_std),
+            "lower_1sigma": _reported_vector(self.lower_1sigma, std, precision),
+            "upper_1sigma": _reported_vector(self.upper_1sigma, std, precision),
+            "lower_2sigma": _reported_vector(self.lower_2sigma, std, precision),
+            "upper_2sigma": _reported_vector(self.upper_2sigma, std, precision),
         }
 
 
-def _reported_vector(values: np.ndarray, std: np.ndarray) -> list[float]:
+def _reported_vector(
+    values: np.ndarray,
+    std: np.ndarray,
+    precision: ReportPrecision,
+) -> list[float]:
     """Round a vector to the decimal places of its per-component one-sigma."""
     array = np.asarray(values, dtype=np.float64)
     errors = np.broadcast_to(np.asarray(std, dtype=np.float64), array.shape)
     return [
-        reported(value, error)[0]
+        precision.reported(value, error)[0]
         for value, error in zip(array.ravel(), errors.ravel())
     ]
 

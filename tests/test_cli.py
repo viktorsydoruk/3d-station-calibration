@@ -241,7 +241,7 @@ def test_write_nozzle_uncertainty_report_writes_metadata(
             norm_std=0.0374,
             n_failed=1,
             n_requested=n_bootstrap,
-            as_dict=lambda: {
+            as_dict=lambda **kwargs: {
                 "mode": "residual",
                 "std": [0.01, 0.02, 0.03],
             },

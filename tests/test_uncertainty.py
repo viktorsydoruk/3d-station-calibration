@@ -14,6 +14,7 @@ import pytest
 
 from station_calibration import CalibrationObservation, Settings
 from station_calibration import uncertainty
+from station_calibration.support import ReportPrecision
 from station_calibration.uncertainty import (
     _ensure_symmetric_psd,
     _estimate_global_center_covariance,
@@ -432,3 +433,16 @@ def test_bootstrap_summary_rounds_to_two_std_digits() -> None:
     # Replicate distribution data keeps full precision.
     assert payload["samples"] == [[0.0, 0.0, 0.0]]
     assert payload["covariance"] == np.eye(3).tolist()
+
+    unrounded = result.as_dict(
+        precision=ReportPrecision(round_stored_results=False)
+    )
+    assert unrounded["original"][0] == 315.487391203948
+    assert unrounded["std"][0] == 0.0024
+    assert unrounded["norm_std"] == 0.0617
+
+    three_digits = result.as_dict(
+        precision=ReportPrecision(error_significant_digits=3)
+    )
+    assert three_digits["original"][0] == pytest.approx(315.48739)
+    assert three_digits["std"][0] == pytest.approx(0.0024)

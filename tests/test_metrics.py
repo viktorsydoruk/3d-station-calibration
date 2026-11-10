@@ -22,6 +22,7 @@ from station_calibration import (
 )
 import station_calibration.calibration.initialization as initialization_module
 import station_calibration.calibration.metrics as metrics_module
+from station_calibration.support import ReportPrecision
 from station_calibration.calibration.initialization import (
     _orthonormalize_rotation,
     estimate_r_initial,
@@ -565,6 +566,44 @@ def test_print_calibration_rounds_to_two_error_digits(
     output = capsys.readouterr().out
     assert output.count("+/- 0.012") == len(params)
     assert "1000.0 +/- 0.012" in output
+
+
+def test_print_calibration_follows_the_requested_precision(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    params = make_initial_parameters(
+        focal_length=1000.0,
+        camera_distance=80.0,
+        image_size=(1000, 800),
+        fix_cx_cy=True,
+        n_distortion_coefs=0,
+        r_initial=np.eye(3),
+    )
+    result = OptimizeResult(
+        x=params,
+        fun=np.zeros(4),
+        jac=np.ones((4, len(params))),
+        success=True,
+        message="ok",
+        cost=0.0,
+    )
+    monkeypatch.setattr(
+        metrics_module,
+        "calculate_errors",
+        lambda result: np.full(len(result.x), 0.01234),
+    )
+
+    print_calibration(
+        result,
+        image_size_xy=(1000, 800),
+        fix_cx_cy=True,
+        n_distortion_coefs=0,
+        precision=ReportPrecision(error_significant_digits=0),
+    )
+
+    output = capsys.readouterr().out
+    assert output.count("+/- 0.01234") == len(params)
 
 
 def test_back_projected_point_projects_to_principal_point() -> None:

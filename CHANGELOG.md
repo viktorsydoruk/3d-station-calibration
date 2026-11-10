@@ -77,6 +77,12 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - The Ice archive now writes `camera.errors` with the fitted one-sigma arrays
   instead of `null`, so `calibration_result.yaml` is rounded exactly like the
   folder workflow's `calibration_data.yaml`.
+- The reporting precision is configurable through the optional `[output]` table:
+  `error_significant_digits` (`0` disables the rounding), `nozzle_home_decimals`,
+  `max_value_significant_digits`, and `round_stored_results` (keep the stored
+  YAML/JSON at full `float64` precision while only the console is rounded).
+  Defaults reproduce the previous behaviour, and a config file without `[output]`
+  keeps working unchanged.
 
 ## [2026.11.10.0] - 2026-11-10
 

@@ -306,6 +306,28 @@ Because the diagnostic conditions on the original inlier set and keeps robot
 positions fixed, it reports measurement-noise uncertainty rather than robot or
 model error. See [Home and Nozzle](Home-and-Nozzle#nozzle-home-uncertainty).
 
+## `[output]`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `error_significant_digits` | `2` | Significant digits kept from a one-sigma estimate; `0` disables the rounding |
+| `max_value_significant_digits` | `8` | Hard ceiling on the significant digits of a reported value |
+| `nozzle_home_decimals` | `3` | Decimals of the nozzle and sphere home positions (`3` = 1 µm); `0`–`12` |
+| `round_stored_results` | `true` | Apply the rule to the stored YAML/JSON files; `false` keeps them at full float precision and rounds only the console |
+
+The value matched to an uncertainty is rounded to the same decimal place as that
+uncertainty, following the usual measurement-reporting convention. Values without
+a usable one-sigma (missing, `0`, `nan`) are written at full precision.
+`error_significant_digits` is the main knob: `1` gives a terser table, `3` keeps
+more of the estimate, `0` writes everything. `max_value_significant_digits`
+exists so a collapsed covariance cannot push meaningless digits into a value; an
+uncertainty below that resolution keeps its own digits instead of rounding to
+zero. Set `round_stored_results = false` when downstream software should receive
+the raw `float64` values and only the console output should be tidy.
+
+The whole table is optional: a config file without `[output]` uses the defaults
+above.
+
 ## Example
 
 ```toml
@@ -353,6 +375,12 @@ enabled = true
 n_bootstrap = 500
 seed = 0
 report_filename = "nozzle_uncertainty.json"
+
+[output]
+error_significant_digits = 2
+max_value_significant_digits = 8
+nozzle_home_decimals = 3
+round_stored_results = true
 ```
 
 ## Validation errors

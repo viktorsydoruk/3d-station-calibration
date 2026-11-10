@@ -21,14 +21,15 @@ import numpy as np
 import yaml
 
 from ..atomic import atomic_write_text
-from ..support import reported, reported_error
+from ..support import (
+    DEFAULT_REPORT_PRECISION,
+    NOZZLE_HOME_DECIMALS,
+    ReportPrecision,
+)
 
 
 RESULT_SCHEMA_VERSION = 1
 NOZZLE_UNCERTAINTY_SCHEMA_VERSION = 1
-
-#: The nozzle home position is reported in millimetres with micrometre resolution.
-NOZZLE_HOME_DECIMALS = 3
 
 
 def calibration_document(
@@ -47,26 +48,29 @@ def calibration_document(
     errors: Mapping[str, np.ndarray] | None = None,
     radial_scale: Mapping[str, Any] | None = None,
     session: Mapping[str, Any] | None = None,
+    precision: ReportPrecision = DEFAULT_REPORT_PRECISION,
 ) -> dict[str, Any]:
     """Build the shared YAML/JSON-compatible calibration result document.
 
     Values with a one-sigma estimate are rounded to
-    :data:`~station_calibration.support.ERROR_SIGNIFICANT_DIGITS` significant
-    digits of that uncertainty. The nozzle home position keeps micrometre
-    resolution, and values without an uncertainty are written with their full
-    float precision.
+    ``precision.error_significant_digits`` significant digits of that
+    uncertainty, the nozzle home position keeps ``precision.nozzle_home_decimals``
+    decimals, and values without an uncertainty are written with their full
+    float precision. ``precision.round_stored_results`` switches the whole rule
+    off so the file keeps full float precision.
     """
+    precision = precision.for_storage()
     uncertainties: Mapping[str, Any] = {} if errors is None else errors
 
     intrinsic_values, intrinsic_errors = _paired_values(
-        intrinsic_matrix, uncertainties.get("intrinsic_std")
+        intrinsic_matrix, uncertainties.get("intrinsic_std"), precision
     )
     distortion_values, distortion_errors = _paired_values(
-        distortion_coefficients, uncertainties.get("distortion_std")
+        distortion_coefficients, uncertainties.get("distortion_std"), precision
     )
     extrinsic_array = np.asarray(extrinsic_matrix, dtype=np.float64)
     translation_values, translation_errors = _paired_values(
-        extrinsic_array[:3, 3], uncertainties.get("tra_vec_std")
+        extrinsic_array[:3, 3], uncertainties.get("tra_vec_std"), precision
     )
     # Rotation and translation share one homogeneous matrix, but the fitted
     # one-sigma values describe the rotation vector, not the rotation-matrix
@@ -79,7 +83,7 @@ def calibration_document(
     if errors is not None:
         rounded_errors = {
             "intrinsic_std": intrinsic_errors,
-            "rot_vec_std": _error_list(uncertainties.get("rot_vec_std")),
+            "rot_vec_std": _error_list(uncertainties.get("rot_vec_std"), precision),
             "tra_vec_std": translation_errors,
             "distortion_std": distortion_errors,
         }
@@ -127,7 +131,9 @@ def calibration_document(
         "home_position": (
             None
             if nozzle_home_position is None
-            else _decimals_list(nozzle_home_position, NOZZLE_HOME_DECIMALS)
+            else _decimals_list(
+                nozzle_home_position, precision.nozzle_home_decimals
+            )
         ),
     }
     document["camera"] = camera
@@ -151,7 +157,8 @@ def store_calibration(nozzle_home_position: np.ndarray,
                       observation_count: int | None = None,
                       observations_used: int | None = None,
                       sphere_home_position: np.ndarray | None = None,
-                      radial_scale: Mapping[str, Any] | None = None) -> None:
+                      radial_scale: Mapping[str, Any] | None = None,
+                      precision: ReportPrecision = DEFAULT_REPORT_PRECISION) -> None:
     """Write the folder-workflow calibration result as YAML."""
     document = calibration_document(
         nozzle_home_position=nozzle_home_position,
@@ -172,6 +179,7 @@ def store_calibration(nozzle_home_position: np.ndarray,
             "tra_vec_std": tra_vec_std,
             "distortion_std": distortion_std,
         },
+        precision=precision,
     )
     text = yaml.safe_dump(
         document,
@@ -209,6 +217,7 @@ def _array_list(value: np.ndarray) -> list[Any]:
 def _paired_values(
     values: np.ndarray,
     errors: np.ndarray | None,
+    precision: ReportPrecision,
 ) -> tuple[list[Any], list[Any] | None]:
     """Round values and their one-sigma errors to the same decimal place."""
     array = np.asarray(values, dtype=np.float64)
@@ -222,7 +231,7 @@ def _paired_values(
             f"{array.shape}"
         )
     pairs = [
-        reported(value, error)
+        precision.reported(value, error)
         for value, error in zip(array.ravel(), error_array.ravel())
     ]
     rounded_values = np.array([pair[0] for pair in pairs], dtype=np.float64)
@@ -232,18 +241,23 @@ def _paired_values(
     ).tolist()
 
 
-def _error_list(errors: np.ndarray | None) -> list[Any] | None:
-    """Round a standalone one-sigma array to two significant digits."""
+def _error_list(
+    errors: np.ndarray | None,
+    precision: ReportPrecision,
+) -> list[Any] | None:
+    """Round a standalone one-sigma array to the configured precision."""
     if errors is None:
         return None
     array = np.asarray(errors, dtype=np.float64)
-    rounded = [reported_error(value) for value in array.ravel()]
+    rounded = [precision.reported_error(value) for value in array.ravel()]
     return np.array(rounded, dtype=np.float64).reshape(array.shape).tolist()
 
 
-def _decimals_list(values: np.ndarray, decimals: int) -> list[Any]:
+def _decimals_list(values: np.ndarray, decimals: int | None) -> list[Any]:
     """Round every entry to a fixed number of decimal places."""
     array = np.asarray(values, dtype=np.float64)
+    if decimals is None:
+        return array.tolist()
     rounded = []
     for value in array.ravel():
         entry = round(float(value), decimals)

@@ -308,6 +308,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
                 procedure_id=procedure_id,
                 session_folder=profile.session_dir,
                 config_file=profile.config_file,
+                precision=settings.report_precision,
             )
             if settings.archive_sessions
             else None

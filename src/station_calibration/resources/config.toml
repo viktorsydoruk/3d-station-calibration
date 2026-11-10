@@ -135,3 +135,18 @@ n_bootstrap = 500
 seed = 0
 # sidecar JSON file inside the output folder
 report_filename = "nozzle_uncertainty.json"
+
+[output]
+# significant digits kept from a one-sigma estimate; the matching value is
+# rounded to the same decimal place, following the usual measurement-reporting
+# convention. 0 disables the rounding and reports the full float precision.
+error_significant_digits = 2
+# hard ceiling on the significant digits of a reported value, so a collapsed
+# covariance cannot push meaningless digits into the result; an uncertainty
+# below that resolution keeps its own digits instead of rounding to zero
+max_value_significant_digits = 8
+# decimals of the nozzle and sphere home positions (3 = 1 um); 0..12
+nozzle_home_decimals = 3
+# apply the same rule to the stored YAML/JSON results; false rounds only the
+# console output and keeps the files at full float precision
+round_stored_results = true

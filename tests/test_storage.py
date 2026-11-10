@@ -24,6 +24,7 @@ from station_calibration.storage import (
     store_all_points,
     store_nozzle_uncertainty,
 )
+from station_calibration.support import ReportPrecision
 
 
 def test_point_cache_round_trip_preserves_float64(tmp_path: Path) -> None:
@@ -365,6 +366,89 @@ def test_calibration_document_rejects_mismatched_error_shapes() -> None:
             image_xy=(100, 200),
             errors={"intrinsic_std": np.zeros(4)},
         )
+
+
+def _rounded_document(**overrides) -> dict:
+    arguments = {
+        "nozzle_home_position": np.array([315.487391203948, -1.0e-05, 0.0]),
+        "intrinsic_matrix": np.array(
+            [[14788.043071123456, 0.0, 1250.0]] * 3
+        ),
+        "extrinsic_matrix": np.array(
+            [
+                [1.0, 0.0, 0.0, 315.487391203948],
+                [0.0, 1.0, 0.0, -111.520987654321],
+                [0.0, 0.0, 1.0, -35.572123456789],
+                [0.0, 0.0, 0.0, 1.0],
+            ]
+        ),
+        "distortion_coefficients": np.zeros(1),
+        "image_xy": (100, 200),
+        "errors": {
+            "intrinsic_std": np.full((3, 3), 0.021),
+            "rot_vec_std": np.full(3, 0.00031),
+            "tra_vec_std": np.full(3, 0.021),
+            "distortion_std": np.zeros(1),
+        },
+    }
+    arguments.update(overrides)
+    return calibration_document(**arguments)
+
+
+def test_calibration_document_round_stored_results_keeps_full_precision() -> None:
+    document = _rounded_document(
+        precision=ReportPrecision(round_stored_results=False)
+    )
+
+    camera = document["camera"]
+    assert camera["intrinsic_matrix"][0][0] == 14788.043071123456
+    assert camera["errors"]["intrinsic_std"][0][0] == 0.021
+    assert camera["errors"]["rot_vec_std"][0] == 0.00031
+    assert camera["extrinsic_matrix"][0][3] == 315.487391203948
+    assert document["nozzle"]["home_position"][0] == 315.487391203948
+
+
+def test_calibration_document_disables_rounding_with_zero_digits() -> None:
+    document = _rounded_document(
+        precision=ReportPrecision(error_significant_digits=0)
+    )
+
+    camera = document["camera"]
+    assert camera["intrinsic_matrix"][0][0] == 14788.043071123456
+    assert camera["errors"]["intrinsic_std"][0][0] == 0.021
+    # The fixed-decimal nozzle rule is independent of the sigma rule.
+    assert document["nozzle"]["home_position"][0] == 315.487
+
+
+def test_calibration_document_uses_the_requested_error_digits() -> None:
+    document = _rounded_document(
+        precision=ReportPrecision(error_significant_digits=1)
+    )
+
+    camera = document["camera"]
+    # One significant digit of 0.021 is 0.02, so the value keeps two decimals.
+    assert camera["intrinsic_matrix"][0][0] == pytest.approx(14788.04)
+    assert camera["errors"]["intrinsic_std"][0][0] == pytest.approx(0.02)
+
+
+def test_calibration_document_uses_the_requested_nozzle_decimals() -> None:
+    document = _rounded_document(
+        precision=ReportPrecision(nozzle_home_decimals=6)
+    )
+
+    assert document["nozzle"]["home_position"] == [
+        315.487391,
+        -0.00001,
+        0.0,
+    ]
+
+
+def test_calibration_document_nozzle_decimals_none_keeps_full_precision() -> None:
+    document = _rounded_document(
+        precision=ReportPrecision(nozzle_home_decimals=None)
+    )
+
+    assert document["nozzle"]["home_position"][0] == 315.487391203948
 
 
 def test_store_nozzle_uncertainty_writes_sidecar_json(tmp_path: Path) -> None:

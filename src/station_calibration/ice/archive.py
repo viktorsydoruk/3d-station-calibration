@@ -27,6 +27,7 @@ from .. import __version__
 from ..atomic import atomic_write_text
 from ..calibration import radial_scale_profile
 from ..storage import calibration_document
+from ..support import DEFAULT_REPORT_PRECISION, ReportPrecision
 
 __all__ = ["SessionArchive"]
 
@@ -67,7 +68,8 @@ class SessionArchive:
                  csv_filename: str = CSV_FILENAME,
                  procedure_id: int | None = None,
                  session_folder: str | Path | None = None,
-                 config_file: str | Path | None = None) -> None:
+                 config_file: str | Path | None = None,
+                 precision: ReportPrecision = DEFAULT_REPORT_PRECISION) -> None:
         self.data_folder = Path(data_folder).expanduser()
         self.enabled = bool(enabled)
         self.csv_filename = csv_filename
@@ -80,6 +82,7 @@ class SessionArchive:
         self.config_file = (
             Path(config_file).expanduser() if config_file is not None else None
         )
+        self.precision = precision
         self._session_dir: Path | None = None
         self._csv_file: Any | None = None
         self._csv_writer: Any | None = None
@@ -227,6 +230,7 @@ class SessionArchive:
             radial_scale=radial_scale,
             errors=errors,
             session=session_metadata,
+            precision=self.precision,
         )
         path = self._session_dir / RESULT_FILENAME
         atomic_write_text(

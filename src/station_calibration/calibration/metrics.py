@@ -17,7 +17,12 @@ import cv2
 import numpy as np
 from scipy.optimize import OptimizeResult
 
-from ..support import calculate_errors, format_number, reported
+from ..support import (
+    DEFAULT_REPORT_PRECISION,
+    ReportPrecision,
+    calculate_errors,
+    format_number,
+)
 from .model import get_calibration, params_names
 
 
@@ -257,7 +262,8 @@ def calculate_calibration_errors(result: OptimizeResult,
 def print_calibration(result: OptimizeResult,
                       image_size_xy: tuple = (2500, 2000),
                       fix_cx_cy: bool = False,
-                      n_distortion_coefs: int = 5) -> None:
+                      n_distortion_coefs: int = 5,
+                      precision: ReportPrecision = DEFAULT_REPORT_PRECISION) -> None:
 
     intrinsic_matrix, distortion, rvec, extrinsic_matrix = get_calibration(
         result.x,
@@ -299,7 +305,7 @@ def print_calibration(result: OptimizeResult,
         n_distortion_coefs=n_distortion_coefs
     )
     measurements = [
-        (each_name, reported(each_value, each_err))
+        (each_name, precision.reported(each_value, each_err))
         for each_err, each_value, each_name in zip(
             calculate_errors(result),
             result.x,

@@ -32,7 +32,7 @@ from .sources.folder import (
     observations_to_arrays,
 )
 from .storage import store_calibration, store_nozzle_uncertainty
-from .support import calculate_errors, format_number, reported, reported_error
+from .support import calculate_errors, format_number
 from .uncertainty import bootstrap_nozzle_home
 
 
@@ -60,6 +60,7 @@ def _write_nozzle_uncertainty_report(
     if not settings.uncertainty_enabled:
         return None
 
+    precision = settings.report_precision
     try:
         bootstrap = bootstrap_nozzle_home(
             fit_observations,
@@ -89,12 +90,12 @@ def _write_nozzle_uncertainty_report(
             ).tolist(),
             "sphere_diameter_mm": float(sphere_diameter_mm),
             "nozzle_home_position": [
-                reported(value, error)[0]
+                precision.reported(value, error)[0]
                 for value, error in zip(nozzle_home, bootstrap_std)
             ],
         }
         report_path = store_nozzle_uncertainty(
-            report=bootstrap.as_dict(),
+            report=bootstrap.as_dict(precision=precision),
             output_folder=settings.output_folder,
             filename=settings.uncertainty_report_filename,
             metadata=metadata,
@@ -113,8 +114,8 @@ def _write_nozzle_uncertainty_report(
         )
     print(
         "Nozzle uncertainty (1 sigma): "
-        f"std = [{', '.join(format_number(reported_error(value)) for value in bootstrap.std)}] mm, "
-        f"norm = {format_number(reported_error(bootstrap.norm_std))} mm; "
+        f"std = [{', '.join(format_number(precision.reported_error(value)) for value in bootstrap.std)}] mm, "
+        f"norm = {format_number(precision.reported_error(bootstrap.norm_std))} mm; "
         f"report: {report_path}"
     )
     return report_path
@@ -237,6 +238,7 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
             observations_used=result.n_used,
             sphere_home_position=pos_home,
             radial_scale=radial_scale,
+            precision=settings.report_precision,
         )
 
         _write_nozzle_uncertainty_report(
@@ -251,11 +253,18 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
         if settings.debug:
             from .plots import visualize_results
 
+            position_decimals = settings.report_precision.nozzle_home_decimals
+            if position_decimals is None:
+                position_decimals = 3
             print_debug(
-                f"Sphere center home position: {_format_position(pos_home)} mm, "
+                f"Sphere center home position: "
+                f"{_format_position(pos_home, decimals=position_decimals)} mm, "
                 f"estimated sphere diameter: {sphere_diam_mm: 0.3f} mm"
             )
-            print_debug(f"Nozzle center home position: {_format_position(nozzle_end_home_pos)} mm")
+            print_debug(
+                "Nozzle center home position: "
+                f"{_format_position(nozzle_end_home_pos, decimals=position_decimals)} mm"
+            )
 
             closest_image_arg = int(np.argmin(np.sqrt(np.sum((inlier_robot_positions-nozzle_end_home_pos[None, :])**2, axis=1))))
 
@@ -264,7 +273,8 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
                 optimize_result,
                 image_size_xy=image_size_xy,
                 fix_cx_cy=settings.fix_cx_cy,
-                n_distortion_coefs=n_dist_coef
+                n_distortion_coefs=n_dist_coef,
+                precision=settings.report_precision,
             )
             if radial_scale is not None:
                 print_debug(

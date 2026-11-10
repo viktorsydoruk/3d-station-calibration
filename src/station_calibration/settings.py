@@ -34,6 +34,12 @@ from .readiness import (
     DEFAULT_READINESS_TRANSLATION_TOLERANCE_MM,
 )
 from .stop import DEFAULT_TARGET_OBSERVATIONS
+from .support import (
+    ERROR_SIGNIFICANT_DIGITS,
+    MAX_VALUE_SIGNIFICANT_DIGITS,
+    NOZZLE_HOME_DECIMALS,
+    ReportPrecision,
+)
 
 
 _MISSING = object()
@@ -112,6 +118,11 @@ class PossibleOptions(TypedDict, total=False):
     uncertainty_seed: int
     uncertainty_report_filename: str | Path
 
+    error_significant_digits: int
+    max_value_significant_digits: int
+    nozzle_home_decimals: int
+    round_stored_results: bool
+
 
 class Settings:
     """
@@ -175,6 +186,7 @@ class Settings:
     uncertainty_n_bootstrap: int
     uncertainty_seed: int
     uncertainty_report_filename: str
+    report_precision: ReportPrecision
 
     def __init__(self,
                  folder_to_analyze: str | Path,
@@ -212,6 +224,7 @@ class Settings:
         self._init_stop()
         self._init_readiness()
         self._init_uncertainty()
+        self._init_output()
 
     # -----------------------------------------------------------------
     # Initialization helpers
@@ -706,6 +719,48 @@ class Settings:
                 "uncertainty_seed must be non-negative, got "
                 f"{self.uncertainty_seed}"
             )
+
+    def _init_output(self) -> None:
+        output = self.config.get("output", {})
+        if not isinstance(output, dict):
+            raise TypeError(
+                f"Config section '[output]' in {self.config_file_path} is not a table"
+            )
+
+        self.report_precision = ReportPrecision(
+            error_significant_digits=int(
+                self._get(
+                    output,
+                    "error_significant_digits",
+                    ERROR_SIGNIFICANT_DIGITS,
+                    override="error_significant_digits",
+                )
+            ),
+            max_value_significant_digits=int(
+                self._get(
+                    output,
+                    "max_value_significant_digits",
+                    MAX_VALUE_SIGNIFICANT_DIGITS,
+                    override="max_value_significant_digits",
+                )
+            ),
+            nozzle_home_decimals=int(
+                self._get(
+                    output,
+                    "nozzle_home_decimals",
+                    NOZZLE_HOME_DECIMALS,
+                    override="nozzle_home_decimals",
+                )
+            ),
+            round_stored_results=bool(
+                self._get(
+                    output,
+                    "round_stored_results",
+                    True,
+                    override="round_stored_results",
+                )
+            ),
+        )
 
     # -----------------------------------------------------------------
     # Properties with validation/transformation

@@ -263,6 +263,66 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
     assert settings.uncertainty_seed == 0
 
 
+def test_output_precision_defaults_when_section_is_missing(
+    context: ConfigContext,
+) -> None:
+    settings = context.make()
+
+    precision = settings.report_precision
+    assert precision.error_significant_digits == 2
+    assert precision.max_value_significant_digits == 8
+    assert precision.nozzle_home_decimals == 3
+    assert precision.round_stored_results is True
+
+
+def test_output_precision_reads_config_and_overrides(
+    context: ConfigContext,
+) -> None:
+    context.config["output"] = {
+        "error_significant_digits": 3,
+        "max_value_significant_digits": 10,
+        "nozzle_home_decimals": 6,
+        "round_stored_results": False,
+    }
+    context.write()
+
+    precision = context.make().report_precision
+    assert precision.error_significant_digits == 3
+    assert precision.max_value_significant_digits == 10
+    assert precision.nozzle_home_decimals == 6
+    assert precision.round_stored_results is False
+
+    overridden = context.make(
+        error_significant_digits=1,
+        nozzle_home_decimals=0,
+        round_stored_results=True,
+    ).report_precision
+    assert overridden.error_significant_digits == 1
+    assert overridden.nozzle_home_decimals == 0
+    assert overridden.round_stored_results is True
+
+
+def test_invalid_output_precision_raises(context: ConfigContext) -> None:
+    context.config["output"] = {"error_significant_digits": -1}
+    context.write()
+
+    with pytest.raises(ValueError, match="error_significant_digits"):
+        context.make()
+
+
+def test_non_table_output_section_raises_clear_error(
+    context: ConfigContext,
+) -> None:
+    context.config_file.write_text(
+        "output = 1\n\n"
+        + context.config_file.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=r"\[output\]"):
+        context.make()
+
+
 def test_loads_uncertainty_settings_and_overrides(context: ConfigContext) -> None:
     context.config["analysis.uncertainty"] = {
         "enabled": True,

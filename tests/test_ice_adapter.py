@@ -28,6 +28,7 @@ from station_calibration.ice.archive import (  # noqa: E402
     TIFF_COMPRESSION,
     SessionArchive,
 )
+from station_calibration.support import ReportPrecision  # noqa: E402
 from station_calibration.ice import server as ice_server  # noqa: E402
 import station_calibration.ice.client as client_module  # noqa: E402
 from station_calibration.ice.client import CalibrationIceClient  # noqa: E402
@@ -357,10 +358,8 @@ def test_adapter_archives_session_images_csv_and_result(
     assert metadata["session"]["config_file"] == str(session / "config.toml")
 
 
-def test_session_archive_writes_supplied_errors(tmp_path) -> None:
-    archive = SessionArchive(tmp_path)
-    archive.start()
-    result = SimpleNamespace(
+def _archive_result() -> SimpleNamespace:
+    return SimpleNamespace(
         intrinsic_matrix=np.array(
             [
                 [14788.043071123456, 0.0, 1250.0],
@@ -385,21 +384,27 @@ def test_session_archive_writes_supplied_errors(tmp_path) -> None:
         rmse=0.213456789,
     )
 
-    archive.write_result(
-        result,
-        errors={
-            "intrinsic_std": np.array(
-                [
-                    [0.123, 0.0, 0.08],
-                    [0.0, 0.13, 0.09],
-                    [0.0, 0.0, 0.0],
-                ]
-            ),
-            "rot_vec_std": np.array([0.00031, 0.00028, 0.00041]),
-            "tra_vec_std": np.array([0.021, 0.023, 0.019]),
-            "distortion_std": np.zeros(14),
-        },
-    )
+
+def _archive_errors() -> dict[str, np.ndarray]:
+    return {
+        "intrinsic_std": np.array(
+            [
+                [0.123, 0.0, 0.08],
+                [0.0, 0.13, 0.09],
+                [0.0, 0.0, 0.0],
+            ]
+        ),
+        "rot_vec_std": np.array([0.00031, 0.00028, 0.00041]),
+        "tra_vec_std": np.array([0.021, 0.023, 0.019]),
+        "distortion_std": np.zeros(14),
+    }
+
+
+def test_session_archive_writes_supplied_errors(tmp_path) -> None:
+    archive = SessionArchive(tmp_path)
+    archive.start()
+
+    archive.write_result(_archive_result(), errors=_archive_errors())
 
     document = yaml.safe_load(
         (tmp_path / "calibration_result.yaml").read_text(encoding="utf-8")
@@ -414,6 +419,24 @@ def test_session_archive_writes_supplied_errors(tmp_path) -> None:
     # Without an uncertainty the rotation block keeps full precision.
     assert camera["extrinsic_matrix"][0][0] == 1.0
     assert document["nozzle"]["home_position"] is None
+
+
+def test_session_archive_follows_the_requested_precision(tmp_path) -> None:
+    archive = SessionArchive(
+        tmp_path,
+        precision=ReportPrecision(round_stored_results=False),
+    )
+    archive.start()
+
+    archive.write_result(_archive_result(), errors=_archive_errors())
+
+    document = yaml.safe_load(
+        (tmp_path / "calibration_result.yaml").read_text(encoding="utf-8")
+    )
+    camera = document["camera"]
+    assert camera["intrinsic_matrix"][0][0] == 14788.043071123456
+    assert camera["errors"]["intrinsic_std"][0][0] == 0.123
+    assert camera["extrinsic_matrix"][0][3] == 315.487391203948
 
 
 @pytest.mark.parametrize(

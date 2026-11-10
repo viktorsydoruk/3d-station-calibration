@@ -3,6 +3,9 @@
 
 """Support functions"""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 import math
 from typing import overload
 
@@ -10,10 +13,12 @@ import numpy as np
 from scipy.optimize import OptimizeResult
 
 
-#: One-sigma uncertainties are reported with this many significant digits.
+#: Default significant digits kept from a one-sigma estimate.
 ERROR_SIGNIFICANT_DIGITS = 2
-#: A reported value never keeps more significant digits than this.
+#: Default ceiling on the significant digits of a reported value.
 MAX_VALUE_SIGNIFICANT_DIGITS = 8
+#: Default decimals of the nozzle home position (3 = 1 um).
+NOZZLE_HOME_DECIMALS = 3
 
 
 def find_proper_args_to_compare(robot_positions: np.ndarray,
@@ -110,23 +115,120 @@ def calculate_errors(result: OptimizeResult) -> np.ndarray:
     return np.sqrt(variances)
 
 
-def _decimal_place(sigma: float) -> int | None:
-    """Return the ``round`` decimal place implied by a two-digit sigma."""
-    if not math.isfinite(sigma) or sigma <= 0.0:
-        return None
-    return (ERROR_SIGNIFICANT_DIGITS - 1) - math.floor(math.log10(sigma))
-
-
 def _positive_zero(value: float) -> float:
     """Normalise ``-0.0`` to ``0.0`` so the serialized output has one zero."""
     return 0.0 if value == 0.0 else value
 
 
-def _value_place(value: float) -> int | None:
-    """Return the ``round`` place that keeps the value's leading digits."""
-    if value == 0.0:
-        return None
-    return (MAX_VALUE_SIGNIFICANT_DIGITS - 1) - math.floor(math.log10(abs(value)))
+@dataclass(frozen=True)
+class ReportPrecision:
+    """How many digits a reported or stored result keeps.
+
+    ``error_significant_digits`` is the number of significant digits kept from a
+    one-sigma estimate; the matching value is rounded to the same decimal place.
+    ``0`` disables the rounding and reports the full float precision.
+    ``max_value_significant_digits`` caps the digits a value keeps, so a
+    collapsed covariance cannot push meaningless digits into the result.
+    ``nozzle_home_decimals`` fixes the decimals of the nozzle home position;
+    ``None`` keeps full precision. ``round_stored_results`` decides whether the
+    YAML/JSON artifacts follow the rule or keep full precision while only the
+    console is rounded.
+    """
+
+    error_significant_digits: int = ERROR_SIGNIFICANT_DIGITS
+    max_value_significant_digits: int = MAX_VALUE_SIGNIFICANT_DIGITS
+    nozzle_home_decimals: int | None = NOZZLE_HOME_DECIMALS
+    round_stored_results: bool = True
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.error_significant_digits <= 15:
+            raise ValueError(
+                "error_significant_digits must be between 0 and 15, got "
+                f"{self.error_significant_digits}"
+            )
+        if self.max_value_significant_digits < 1:
+            raise ValueError(
+                "max_value_significant_digits must be at least 1, got "
+                f"{self.max_value_significant_digits}"
+            )
+        decimals = self.nozzle_home_decimals
+        if decimals is not None and not 0 <= decimals <= 12:
+            raise ValueError(
+                "nozzle_home_decimals must be between 0 and 12 or None, got "
+                f"{decimals}"
+            )
+
+    @property
+    def rounds_values(self) -> bool:
+        """Whether any reported value is rounded."""
+        return self.error_significant_digits > 0
+
+    def for_storage(self) -> ReportPrecision:
+        """Return the precision to apply to a stored result document."""
+        return self if self.round_stored_results else NO_ROUNDING
+
+    def decimal_place(self, sigma: float) -> int | None:
+        """Return the ``round`` decimal place implied by a one-sigma."""
+        if not self.rounds_values:
+            return None
+        if not math.isfinite(sigma) or sigma <= 0.0:
+            return None
+        return (self.error_significant_digits - 1) - math.floor(math.log10(sigma))
+
+    def value_place(self, value: float) -> int | None:
+        """Return the ``round`` place that keeps the value's leading digits."""
+        if not self.rounds_values or value == 0.0:
+            return None
+        return (self.max_value_significant_digits - 1) - math.floor(
+            math.log10(abs(value))
+        )
+
+    @overload
+    def reported(self, value: float, sigma: float) -> tuple[float, float]: ...
+
+    @overload
+    def reported(self, value: float, sigma: None) -> tuple[float, None]: ...
+
+    def reported(self, value: float, sigma: float | None) -> tuple[float, float | None]:
+        """Round a measurement and its one-sigma to the same decimal place.
+
+        Values whose uncertainty is missing, ``nan``, or ``0`` are returned
+        unchanged: they carry no uncertainty information, so rounding them would
+        claim precision that was never estimated.
+        """
+        value = float(value)
+        if sigma is None:
+            return value, None
+
+        sigma = float(sigma)
+        place = self.decimal_place(sigma)
+        if place is None or not math.isfinite(value):
+            return value, sigma
+
+        limit = self.value_place(value)
+        value_place = place if limit is None else min(place, limit)
+        return (
+            _positive_zero(round(value, value_place)),
+            _positive_zero(round(sigma, place)),
+        )
+
+    def reported_error(self, sigma: float) -> float:
+        """Round a one-sigma that has no matching value in the report."""
+        sigma = float(sigma)
+        place = self.decimal_place(sigma)
+        if place is None:
+            return sigma
+        return _positive_zero(round(sigma, place))
+
+
+#: Precision used when no caller supplies an explicit :class:`ReportPrecision`.
+DEFAULT_REPORT_PRECISION = ReportPrecision()
+#: Precision that keeps every stored value at full float precision.
+NO_ROUNDING = ReportPrecision(
+    error_significant_digits=0,
+    nozzle_home_decimals=None,
+    round_stored_results=False,
+)
 
 
 @overload
@@ -138,44 +240,18 @@ def reported(value: float, sigma: None) -> tuple[float, None]: ...
 
 
 def reported(value: float, sigma: float | None) -> tuple[float, float | None]:
-    """Round a measurement and its one-sigma to the same decimal place.
+    """Round a measurement and its one-sigma with the default precision.
 
-    The uncertainty keeps :data:`ERROR_SIGNIFICANT_DIGITS` significant digits
-    and the value is rounded to the last digit of that uncertainty, following
-    the usual measurement-reporting convention. Values whose uncertainty is
-    missing, ``nan``, or ``0`` are returned unchanged: they carry no
-    uncertainty information, so rounding them would claim precision that was
-    never estimated.
-
-    A value keeps at most :data:`MAX_VALUE_SIGNIFICANT_DIGITS` significant
-    digits. An uncertainty below that resolution keeps its own two digits
-    instead of collapsing to zero, which flags a covariance that is smaller
-    than the value can meaningfully resolve.
+    See :meth:`ReportPrecision.reported` for the rule. Callers that expose a
+    configuration (the CLI and the Ice servant) should use their own
+    :class:`ReportPrecision` instead of this module-level default.
     """
-    value = float(value)
-    if sigma is None:
-        return value, None
-
-    sigma = float(sigma)
-    place = _decimal_place(sigma)
-    if place is None or not math.isfinite(value):
-        return value, sigma
-
-    limit = _value_place(value)
-    value_place = place if limit is None else min(place, limit)
-    return (
-        _positive_zero(round(value, value_place)),
-        _positive_zero(round(sigma, place)),
-    )
+    return DEFAULT_REPORT_PRECISION.reported(value, sigma)
 
 
 def reported_error(sigma: float) -> float:
-    """Round a one-sigma that has no matching value in the report."""
-    sigma = float(sigma)
-    place = _decimal_place(sigma)
-    if place is None:
-        return sigma
-    return _positive_zero(round(sigma, place))
+    """Round a standalone one-sigma with the default precision."""
+    return DEFAULT_REPORT_PRECISION.reported_error(sigma)
 
 
 def format_number(value: float) -> str:

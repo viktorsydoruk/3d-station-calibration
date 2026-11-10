@@ -12,6 +12,8 @@ from scipy.optimize import OptimizeResult
 from station_calibration.support import (
     ERROR_SIGNIFICANT_DIGITS,
     MAX_VALUE_SIGNIFICANT_DIGITS,
+    NOZZLE_HOME_DECIMALS,
+    ReportPrecision,
     calculate_errors,
     find_proper_args_to_compare,
     fit_line_general_form,
@@ -173,6 +175,60 @@ def test_reported_caps_the_value_at_eight_significant_digits() -> None:
 def test_reported_significant_digit_limits() -> None:
     assert ERROR_SIGNIFICANT_DIGITS == 2
     assert MAX_VALUE_SIGNIFICANT_DIGITS == 8
+
+
+def test_report_precision_defaults_match_the_module_constants() -> None:
+    precision = ReportPrecision()
+
+    assert precision.error_significant_digits == ERROR_SIGNIFICANT_DIGITS
+    assert precision.max_value_significant_digits == MAX_VALUE_SIGNIFICANT_DIGITS
+    assert precision.nozzle_home_decimals == NOZZLE_HOME_DECIMALS
+    assert precision.round_stored_results is True
+
+
+def test_report_precision_rounds_with_its_own_digit_count() -> None:
+    precision = ReportPrecision(error_significant_digits=1)
+
+    value, error = precision.reported(315.487391203948, 0.021)
+
+    assert value == pytest.approx(315.49)
+    assert error == pytest.approx(0.02)
+
+
+def test_report_precision_zero_digits_keeps_full_precision() -> None:
+    precision = ReportPrecision(error_significant_digits=0)
+
+    assert precision.reported(315.487391203948, 0.021) == (
+        315.487391203948,
+        0.021,
+    )
+    assert precision.reported_error(0.0003141592653) == 0.0003141592653
+
+
+def test_report_precision_for_storage_disables_every_rounding() -> None:
+    precision = ReportPrecision()
+    assert precision.for_storage() is precision
+
+    storage = ReportPrecision(round_stored_results=False).for_storage()
+
+    assert storage.rounds_values is False
+    assert storage.nozzle_home_decimals is None
+    assert storage.reported(315.487391203948, 0.021)[0] == 315.487391203948
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"error_significant_digits": -1},
+        {"error_significant_digits": 16},
+        {"max_value_significant_digits": 0},
+        {"nozzle_home_decimals": -1},
+        {"nozzle_home_decimals": 13},
+    ],
+)
+def test_report_precision_rejects_out_of_range_values(kwargs) -> None:
+    with pytest.raises(ValueError):
+        ReportPrecision(**kwargs)
 
 
 def test_reported_error_rounds_standalone_sigmas() -> None:

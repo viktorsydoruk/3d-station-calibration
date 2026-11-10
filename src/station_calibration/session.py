@@ -282,7 +282,19 @@ class CalibrationSession:
                 dtype=np.float64,
             )
 
-        return np.flatnonzero(~get_radius_outlier_mask(radii, sigmas))
+        reference_radii = np.array(
+            [
+                observation.binary_radius
+                if observation.binary_radius is not None
+                else observation.radius
+                for observation in self._observations
+            ],
+            dtype=np.float64,
+        )
+
+        return np.flatnonzero(
+            ~get_radius_outlier_mask(radii, sigmas, reference_radii)
+        )
 
     @property
     def can_auto_fit(self) -> bool:
@@ -499,6 +511,7 @@ class CalibrationSession:
             image_shape=analysis.image_shape,
             source=source,
             center_covariance=analysis.observation.center_covariance,
+            binary_radius=analysis.observation.binary_radius,
         )
         return self.add_observation(observation, fit=fit)
 

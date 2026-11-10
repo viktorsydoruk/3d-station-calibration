@@ -141,6 +141,7 @@ def _make_observation(
     image_shape: tuple[int, int],
     source: str | None,
     center_covariance: np.ndarray | None = None,
+    binary_radius: float | None = None,
 ) -> CalibrationObservation:
     return CalibrationObservation(
         robot_position=robot_position,
@@ -151,6 +152,7 @@ def _make_observation(
         image_shape=image_shape,
         source=source,
         center_covariance=center_covariance,
+        binary_radius=binary_radius,
     )
 
 
@@ -178,6 +180,7 @@ def _observations_from_rows(
     valid_mask: np.ndarray,
     source_names: Sequence[str] | None = None,
     center_covariances: np.ndarray | None = None,
+    binary_radii: np.ndarray | None = None,
 ) -> tuple[CalibrationObservation, ...]:
     observations = []
     for index in np.flatnonzero(valid_mask):
@@ -191,6 +194,9 @@ def _observations_from_rows(
             and np.all(np.isfinite(center_covariances[index]))
         ):
             covariance = center_covariances[index]
+        binary_radius = None
+        if binary_radii is not None and np.isfinite(binary_radii[index]):
+            binary_radius = float(binary_radii[index])
         observations.append(
             _make_observation(
                 robot_position=robot_positions[index],
@@ -201,6 +207,7 @@ def _observations_from_rows(
                 image_shape=image_shape,
                 source=source,
                 center_covariance=covariance,
+                binary_radius=binary_radius,
             )
         )
     return tuple(observations)
@@ -214,9 +221,19 @@ def _without_radius_outliers(
     if not observations:
         return ()
 
+    reference_radii = np.asarray(
+        [
+            observation.binary_radius
+            if observation.binary_radius is not None
+            else observation.radius
+            for observation in observations
+        ],
+        dtype=np.float64,
+    )
     outlier_mask = get_radius_outlier_mask(
         np.asarray(radii, dtype=np.float64),
         np.asarray(sigmas, dtype=np.float64),
+        reference_radii,
     )
     return tuple(
         observation
@@ -359,6 +376,7 @@ class FolderCalibrationSource:
         radii = np.full(n_images, np.nan, dtype=np.float64)
         sigmas = np.full(n_images, np.nan, dtype=np.float64)
         center_covariances = np.full((n_images, 2, 2), np.nan, dtype=np.float64)
+        binary_radii = np.full(n_images, np.nan, dtype=np.float64)
         image_sizes = np.empty((n_images, 2), dtype=np.float64)
         directions = np.empty(n_images, dtype=np.int8)
 
@@ -373,6 +391,8 @@ class FolderCalibrationSource:
                     center_covariances[index] = (
                         analysis.observation.center_covariance
                     )
+                if analysis.observation.binary_radius is not None:
+                    binary_radii[index] = analysis.observation.binary_radius
 
         # Preserve the folder cache: radius outliers are stored as NaN, even though
         # the session receives the raw observations and applies the same filter.
@@ -385,6 +405,7 @@ class FolderCalibrationSource:
             storage_radii,
             print_debug=self.print_debug,
             debug_folder=self.settings.debug_folder,
+            reference_radii=binary_radii,
         )
         store_all_points(
             self.settings.all_center_points_file,
@@ -415,6 +436,7 @@ class FolderCalibrationSource:
             valid_mask,
             source_names=[str(filename) for filename in image_filenames],
             center_covariances=center_covariances,
+            binary_radii=binary_radii,
         )
         fit_observations = _without_radius_outliers(
             observations,

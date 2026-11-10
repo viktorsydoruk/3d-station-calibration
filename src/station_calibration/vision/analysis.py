@@ -102,16 +102,43 @@ def analyze_image(image_gray: np.ndarray,
     # getting foreground mask for the nozzle with a ball only (removing the other islands)
     forground_mask = get_forground_mask(image_gray, bg_thr)
 
-    # searching the sphere on the foreground mask
-    sphere_params = find_the_sphere_on_mask(
-        forground_mask,
-        n_mov_aver=n_mov_aver,
-        sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
-        direction=direction,
-        min_bg_pixels_on_edges=min_bg_pixels_on_edges,
-        return_covariance=estimate_center_covariance,
-        image_gray=image_gray if subpixel_edges else None,
-    )
+    # searching the sphere on the foreground mask. Keep the binary-mask radius
+    # as a method-independent reference for the radius outlier filter; sub-pixel
+    # radii are systematically smaller and would otherwise make the same
+    # high-radius frames look like outliers.
+    binary_radius: float | None = None
+    if subpixel_edges:
+        binary_params = find_the_sphere_on_mask(
+            forground_mask,
+            n_mov_aver=n_mov_aver,
+            sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
+            direction=direction,
+            min_bg_pixels_on_edges=min_bg_pixels_on_edges,
+            return_covariance=False,
+            image_gray=None,
+        )
+        if binary_params is None:
+            return rejected("sphere is not found or out of FOV")
+        binary_radius = float(binary_params[2])
+        sphere_params = find_the_sphere_on_mask(
+            forground_mask,
+            n_mov_aver=n_mov_aver,
+            sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
+            direction=direction,
+            min_bg_pixels_on_edges=min_bg_pixels_on_edges,
+            return_covariance=estimate_center_covariance,
+            image_gray=image_gray,
+        )
+    else:
+        sphere_params = find_the_sphere_on_mask(
+            forground_mask,
+            n_mov_aver=n_mov_aver,
+            sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
+            direction=direction,
+            min_bg_pixels_on_edges=min_bg_pixels_on_edges,
+            return_covariance=estimate_center_covariance,
+            image_gray=None,
+        )
 
     if sphere_params is None:
         return rejected("sphere is not found or out of FOV")
@@ -160,6 +187,7 @@ def analyze_image(image_gray: np.ndarray,
             radius,
             sigma,
             center_covariance=center_covariance,
+            binary_radius=binary_radius,
         ),
         direction,
         image_shape,
@@ -184,11 +212,29 @@ def analyze_image_bytes(image_bytes: bytes, **kwargs) -> ImageAnalysisResult:
 
 
 def get_radius_outlier_mask(radii: np.ndarray,
-                            sigmas: np.ndarray) -> np.ndarray:
-    """Return a mask of radii that are outside 2.5 standard deviations."""
-    std_radii = np.nanstd(radii)
-    mean_radius = np.nanmean(radii)
-    return (np.abs(radii - mean_radius) > 2.5*std_radii) & (~np.isnan(sigmas))
+                            sigmas: np.ndarray,
+                            reference_radii: np.ndarray | None = None) -> np.ndarray:
+    """Return a mask of radii that are outside 2.5 standard deviations.
+
+    ``reference_radii`` lets the outlier decision use a method-independent
+    radius, such as the binary-mask radius when the fitted radius is sub-pixel.
+    The returned mask still follows the shape of ``radii`` and the validity of
+    ``sigmas``.
+    """
+    filter_radii = np.asarray(radii, dtype=np.float64).copy()
+    if reference_radii is not None:
+        reference = np.asarray(reference_radii, dtype=np.float64)
+        if reference.shape != filter_radii.shape:
+            raise ValueError(
+                "reference_radii must have the same shape as radii, got "
+                f"{reference.shape} vs {filter_radii.shape}"
+            )
+        valid_reference = np.isfinite(reference)
+        filter_radii[valid_reference] = reference[valid_reference]
+
+    std_radii = np.nanstd(filter_radii)
+    mean_radius = np.nanmean(filter_radii)
+    return (np.abs(filter_radii - mean_radius) > 2.5*std_radii) & (~np.isnan(sigmas))
 
 
 def filtering_data_by_radius(image_filenames: list[Path],
@@ -196,7 +242,8 @@ def filtering_data_by_radius(image_filenames: list[Path],
                              sigmas: np.ndarray,
                              radii: np.ndarray,
                              print_debug: DebugInfo = DebugInfo(),
-                             debug_folder: Path | None = None) -> None:
+                             debug_folder: Path | None = None,
+                             reference_radii: np.ndarray | None = None) -> None:
     """
         Filtering data by radius. If estimated sphere radius is out of statistics the values are replaced with np.nan
     :param image_filenames:
@@ -205,10 +252,11 @@ def filtering_data_by_radius(image_filenames: list[Path],
     :param radii:
     :param print_debug:
     :param debug_folder:
+    :param reference_radii: optional method-independent radii used for the outlier decision
     :return:
     """
     # filtering by radius
-    bad_mask = get_radius_outlier_mask(radii, sigmas)
+    bad_mask = get_radius_outlier_mask(radii, sigmas, reference_radii)
     if print_debug.debug and debug_folder is not None:
         for each_arg_bad_est in np.arange(len(radii))[bad_mask]:
             try:

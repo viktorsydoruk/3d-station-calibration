@@ -91,6 +91,7 @@ class CalibrationObservation:
     image_shape: tuple[int, int]
     source: str | None = None
     center_covariance: np.ndarray | None = None
+    binary_radius: float | None = None
 
     def __post_init__(self) -> None:
         robot_position = np.array(self.robot_position, dtype=np.float64, copy=True)

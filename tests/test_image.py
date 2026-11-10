@@ -18,6 +18,7 @@ from station_calibration.vision import (
     analyze_image_array,
     analyze_image_bytes,
     decode_image,
+    get_radius_outlier_mask,
     get_sphere_centers_and_blur_sigmas,
     load_image,
     split_image,
@@ -203,6 +204,8 @@ def test_analyze_image_subpixel_edges_improve_radius() -> None:
     assert abs(subpixel.radius - SYNTHETIC_RADIUS) < 1.0
     assert abs(subpixel.x - SYNTHETIC_CENTER[0]) < 0.5
     assert abs(subpixel.y - SYNTHETIC_CENTER[1]) < 0.5
+    assert integer.binary_radius is None
+    assert subpixel.binary_radius == pytest.approx(integer.radius, abs=0.1)
 
 
 def test_analyze_image_bytes_extracts_synthetic_sphere() -> None:
@@ -523,3 +526,46 @@ def test_decode_image_rejects_empty_and_invalid_bytes() -> None:
         decode_image(b"")
     with pytest.raises(ValueError, match="Could not decode image bytes"):
         decode_image(b"not an image")
+
+
+def test_radius_outlier_mask_can_use_a_method_independent_reference() -> None:
+    radii = np.array([150.0] * 10 + [170.0])
+    sigmas = np.ones_like(radii)
+    reference_radii = np.full_like(radii, 159.0)
+
+    assert bool(get_radius_outlier_mask(radii, sigmas)[-1])
+    assert not bool(get_radius_outlier_mask(radii, sigmas, reference_radii).any())
+
+
+def test_radius_outlier_mask_rejects_mismatched_reference_shape() -> None:
+    radii = np.array([150.0, 151.0])
+    sigmas = np.ones_like(radii)
+
+    with pytest.raises(ValueError, match="same shape"):
+        get_radius_outlier_mask(radii, sigmas, np.array([150.0]))
+
+
+def test_storage_radius_filter_can_use_a_reference() -> None:
+    centers = np.zeros((11, 2))
+
+    radii = np.array([150.0] * 10 + [170.0])
+    sigmas = np.ones_like(radii)
+    image_module.filtering_data_by_radius(
+        [],
+        centers,
+        sigmas,
+        radii,
+    )
+    assert np.isnan(radii[-1])
+
+    radii = np.array([150.0] * 10 + [170.0])
+    sigmas = np.ones_like(radii)
+    image_module.filtering_data_by_radius(
+        [],
+        centers,
+        sigmas,
+        radii,
+        reference_radii=np.full_like(radii, 159.0),
+    )
+    assert np.isfinite(radii).all()
+    assert np.isfinite(sigmas).all()

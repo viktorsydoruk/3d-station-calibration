@@ -60,6 +60,7 @@ def _observation(
     direction: int = 1,
     image_shape: tuple[int, int] = (2048, 2448),
     center_covariance: np.ndarray | None = None,
+    binary_radius: float | None = None,
 ) -> CalibrationObservation:
     return CalibrationObservation(
         robot_position=np.array([float(index), float(index % 7), 20.0 + float(index)]),
@@ -70,6 +71,7 @@ def _observation(
         image_shape=image_shape,
         source=f"image-{index}",
         center_covariance=center_covariance,
+        binary_radius=binary_radius,
     )
 
 
@@ -313,6 +315,29 @@ def test_session_applies_radius_filter_without_dropping_data(
     assert session.observations[-1].radius == 1000.0
     assert len(session.fit_observations) == 14
     assert len(session.used_observations) == 14
+
+
+def test_session_radius_filter_uses_binary_reference(
+    tmp_path: Path,
+    fake_fit: SimpleNamespace,
+) -> None:
+    session = CalibrationSession(_settings(tmp_path), fit_every_n=None)
+
+    for index in range(14):
+        session.add_observation(
+            _observation(index, radius=12.0, binary_radius=12.0)
+        )
+    # The sub-pixel radius is high relative to the sub-pixel mean, but the
+    # binary-mask radius for the same frame is consistent with all the others.
+    session.add_observation(
+        _observation(14, radius=30.0, binary_radius=12.0)
+    )
+
+    result = session.finish()
+
+    assert len(fake_fit.calls[-1]["radii"]) == 15
+    assert result.fit_observation_indices.tolist() == list(range(15))
+    assert result.used_mask.tolist() == [True] * 15
 
 
 def test_session_can_skip_radius_filter(

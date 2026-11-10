@@ -23,6 +23,7 @@ class SphereObservation:
     radius: float
     sigma: float
     center_covariance: np.ndarray | None = None
+    binary_radius: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(

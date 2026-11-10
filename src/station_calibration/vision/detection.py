@@ -24,10 +24,13 @@ from scipy.optimize import curve_fit
 # A sub-pixel circle fit is only accepted when enough rays resolve the edge and
 # the fitted points survive the MAD trim.  The binary mask remains the fallback
 # for strongly defocused or low-contrast frames where the 50 % crossing is not
-# well defined.
+# well defined.  The search window is blur-aware from the first attempt; a
+# fixed 20 % window can truncate the inner plateau on defocused edges.
 _MIN_SUBPIXEL_POINTS = 16
 _MIN_TRIMMED_SUBPIXEL_POINTS = 12
 _MAX_SUBPIXEL_SEARCH_FRACTION = 0.5
+_SUBPIXEL_SEARCH_SIGMA_FACTOR = 3.0
+_SUBPIXEL_SEARCH_GROWTH = 1.5
 
 
 def get_bg_value(image_gray: np.ndarray,
@@ -491,30 +494,15 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
                 default_search,
                 int(_MAX_SUBPIXEL_SEARCH_FRACTION * radius_int),
             )
+
             if edge_search_px is not None:
-                search_windows = [int(edge_search_px)]
+                search = int(edge_search_px)
             else:
-                search_windows = [default_search]
-
-            sub_x = np.empty(0, dtype=np.float64)
-            sub_y = np.empty(0, dtype=np.float64)
-            for search in search_windows:
-                sub_x, sub_y = _subpixel_radial_points(
-                    image_gray,
-                    x_c_int,
-                    y_c_int,
-                    radius_int,
-                    direction,
-                    sphere_center_to_nozzle_part,
-                    search_px=search,
-                )
-                if sub_x.size >= _MIN_SUBPIXEL_POINTS:
-                    break
-
-            # Extreme defocus can make the default window smaller than the edge
-            # transition.  Retry once with a blur-aware window, capped at half
-            # the binary radius to avoid pulling in unrelated structures.
-            if sub_x.size < _MIN_SUBPIXEL_POINTS and edge_search_px is None:
+                # A 20 % window can be narrower than the blurred edge
+                # transition.  That truncates the inner plateau and biases the
+                # 50 % crossing outward.  Use a blur-aware window from the
+                # start instead of waiting until the default window collects
+                # too few points.
                 sigma_guess = get_blur_sigma(
                     image_gray,
                     x_c_int,
@@ -523,32 +511,53 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
                     sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
                     direction=direction,
                 )
-                expanded = default_search
+                search = default_search
                 if (
                     sigma_guess is not None
                     and np.isfinite(sigma_guess)
                     and sigma_guess > 0
                 ):
-                    expanded = max(
-                        expanded,
-                        int(np.ceil(3.0 * sigma_guess)),
+                    search = max(
+                        search,
+                        int(np.ceil(_SUBPIXEL_SEARCH_SIGMA_FACTOR * sigma_guess)),
                     )
                 else:
-                    expanded = max(expanded, 2 * default_search)
-                # A blur estimate can be close to the default window; force a
-                # visible expansion so the retry does not simply repeat it.
-                expanded = max(expanded, int(np.ceil(1.5 * default_search)))
-                expanded = min(expanded, max_search)
-                if expanded > search_windows[-1]:
-                    sub_x, sub_y = _subpixel_radial_points(
-                        image_gray,
-                        x_c_int,
-                        y_c_int,
-                        radius_int,
-                        direction,
-                        sphere_center_to_nozzle_part,
-                        search_px=expanded,
-                    )
+                    search = max(search, 2 * default_search)
+                # Keep a visible expansion even for small sigma; at very low
+                # blur the 20 % window is still unnecessarily tight.
+                search = max(
+                    search,
+                    int(np.ceil(_SUBPIXEL_SEARCH_GROWTH * default_search)),
+                )
+                search = min(search, max_search)
+
+            sub_x, sub_y = _subpixel_radial_points(
+                image_gray,
+                x_c_int,
+                y_c_int,
+                radius_int,
+                direction,
+                sphere_center_to_nozzle_part,
+                search_px=search,
+            )
+
+            # If the blur-aware window still does not resolve enough rays,
+            # retry once with the largest allowed window.  An explicit search
+            # override is always honoured without an automatic retry.
+            if (
+                sub_x.size < _MIN_SUBPIXEL_POINTS
+                and edge_search_px is None
+                and search < max_search
+            ):
+                sub_x, sub_y = _subpixel_radial_points(
+                    image_gray,
+                    x_c_int,
+                    y_c_int,
+                    radius_int,
+                    direction,
+                    sphere_center_to_nozzle_part,
+                    search_px=max_search,
+                )
 
             if sub_x.size >= _MIN_SUBPIXEL_POINTS:
                 try:

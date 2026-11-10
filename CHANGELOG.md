@@ -87,6 +87,12 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 ### Changed
 
+- The radius-outlier filter now uses the binary-mask radius as a
+  method-independent reference when `subpixel_edges = true`. Sub-pixel radii are
+  systematically smaller, so the previous absolute `2.5 sigma` filter rejected
+  extra high-radius frames; the reference filter keeps the binary set while the
+  sub-pixel radius still feeds the fit. On the full ceramic folder this restored
+  the binary fit-observation count (489 instead of 481).
 - The package version is now derived from Git tags instead of a static value in
   `pyproject.toml`.
 - All production Slice contracts now live under `ice/`; the stub generator moved

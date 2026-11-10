@@ -168,18 +168,21 @@ The sub-pixel path removes most of that radius bias. On the well-focused real
 scan-to-scan diameter spread of the 6 mm sphere fell from `0.013 mm` to
 `0.005 mm`, and the calibration RMSE changed by about `0.2 px`; the centre
 moves by only a few tenths of a pixel. On strongly defocused spheres the
-correction is partial and the radius filter can flag extra high-radius frames.
-See [Image Analysis](Image-Analysis) for the broad black-background validation.
+correction is partial. The radius-outlier filter uses the binary-mask radius as
+a method-independent reference when `subpixel_edges = true`, so the smaller
+sub-pixel mean does not create extra high-radius rejections; the sub-pixel
+radius still feeds the fit. See [Image Analysis](Image-Analysis) for the broad
+black-background validation.
 
 `subpixel_max_n_sigma` caps the empirical `n_sigma` term when
 `subpixel_edges = true`. The raw 50 % crossing already removes most of the
 binary threshold bias; the remaining correction can overcorrect the absolute
-diameter. On the full 1 mm ceramic run the uncapped fit chose `0.61 sigma` and
-reported `0.9746 mm`, while a `0.25 sigma` cap reported `0.9959 mm` (binary
+diameter. On the full 1 mm ceramic run the uncapped fit chose `0.65 sigma` and
+reported `0.9727 mm`, while a `0.25 sigma` cap reported `0.9968 mm` (binary
 `0.9949 mm`). The cap changes only the final sphere radius and nozzle offset,
 not the camera fit or RMSE. It trades some radius-vs-blur consistency for
-absolute diameter: the ceramic corrected radius scatter is `0.0143 mm` at the
-cap, `0.0090 mm` uncapped, and `0.0047 mm` for the binary mask. Set a larger
+absolute diameter: the ceramic corrected radius scatter is `0.0155 mm` at the
+cap, `0.0096 mm` uncapped, and `0.0047 mm` for the binary mask. Set a larger
 value to approach the uncapped optimum, or `0` to disable the correction.
 
 ## `[analysis.fit]`

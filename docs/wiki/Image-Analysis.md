@@ -174,14 +174,19 @@ sets).
 The blur correction is partial for strongly defocused spheres
 (folder-mean `sigma` 9.8–31 px: mean per-frame correction `0.59 sigma`) and
 unreliable for extreme-defocus frames (`sigma` 70–120 px), where the
-`0.2 * radius` search window no longer spans the edge transition. The radius filter flags more sub-pixel
-observations: 22 binary vs 37 sub-pixel across the run, with the extra cases
-concentrated on small spheres. The extra points are high-radius frames, not
+`0.2 * radius` search window no longer spans the edge transition.
+
+Before the reference filter, the radius filter flagged 22 binary
+vs 37 sub-pixel observations across the broad run, with the extra cases
+concentrated on small spheres. The extra points were high-radius frames, not
 depth-related (`corr(radius, z)` is approximately zero), and are likely
-nozzle/edge contamination. Because the filter uses an absolute
-`2.5 sigma` threshold, a method with a smaller mean radius can reject the same
-relative deviation more often. The affected fits still improve, but a
-scale-invariant or depth-aware filter would retain more observations.
+nozzle/edge contamination. Because the filter uses an absolute `2.5 sigma`
+threshold, a method with a smaller mean radius rejected the same relative
+deviation more often. The filter now uses the binary-mask radius as a
+method-independent reference when sub-pixel edges are enabled; the sub-pixel
+radius still feeds the fit. On the full ceramic folder this restored the binary
+fit-observation count (`489` vs `481` before) and brought the camera fit and
+RMSE close to the binary result (`4.551` vs `4.555 px`).
 
 The absolute diameter shifts by `-0.72 %` on the 2 mm set, `-0.26 %` on the
 2.3 mm set, and roughly `-2 %` on the smallest spheres. Without a traceable
@@ -190,38 +195,40 @@ diameter is a sanity check, not a metrology-grade reference.
 
 A full 500-image run of the 1 mm ceramic folder
 (`3D_small_20260929_ceramic`) gave 489 used observations and `0.9949 mm` with
-the binary mask versus 481 used observations and `0.9746 mm` with sub-pixel
-edges. The producer
+the binary mask versus 489 used observations and `0.9968 mm` with sub-pixel
+edges and the `0.25 sigma` cap. The uncapped sub-pixel result at the same
+observations is `0.9727 mm`. The producer
 quotes a 1 mm nominal diameter, but the measurement method and tolerance are
-not available. The binary result is 0.51 % low and the sub-pixel result 2.54 %
-low; the `0.0203 mm` difference is about 1.9 sigma of the bootstrap along-axis
-uncertainty (`0.0106 mm`), so this is an indicative check rather than proof. On
-the same run the sub-pixel fit had a slightly lower RMSE (`4.508` vs
-`4.555 px`), but used eight fewer observations and had larger formal
-uncertainties; its `n_sigma_est` fell from `0.93` to `0.61`, while the best
-corrected radius scatter rose from `0.0047` to `0.0090 mm`.
+not available. The binary result is 0.51 % low, the capped sub-pixel result
+0.32 % low, and the uncapped result 2.73 % low. The `0.0223 mm`
+binary-uncapped difference is about 2.1 sigma of the bootstrap along-axis
+uncertainty (`0.0106 mm`); the capped difference is well inside it, so this is
+an indicative check rather than proof. On the same run the sub-pixel fit had a
+slightly lower RMSE (`4.551` vs `4.555 px`) with the same observation count;
+its `n_sigma_est` was `0.65` (capped at `0.25`), while the best corrected
+radius scatter was `0.0096 mm` versus `0.0047 mm` for the binary mask.
 
 #### Sub-pixel radius-correction cap
 
 The sub-pixel 50 % crossing removes most of the binary threshold bias, but the
 remaining empirical `n_sigma` correction can overcorrect the absolute diameter.
 The full 1 mm ceramic run is the clearest case: the raw sub-pixel diameter is
-`1.0109 mm`, the uncapped fit chooses `0.61 sigma` and reports `0.9746 mm`, and
-a `0.25 sigma` cap reports `0.9959 mm` (binary `0.9949 mm`). The camera fit and
+`1.0120 mm`, the uncapped fit chooses `0.65 sigma` and reports `0.9727 mm`, and
+a `0.25 sigma` cap reports `0.9968 mm` (binary `0.9949 mm`). The camera fit and
 RMSE are unchanged by the cap; only the final sphere radius and nozzle offset
-change. The cap also increases the corrected radius scatter from `0.0090` to
-`0.0143 mm`, still between the uncapped sub-pixel value and the binary
+change. The cap also increases the corrected radius scatter from `0.0096` to
+`0.0155 mm`, still between the uncapped sub-pixel value and the binary
 `0.0047 mm`.
 
 The cap was re-checked on sampled small-sphere folders (165–180 frames each)
-with the complete fitting procedure:
+with the complete fitting procedure and the binary-reference radius filter:
 
 | Dataset | Binary dia. (mm) | Sub-pixel uncapped (mm) | Sub-pixel capped (mm) |
 | --- | ---: | ---: | ---: |
-| small random A | 0.9529 | 0.9376 | 0.9561 |
-| small random B | 0.9835 | 0.9626 | 0.9865 |
+| small random A | 0.9529 | 0.9378 | 0.9569 |
+| small random B | 0.9835 | 0.9628 | 0.9873 |
 | old small B | 0.9851 | 0.9667 | 0.9959 |
-| ceramic (full) | 0.9949 | 0.9746 | 0.9959 |
+| ceramic (full) | 0.9949 | 0.9727 | 0.9968 |
 
 The cap moves the sub-pixel diameters toward the binary results and, where a
 1 mm nominal applies, close to the nominal value. It does not make the
@@ -236,8 +243,9 @@ geometry and were used only for detection comparison;
 `3D_small_20260929_POM` fails in both modes with a negative focal length.
 
 The packaged default remains `false`. The cap removes the largest known
-overcorrection when sub-pixel edges are enabled, but the extreme-defocus search
-window and the radius-filter scaling remain open, and the absolute diameter
+overcorrection when sub-pixel edges are enabled, and the reference radius filter
+now keeps the same observations as the binary mask on the full ceramic folder,
+but the extreme-defocus search window remains open and the absolute diameter
 still lacks a traceable reference. Enable it per station after checking the
 radius and diameter trends on a calibration run.
 

@@ -8,6 +8,9 @@ from typing import Any
 
 from .models import SIGMA_OFFSET
 
+_N_SIGMA_GRID = np.linspace(0.0, 4.0, 100)
+_N_SIGMA_BOOTSTRAP_LEVEL = 0.95
+
 
 def find_robot_home_pos_shift(robot_positions: np.ndarray,
                               image_center_points: np.ndarray,
@@ -48,6 +51,154 @@ def find_robot_home_pos_shift(robot_positions: np.ndarray,
     return d_home_pos
 
 
+def _nozzle_radius_arrays(
+    radii: np.ndarray,
+    sigmas: np.ndarray,
+    coef_for_radii: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return flat, same-length radius, sigma, and scale arrays."""
+    radii = np.asarray(radii, dtype=np.float64).reshape(-1)
+    sigmas = np.asarray(sigmas, dtype=np.float64).reshape(-1)
+    coef_for_radii = np.asarray(coef_for_radii, dtype=np.float64).reshape(-1)
+    if radii.size != sigmas.size or radii.size != coef_for_radii.size:
+        raise ValueError(
+            "radii, sigmas and coef_for_radii must have the same number of "
+            f"values, got {radii.size}, {sigmas.size} and "
+            f"{coef_for_radii.size}"
+        )
+    if radii.size == 0:
+        raise ValueError("radii, sigmas and coef_for_radii must not be empty")
+    return radii, sigmas, coef_for_radii
+
+
+def _scan_n_sigma(
+    radii: np.ndarray,
+    sigmas: np.ndarray,
+    coef_for_radii: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Scan the blur correction that minimises the diameter scatter."""
+    diameters = 2.0 * radii * coef_for_radii
+    sigma_terms = 2.0 * sigmas * coef_for_radii
+    std_radii = np.asarray(
+        [np.std(diameters - n_sigma * sigma_terms) for n_sigma in _N_SIGMA_GRID],
+        dtype=np.float64,
+    )
+    n_sigma_opt = float(_N_SIGMA_GRID[int(np.argmin(std_radii))])
+    return _N_SIGMA_GRID.copy(), std_radii, n_sigma_opt
+
+
+def _ols_n_sigma(sigma_terms: np.ndarray, diameters: np.ndarray) -> float | None:
+    """Least-squares slope of diameter against the sigma term."""
+    centred = sigma_terms - sigma_terms.mean()
+    denominator = float(np.dot(centred, centred))
+    if denominator <= 0.0:
+        return None
+    slope = float(np.dot(centred, diameters - diameters.mean()) / denominator)
+    return slope if np.isfinite(slope) else None
+
+
+def _bootstrap_n_sigma_confidence(
+    radii: np.ndarray,
+    sigmas: np.ndarray,
+    coef_for_radii: np.ndarray,
+    *,
+    n_bootstrap: int,
+    seed: int,
+) -> dict[str, Any]:
+    """Bootstrap a confidence interval for the blur correction.
+
+    The scan is a grid approximation to the least-squares slope of the
+    diameter on the sigma term.  Both the grid optimum and that continuous
+    slope are bootstrapped so the reported interval is not limited to the
+    scan step when the sample is large.
+    """
+    if n_bootstrap < 2:
+        raise ValueError(
+            f"n_sigma_bootstrap must be at least 2, got {n_bootstrap}"
+        )
+
+    diameters = 2.0 * radii * coef_for_radii
+    sigma_terms = 2.0 * sigmas * coef_for_radii
+    n_observations = diameters.size
+    if n_observations < 3:
+        return {
+            "method": "bootstrap",
+            "level": _N_SIGMA_BOOTSTRAP_LEVEL,
+            "n_bootstrap": n_bootstrap,
+            "n_valid": 0,
+            "ci_low": None,
+            "ci_high": None,
+            "bootstrap_mean": None,
+            "bootstrap_std": None,
+            "continuous_opt": None,
+            "continuous_ci_low": None,
+            "continuous_ci_high": None,
+            "continuous_bootstrap_std": None,
+        }
+
+    rng = np.random.default_rng(seed)
+    grid_samples = np.empty(n_bootstrap, dtype=np.float64)
+    continuous_samples = np.empty(n_bootstrap, dtype=np.float64)
+    n_valid = 0
+    for _ in range(n_bootstrap):
+        indices = rng.integers(0, n_observations, n_observations)
+        sampled_diameters = diameters[indices]
+        sampled_sigma_terms = sigma_terms[indices]
+        slope = _ols_n_sigma(sampled_sigma_terms, sampled_diameters)
+        if slope is None:
+            continue
+        sampled_std = np.std(
+            sampled_diameters[None, :]
+            - _N_SIGMA_GRID[:, None] * sampled_sigma_terms[None, :],
+            axis=1,
+        )
+        grid_samples[n_valid] = _N_SIGMA_GRID[int(np.argmin(sampled_std))]
+        continuous_samples[n_valid] = slope
+        n_valid += 1
+
+    result: dict[str, Any] = {
+        "method": "bootstrap",
+        "level": _N_SIGMA_BOOTSTRAP_LEVEL,
+        "n_bootstrap": n_bootstrap,
+        "n_valid": n_valid,
+        "ci_low": None,
+        "ci_high": None,
+        "bootstrap_mean": None,
+        "bootstrap_std": None,
+        "continuous_opt": _ols_n_sigma(sigma_terms, diameters),
+        "continuous_ci_low": None,
+        "continuous_ci_high": None,
+        "continuous_bootstrap_std": None,
+    }
+    if n_valid < 2:
+        return result
+
+    grid_samples = grid_samples[:n_valid]
+    continuous_samples = continuous_samples[:n_valid]
+    percentiles = [
+        0.5 * (1.0 - _N_SIGMA_BOOTSTRAP_LEVEL) * 100.0,
+        0.5 * (1.0 + _N_SIGMA_BOOTSTRAP_LEVEL) * 100.0,
+    ]
+    grid_low, grid_high = np.percentile(grid_samples, percentiles)
+    continuous_low, continuous_high = np.percentile(
+        continuous_samples, percentiles
+    )
+    result.update(
+        {
+            "ci_low": float(grid_low),
+            "ci_high": float(grid_high),
+            "bootstrap_mean": float(np.mean(grid_samples)),
+            "bootstrap_std": float(np.std(grid_samples, ddof=1)),
+            "continuous_ci_low": float(continuous_low),
+            "continuous_ci_high": float(continuous_high),
+            "continuous_bootstrap_std": float(
+                np.std(continuous_samples, ddof=1)
+            ),
+        }
+    )
+    return result
+
+
 def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
                                  robot_positions: np.ndarray,
                                  image_center_points: np.ndarray,
@@ -57,10 +208,23 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
                                  sigmas: np.ndarray,
                                  radii: np.ndarray,
                                  all_directions: np.ndarray,
-                                 max_n_sigma: float | None = None) -> tuple[np.ndarray, float, dict[str, dict[str, Any]]]:
+                                 max_n_sigma: float | None = None,
+                                 n_sigma_bootstrap: int = 0,
+                                 n_sigma_bootstrap_seed: int = 0) -> tuple[np.ndarray, float, dict[str, dict[str, Any]]]:
     """Estimation of the shift of the robotic arm home position based on sigma, cx and cy"""
     debug_info = {}
-    sigmas = np.asarray(sigmas, dtype=np.float64) + SIGMA_OFFSET
+    sigmas = np.asarray(sigmas, dtype=np.float64).reshape(-1) + SIGMA_OFFSET
+    radii = np.asarray(radii, dtype=np.float64).reshape(-1)
+    if n_sigma_bootstrap < 0:
+        raise ValueError(
+            "n_sigma_bootstrap must be non-negative, got "
+            f"{n_sigma_bootstrap}"
+        )
+    if 0 < n_sigma_bootstrap < 2:
+        raise ValueError(
+            "n_sigma_bootstrap must be at least 2 when enabled, got "
+            f"{n_sigma_bootstrap}"
+        )
 
     directions = np.asarray(all_directions, dtype=np.float64).reshape(-1)
     if directions.size == 0:
@@ -91,10 +255,13 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
     }
 
     coef_for_radii = np.polyval(popt, robot_camera_coords[2])
+    radii, sigmas, coef_for_radii = _nozzle_radius_arrays(
+        radii, sigmas, coef_for_radii
+    )
 
-    n_sigmas = np.linspace(0, 4, 100)
-    std_radii = np.asarray([np.std(2*(radii-sel_n_sigma*sigmas)*coef_for_radii) for sel_n_sigma in n_sigmas])
-    n_sigma_opt = float(n_sigmas[np.argmin(std_radii)])
+    n_sigmas, std_radii, n_sigma_opt = _scan_n_sigma(
+        radii, sigmas, coef_for_radii
+    )
     n_sigma_est = n_sigma_opt
     if max_n_sigma is not None:
         max_n_sigma = float(max_n_sigma)
@@ -105,11 +272,22 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
             )
         n_sigma_est = min(n_sigma_est, max_n_sigma)
 
+    confidence = None
+    if n_sigma_bootstrap:
+        confidence = _bootstrap_n_sigma_confidence(
+            radii,
+            sigmas,
+            coef_for_radii,
+            n_bootstrap=n_sigma_bootstrap,
+            seed=n_sigma_bootstrap_seed,
+        )
+
     debug_info['n_sigma_estimation'] = {
         'n_sigmas': n_sigmas,
         'std_radii': std_radii,
         'n_sigma_opt': n_sigma_opt,
         'max_n_sigma': max_n_sigma,
+        'confidence': confidence,
     }
 
     sphere_radius = np.mean((radii-n_sigma_est*sigmas)*coef_for_radii)

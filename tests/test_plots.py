@@ -64,6 +64,10 @@ def test_visualize_results_writes_all_reporting_plots(tmp_path: Path) -> None:
         "n_sigma_estimation": {
             "n_sigmas": np.linspace(0.0, 4.0, 100),
             "std_radii": np.linspace(1.0, 0.1, 100),
+            "confidence": {
+                "ci_low": 0.5,
+                "ci_high": 0.8,
+            },
         },
         "sphere_radius_estimation": {
             "z_pos": np.linspace(0.0, 50.0, n_points),

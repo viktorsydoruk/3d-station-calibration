@@ -4,6 +4,7 @@
 """Functions to visualize results."""
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -143,12 +144,25 @@ def visualize_scale_coef_estimation(z_pos: np.ndarray,
 
 def visualize_n_sigma_estimation(n_sigmas: np.ndarray,
                                  std_radii: np.ndarray,
-                                 debug_folder: Path) -> None:
+                                 debug_folder: Path,
+                                 confidence: dict[str, Any] | None = None) -> None:
 
     apply_own_style_to_mpl()
     plt = _pyplot()
 
     plt.plot(n_sigmas, std_radii)
+    if confidence is not None:
+        ci_low = confidence.get("ci_low")
+        ci_high = confidence.get("ci_high")
+        if ci_low is not None and ci_high is not None:
+            plt.axvspan(
+                float(ci_low),
+                float(ci_high),
+                color="tab:orange",
+                alpha=0.2,
+                label="95% bootstrap CI",
+            )
+            plt.legend()
 
     plt.xlabel("n_sigma (px)")
     plt.ylabel("std_radii (px)")

@@ -100,6 +100,59 @@ def test_nozzle_end_home_position_returns_geometry_and_debug_data() -> None:
     scaling = debug_info["scaling_visualization"]
     assert scaling["z_pos"].shape == scaling["scale"].shape
     assert scaling["z_pos"].size > 3
+    assert debug_info["n_sigma_estimation"]["confidence"] is None
+
+
+def test_nozzle_end_home_position_bootstrap_confidence_interval() -> None:
+    inputs = _nozzle_inputs()
+    n_points = len(inputs["sigmas"])
+    inputs["sigmas"] = np.linspace(1.0, 5.0, n_points)
+
+    _, _, base_debug = get_nozzle_end_home_position(**inputs)
+    coef = np.asarray(
+        base_debug["sphere_radius_estimation"]["coef_for_radii"],
+        dtype=np.float64,
+    )
+    rng = np.random.default_rng(4)
+    inputs["radii"] = (
+        100.0 / coef
+        + 1.5 * inputs["sigmas"]
+        + rng.normal(0.0, 0.5, n_points)
+    )
+
+    _, diameter_plain, debug_plain = get_nozzle_end_home_position(**inputs)
+    _, diameter_boot, debug_boot = get_nozzle_end_home_position(
+        **inputs,
+        n_sigma_bootstrap=400,
+        n_sigma_bootstrap_seed=7,
+    )
+
+    assert diameter_boot == pytest.approx(diameter_plain)
+    assert debug_boot["n_sigma_estimation"]["n_sigma_opt"] == pytest.approx(
+        debug_plain["n_sigma_estimation"]["n_sigma_opt"]
+    )
+    confidence = debug_boot["n_sigma_estimation"]["confidence"]
+    assert confidence is not None
+    assert confidence["method"] == "bootstrap"
+    assert confidence["n_bootstrap"] == 400
+    assert confidence["n_valid"] == 400
+    n_sigma_opt = debug_boot["n_sigma_estimation"]["n_sigma_opt"]
+    assert confidence["ci_low"] <= confidence["ci_high"]
+    assert confidence["ci_low"] <= n_sigma_opt <= confidence["ci_high"]
+    assert confidence["continuous_ci_low"] <= confidence["continuous_opt"]
+    assert confidence["continuous_opt"] <= confidence["continuous_ci_high"]
+    assert abs(n_sigma_opt - 1.5) < 0.25
+
+
+def test_nozzle_end_home_position_rejects_invalid_n_sigma_bootstrap() -> None:
+    inputs = _nozzle_inputs()
+
+    for value in (-1, 1):
+        with pytest.raises(ValueError, match="n_sigma_bootstrap"):
+            get_nozzle_end_home_position(
+                **inputs,
+                n_sigma_bootstrap=value,
+            )
 
 
 def test_nozzle_end_home_position_caps_n_sigma() -> None:

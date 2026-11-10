@@ -461,6 +461,7 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             directions,
         ) = observations_to_arrays(fit_observations)
         relative_robot_positions = robot_positions - result.pos_home
+        settings = self._settings
 
         nozzle_position, _, _ = get_nozzle_end_home_position(
             sphere_home_position=result.pos_home,
@@ -472,5 +473,10 @@ class CalibrationIceServant(CalibrationPhenoseederIcing):
             sigmas=sigmas,
             radii=radii,
             all_directions=directions,
+            max_n_sigma=(
+                settings.subpixel_max_n_sigma
+                if settings is not None and settings.subpixel_edges
+                else None
+            ),
         )
         return np.asarray(nozzle_position, dtype=np.float64)

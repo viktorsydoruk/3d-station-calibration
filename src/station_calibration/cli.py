@@ -174,6 +174,9 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
 
         # Calculating the nozzle home position. Outliers removed by the fit must
         # not influence the sphere diameter or its lateral offset.
+        max_n_sigma = (
+            settings.subpixel_max_n_sigma if settings.subpixel_edges else None
+        )
         nozzle_end_home_pos, sphere_diam_mm, debug_nozzle_and_home_pos = (
             get_nozzle_end_home_position(
                 sphere_home_position=pos_home,
@@ -185,6 +188,7 @@ def main(folder_to_analyze: str | Path, **opts) -> None:
                 sigmas=inlier_sigmas,
                 radii=inlier_radii,
                 all_directions=inlier_directions,
+                max_n_sigma=max_n_sigma,
             )
         )
         intrinsic_std, distortion_std, rot_vec_std, tra_vec_std = calculate_calibration_errors(
@@ -304,6 +308,12 @@ def run_cli(argv: list[str] | None = None) -> None:
         default=None,
         help="refine sphere edges to the sub-pixel 50 %% intensity crossing",
     )
+    parser.add_argument(
+        "--subpixel-max-n-sigma",
+        type=float,
+        default=None,
+        help="cap the sub-pixel sphere-radius blur correction in sigma units",
+    )
     parser.add_argument("--target-observations", type=int, default=None)
     parser.add_argument("--max-observations", type=int, default=None)
     parser.add_argument(
@@ -347,6 +357,7 @@ def run_cli(argv: list[str] | None = None) -> None:
             "store_debug_images": args.store_debug_images,
             "load_stored_data": args.load_stored_data,
             "subpixel_edges": args.subpixel_edges,
+            "subpixel_max_n_sigma": args.subpixel_max_n_sigma,
             "target_observations": args.target_observations,
             "max_observations": args.max_observations,
             "uncertainty_enabled": bootstrap_enabled,

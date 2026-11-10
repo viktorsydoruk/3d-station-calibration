@@ -102,6 +102,59 @@ def test_nozzle_end_home_position_returns_geometry_and_debug_data() -> None:
     assert scaling["z_pos"].size > 3
 
 
+def test_nozzle_end_home_position_caps_n_sigma() -> None:
+    n_points = 24
+    robot_positions = np.column_stack(
+        [
+            np.linspace(-40.0, 40.0, n_points),
+            np.linspace(-20.0, 20.0, n_points),
+            np.linspace(0.0, 80.0, n_points),
+        ]
+    )
+    image_center_points = np.column_stack(
+        [
+            1200.0 + 0.2 * robot_positions[:, 0],
+            1000.0 + 0.3 * robot_positions[:, 1],
+        ]
+    )
+    inputs = {
+        "sphere_home_position": np.array([10.0, 20.0, 30.0]),
+        "robot_positions": robot_positions,
+        "image_center_points": image_center_points,
+        "intrinsic_matrix": np.array(
+            [
+                [2000.0, 0.0, 1224.0],
+                [0.0, 2000.0, 1024.0],
+                [0.0, 0.0, 1.0],
+            ]
+        ),
+        "extrinsic_matrix": np.eye(4),
+        "distortion": np.zeros(5),
+        "sigmas": np.linspace(1.0, 5.0, n_points),
+        "radii": np.full(n_points, 100.0),
+        "all_directions": np.ones(n_points),
+    }
+
+    _, _, first_debug = get_nozzle_end_home_position(**inputs)
+    coef = np.asarray(
+        first_debug["sphere_radius_estimation"]["coef_for_radii"],
+        dtype=np.float64,
+    )
+    # Put a known 1.5 sigma outward bias into the raw radii. The empirical
+    # optimum should be near 1.5, so the 0.5 cap must change the diameter.
+    inputs["radii"] = 100.0 / coef + 1.5 * inputs["sigmas"]
+
+    _, diameter_opt, debug_opt = get_nozzle_end_home_position(**inputs)
+    _, diameter_cap, debug_cap = get_nozzle_end_home_position(
+        **inputs,
+        max_n_sigma=0.5,
+    )
+
+    assert debug_opt["sphere_radius_estimation"]["n_sigma_est"] > 0.5
+    assert debug_cap["sphere_radius_estimation"]["n_sigma_est"] == 0.5
+    assert diameter_cap > diameter_opt
+
+
 def _nozzle_inputs() -> dict:
     n_points = 24
     robot_positions = np.column_stack(
@@ -158,3 +211,10 @@ def test_nozzle_end_home_position_rejects_nonpositive_sphere_radius() -> None:
 
     with pytest.raises(ValueError, match="finite and positive"):
         get_nozzle_end_home_position(**inputs)
+
+
+def test_nozzle_end_home_position_rejects_invalid_n_sigma_cap() -> None:
+    inputs = _nozzle_inputs()
+
+    with pytest.raises(ValueError, match="max_n_sigma"):
+        get_nozzle_end_home_position(**inputs, max_n_sigma=-0.1)

@@ -56,7 +56,8 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
                                  distortion: np.ndarray,
                                  sigmas: np.ndarray,
                                  radii: np.ndarray,
-                                 all_directions: np.ndarray) -> tuple[np.ndarray, float, dict[str, dict[str, Any]]]:
+                                 all_directions: np.ndarray,
+                                 max_n_sigma: float | None = None) -> tuple[np.ndarray, float, dict[str, dict[str, Any]]]:
     """Estimation of the shift of the robotic arm home position based on sigma, cx and cy"""
     debug_info = {}
     sigmas = np.asarray(sigmas, dtype=np.float64) + SIGMA_OFFSET
@@ -93,11 +94,22 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
 
     n_sigmas = np.linspace(0, 4, 100)
     std_radii = np.asarray([np.std(2*(radii-sel_n_sigma*sigmas)*coef_for_radii) for sel_n_sigma in n_sigmas])
-    n_sigma_est = n_sigmas[np.argmin(std_radii)]
+    n_sigma_opt = float(n_sigmas[np.argmin(std_radii)])
+    n_sigma_est = n_sigma_opt
+    if max_n_sigma is not None:
+        max_n_sigma = float(max_n_sigma)
+        if not np.isfinite(max_n_sigma) or max_n_sigma < 0.0:
+            raise ValueError(
+                "max_n_sigma must be finite and non-negative, got "
+                f"{max_n_sigma}"
+            )
+        n_sigma_est = min(n_sigma_est, max_n_sigma)
 
     debug_info['n_sigma_estimation'] = {
         'n_sigmas': n_sigmas,
         'std_radii': std_radii,
+        'n_sigma_opt': n_sigma_opt,
+        'max_n_sigma': max_n_sigma,
     }
 
     sphere_radius = np.mean((radii-n_sigma_est*sigmas)*coef_for_radii)
@@ -108,6 +120,8 @@ def get_nozzle_end_home_position(sphere_home_position: np.ndarray,
         'sigmas': sigmas,
         'coef_for_radii': coef_for_radii,
         'n_sigma_est' : n_sigma_est,
+        'n_sigma_opt' : n_sigma_opt,
+        'max_n_sigma' : max_n_sigma,
 
     }
 

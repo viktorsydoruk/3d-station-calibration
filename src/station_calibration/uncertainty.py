@@ -272,6 +272,7 @@ def _nozzle_for_result(
     intrinsic_matrix: np.ndarray,
     extrinsic_matrix: np.ndarray,
     distortion: np.ndarray,
+    max_n_sigma: float | None = None,
 ) -> tuple[np.ndarray, float, dict[str, Any]]:
     """Call the production nozzle estimator for one fit result."""
     relative_positions = np.asarray(robot_positions) - np.asarray(pos_home)
@@ -285,6 +286,7 @@ def _nozzle_for_result(
         sigmas=np.asarray(sigmas, dtype=np.float64),
         radii=np.asarray(radii, dtype=np.float64),
         all_directions=np.asarray(directions, dtype=np.float64),
+        max_n_sigma=max_n_sigma,
     )
 
 
@@ -407,6 +409,9 @@ def bootstrap_nozzle_home(
     else:
         perturbation_covariances = center_covariances
 
+    max_n_sigma = (
+        settings.subpixel_max_n_sigma if settings.subpixel_edges else None
+    )
     original_nozzle, sphere_diameter, debug_info = _nozzle_for_result(
         robot_positions=robot_positions,
         center_points_adjusted=center_points_adjusted,
@@ -417,6 +422,7 @@ def bootstrap_nozzle_home(
         intrinsic_matrix=result.intrinsic_matrix,
         extrinsic_matrix=result.extrinsic_matrix,
         distortion=result.distortion,
+        max_n_sigma=max_n_sigma,
     )
 
     (
@@ -491,6 +497,7 @@ def bootstrap_nozzle_home(
                 intrinsic_matrix=intrinsic_matrix,
                 extrinsic_matrix=extrinsic_matrix,
                 distortion=distortion,
+                max_n_sigma=max_n_sigma,
             )
         except Exception as error:
             failure_messages.append(f"{type(error).__name__}: {error}")

@@ -65,6 +65,10 @@ blur_est_border_thickness = 2
 # refine the sphere boundary to the 50 % intensity crossing instead of the
 # binary mask pixel; removes the blur-dependent radius bias
 subpixel_edges = false
+# cap the remaining sub-pixel radius-vs-blur correction; the raw 50 % crossing
+# already removes most of the binary threshold bias, so a large empirical
+# correction overcorrects the diameter
+subpixel_max_n_sigma = 0.25
 
 [analysis.fit]
 # whether to fix principal point of the camera

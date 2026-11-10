@@ -80,6 +80,7 @@ class PossibleOptions(TypedDict, total=False):
     min_bg_pixels_on_edges: int
     blur_est_border_thickness: int
     subpixel_edges: bool
+    subpixel_max_n_sigma: float | None
     fix_cx_cy: bool
     n_distortion_coefs: int
     focal_length_initial: float
@@ -139,6 +140,7 @@ class Settings:
     min_bg_pixels_on_edges: int
     blur_est_border_thickness: int
     subpixel_edges: bool
+    subpixel_max_n_sigma: float | None
     fix_cx_cy: bool
     _n_distortion_coefs: int
     focal_length_initial: float
@@ -377,6 +379,12 @@ class Settings:
         self.min_bg_pixels_on_edges = int(self._get(sphere, "min_bg_pixels_on_edges"))
         self.blur_est_border_thickness = int(self._get(sphere, "blur_est_border_thickness"))
         self.subpixel_edges = bool(self._get(sphere, "subpixel_edges", False))
+        max_n_sigma = self._get(sphere, "subpixel_max_n_sigma", 0.25)
+        self.subpixel_max_n_sigma = (
+            None
+            if max_n_sigma is None
+            else _finite_float(max_n_sigma, "subpixel_max_n_sigma")
+        )
 
         if self.n_move_aver < 1:
             raise ValueError(f"n_move_aver must be at least 1, got {self.n_move_aver}")
@@ -394,6 +402,14 @@ class Settings:
             raise ValueError(
                 "blur_est_border_thickness must be at least 1, got "
                 f"{self.blur_est_border_thickness}"
+            )
+        if (
+            self.subpixel_max_n_sigma is not None
+            and self.subpixel_max_n_sigma < 0
+        ):
+            raise ValueError(
+                "subpixel_max_n_sigma must be non-negative, got "
+                f"{self.subpixel_max_n_sigma}"
             )
 
     def _init_fit(self) -> None:

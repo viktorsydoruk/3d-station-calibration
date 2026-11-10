@@ -50,6 +50,7 @@ BASE_CONFIG: dict[str, dict[str, Any]] = {
         "min_bg_pixels_on_edges": 5,
         "blur_est_border_thickness": 2,
         "subpixel_edges": True,
+        "subpixel_max_n_sigma": 0.35,
     },
     "analysis.fit": {
         "fix_cx_cy": True,
@@ -159,6 +160,7 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.min_bg_pixels_on_edges == 5
     assert settings.blur_est_border_thickness == 2
     assert settings.subpixel_edges is True
+    assert settings.subpixel_max_n_sigma == 0.35
     assert settings.fix_cx_cy is True
     assert settings.n_distortion_coefs == 4
     assert settings.focal_length_initial == 1800.0
@@ -190,6 +192,17 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.config["analysis"]["n_iterations"] == 3
 
 
+def test_subpixel_max_n_sigma_falls_back_to_packaged_default(
+    context: ConfigContext,
+) -> None:
+    del context.config["analysis.sphere_projection"]["subpixel_max_n_sigma"]
+    context.write()
+
+    settings = context.make()
+
+    assert settings.subpixel_max_n_sigma == 0.25
+
+
 def test_default_config_file_is_absolute_and_exists() -> None:
     assert Settings.DEFAULT_CONFIG_FILE.is_absolute()
     assert Settings.DEFAULT_CONFIG_FILE.is_file()
@@ -210,6 +223,7 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
     assert settings.n_distortion_coefs == 0
     assert settings.center_weighting is True
     assert settings.subpixel_edges is False
+    assert settings.subpixel_max_n_sigma == 0.25
     assert settings.target_observations == 100
     assert settings.readiness_enabled is True
     assert settings.readiness_checkpoint_interval == 10
@@ -692,6 +706,24 @@ def test_n_distortion_coefs_rejects_unsupported_values(
             "blur_est_border_thickness",
             0,
             "blur_est_border_thickness",
+        ),
+        (
+            "analysis.sphere_projection",
+            "subpixel_max_n_sigma",
+            -1.0,
+            "subpixel_max_n_sigma",
+        ),
+        (
+            "analysis.sphere_projection",
+            "subpixel_max_n_sigma",
+            float("inf"),
+            "subpixel_max_n_sigma",
+        ),
+        (
+            "analysis.sphere_projection",
+            "subpixel_max_n_sigma",
+            float("nan"),
+            "subpixel_max_n_sigma",
         ),
         ("analysis.fit", "focal_length_initial", 0, "focal_length_initial"),
         ("analysis.fit", "focal_length_initial", -1, "focal_length_initial"),

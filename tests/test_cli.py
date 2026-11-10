@@ -160,6 +160,23 @@ def test_run_cli_can_disable_subpixel_edges(
     assert captured["opts"] == {"subpixel_edges": False}
 
 
+def test_run_cli_can_set_subpixel_max_n_sigma(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli,
+        "main",
+        lambda folder, **opts: captured.update(folder=folder, opts=opts),
+    )
+
+    cli.run_cli([str(tmp_path), "--subpixel-max-n-sigma", "0.2"])
+
+    assert captured["opts"] == {"subpixel_max_n_sigma": 0.2}
+
+
 def test_main_reports_keyboard_interrupt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

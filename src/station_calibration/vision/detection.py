@@ -21,6 +21,14 @@ import cv2
 import numpy as np
 from scipy.optimize import curve_fit
 
+# A sub-pixel circle fit is only accepted when enough rays resolve the edge and
+# the fitted points survive the MAD trim.  The binary mask remains the fallback
+# for strongly defocused or low-contrast frames where the 50 % crossing is not
+# well defined.
+_MIN_SUBPIXEL_POINTS = 16
+_MIN_TRIMMED_SUBPIXEL_POINTS = 12
+_MAX_SUBPIXEL_SEARCH_FRACTION = 0.5
+
 
 def get_bg_value(image_gray: np.ndarray,
                  bg_height_px: int = 300,
@@ -310,7 +318,11 @@ def _subpixel_radial_points(image_gray: np.ndarray,
         return np.empty(0), np.empty(0)
 
     profiles = _sample_radial_profiles(image_gray, x_c, y_c, angles, radii)
-    inner = max(3, n_samples // 4)
+    # Use only the outer/inner eighth for the plateau levels.  A quarter is too
+    # wide when the edge transition nearly fills the search window, which is
+    # common for strongly defocused small spheres.
+    inner = max(3, n_samples // 8)
+    last_valid = n_samples - inner - 1
 
     xs: list[float] = []
     ys: list[float] = []
@@ -323,9 +335,37 @@ def _subpixel_radial_points(image_gray: np.ndarray,
             or foreground <= background
         ):
             continue
-        level = 0.5 * (background + foreground)
-        fraction = _first_upward_crossing(profile, level)
-        if fraction is None:
+        # The outer and inner plateaus must be flat.  With a too-small search
+        # window the 20/80 levels are computed from a still-rising inner edge,
+        # which makes the transition look narrower than it is.
+        profile_range = float(
+            np.percentile(profile, 95) - np.percentile(profile, 5)
+        )
+        step = max(1, inner // 2)
+        outer_rise = float(
+            np.median(profile[step:inner]) - np.median(profile[:step])
+        )
+        inner_rise = float(
+            np.median(profile[-step:]) - np.median(profile[-inner:-step])
+        )
+        if profile_range > 0 and (outer_rise + inner_rise) > 0.1 * profile_range:
+            continue
+        span = foreground - background
+        fraction_20 = _first_upward_crossing(profile, background + 0.2 * span)
+        fraction = _first_upward_crossing(profile, background + 0.5 * span)
+        fraction_80 = _first_upward_crossing(profile, background + 0.8 * span)
+        if fraction_20 is None or fraction is None or fraction_80 is None:
+            continue
+        # The 20 % and 80 % crossings must be fully inside the profile, and the
+        # edge transition must leave enough plateau on both sides.  Otherwise
+        # the search window does not contain the edge transition and the
+        # crossing is not trustworthy.
+        transition_width = fraction_80 - fraction_20
+        if not (
+            1.0 <= fraction_20 < fraction < fraction_80 <= n_samples - 2.0
+            and transition_width <= (n_samples - 1) - 2 * inner
+            and inner <= fraction <= last_valid
+        ):
             continue
         r = float(np.interp(fraction, np.arange(n_samples), radii))
         xs.append(x_c + r * np.cos(angle))
@@ -446,26 +486,90 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
 
         if image_gray is not None:
             x_c_int, y_c_int, radius_int = fit_circle(all_sel_x, all_sel_y)
-            sub_x, sub_y = _subpixel_radial_points(
-                image_gray,
-                x_c_int,
-                y_c_int,
-                radius_int,
-                direction,
-                sphere_center_to_nozzle_part,
-                search_px=edge_search_px,
+            default_search = max(4, int(0.2 * radius_int))
+            max_search = max(
+                default_search,
+                int(_MAX_SUBPIXEL_SEARCH_FRACTION * radius_int),
             )
-            if sub_x.size >= 3:
-                all_sel_x, all_sel_y = sub_x, sub_y
-                x_c, y_c, radius = fit_circle(all_sel_x, all_sel_y)
-                residual = np.hypot(all_sel_x - x_c, all_sel_y - y_c) - radius
-                median = float(np.median(residual))
-                mad = 1.4826 * float(np.median(np.abs(residual - median)))
-                if np.isfinite(mad) and mad > 0:
-                    keep = np.abs(residual - median) <= 3.0 * mad
-                    if np.count_nonzero(keep) >= 3:
-                        all_sel_x = all_sel_x[keep]
-                        all_sel_y = all_sel_y[keep]
+            if edge_search_px is not None:
+                search_windows = [int(edge_search_px)]
+            else:
+                search_windows = [default_search]
+
+            sub_x = np.empty(0, dtype=np.float64)
+            sub_y = np.empty(0, dtype=np.float64)
+            for search in search_windows:
+                sub_x, sub_y = _subpixel_radial_points(
+                    image_gray,
+                    x_c_int,
+                    y_c_int,
+                    radius_int,
+                    direction,
+                    sphere_center_to_nozzle_part,
+                    search_px=search,
+                )
+                if sub_x.size >= _MIN_SUBPIXEL_POINTS:
+                    break
+
+            # Extreme defocus can make the default window smaller than the edge
+            # transition.  Retry once with a blur-aware window, capped at half
+            # the binary radius to avoid pulling in unrelated structures.
+            if sub_x.size < _MIN_SUBPIXEL_POINTS and edge_search_px is None:
+                sigma_guess = get_blur_sigma(
+                    image_gray,
+                    x_c_int,
+                    y_c_int,
+                    radius_int,
+                    sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
+                    direction=direction,
+                )
+                expanded = default_search
+                if (
+                    sigma_guess is not None
+                    and np.isfinite(sigma_guess)
+                    and sigma_guess > 0
+                ):
+                    expanded = max(
+                        expanded,
+                        int(np.ceil(3.0 * sigma_guess)),
+                    )
+                else:
+                    expanded = max(expanded, 2 * default_search)
+                # A blur estimate can be close to the default window; force a
+                # visible expansion so the retry does not simply repeat it.
+                expanded = max(expanded, int(np.ceil(1.5 * default_search)))
+                expanded = min(expanded, max_search)
+                if expanded > search_windows[-1]:
+                    sub_x, sub_y = _subpixel_radial_points(
+                        image_gray,
+                        x_c_int,
+                        y_c_int,
+                        radius_int,
+                        direction,
+                        sphere_center_to_nozzle_part,
+                        search_px=expanded,
+                    )
+
+            if sub_x.size >= _MIN_SUBPIXEL_POINTS:
+                try:
+                    x_c, y_c, radius = fit_circle(sub_x, sub_y)
+                except (ValueError, np.linalg.LinAlgError):
+                    pass
+                else:
+                    if np.isfinite(radius) and radius > 0:
+                        residual = np.hypot(sub_x - x_c, sub_y - y_c) - radius
+                        median = float(np.median(residual))
+                        mad = 1.4826 * float(np.median(np.abs(residual - median)))
+                        if np.isfinite(mad) and mad > 0:
+                            keep = np.abs(residual - median) <= 3.0 * mad
+                        else:
+                            keep = np.ones(sub_x.size, dtype=bool)
+                        if (
+                            np.count_nonzero(keep)
+                            >= _MIN_TRIMMED_SUBPIXEL_POINTS
+                        ):
+                            all_sel_x = sub_x[keep]
+                            all_sel_y = sub_y[keep]
 
         if return_covariance:
             return fit_circle_with_covariance(all_sel_x, all_sel_y)

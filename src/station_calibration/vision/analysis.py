@@ -160,6 +160,23 @@ def analyze_image(image_gray: np.ndarray,
         border_thickness=blur_est_border_thickness,
     )
 
+    if sigma is None and subpixel_edges and binary_params is not None:
+        # A biased sub-pixel circle can make the border-sigma fit fail even
+        # though the binary detection is sound.  Fall back to that circle rather
+        # than rejecting a frame the binary path would accept.
+        x_c_pos, y_c_pos, radius = binary_params[:3]
+        center_covariance = None
+        sigma = get_blur_sigma(
+            image_gray,
+            x_c_pos,
+            y_c_pos,
+            radius + min_bg_pixels_on_edges,
+            sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
+            direction=direction,
+            border_thickness=blur_est_border_thickness,
+        )
+        print_debug("sub-pixel sigma failed; using binary circle")
+
     if sigma is None:
         return rejected(
             "border sigma cannot be estimated",

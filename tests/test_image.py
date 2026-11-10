@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import station_calibration.vision.analysis as image_module
+import station_calibration.vision.detection as detection_module
 from station_calibration import DebugInfo
 from station_calibration.vision import (
     analyze_image,
@@ -188,6 +189,125 @@ def test_subpixel_edges_follow_illumination_gradient() -> None:
     assert abs(subpixel[0] - center[0]) < 0.7
     assert abs(subpixel[1] - center[1]) < 0.5
     assert abs(subpixel[2] - radius) < 0.5
+
+
+@pytest.mark.parametrize("sigma", [10.0, 20.0, 30.0])
+def test_subpixel_edges_adapt_to_strong_blur(sigma: float) -> None:
+    center = (500.0, 450.0)
+    radius = 140.0
+    image = _blurred_disk_image(sigma, radius=radius, center=center)
+    mask = image > 30.0
+    kwargs = {
+        "n_mov_aver": 11,
+        "sphere_center_to_nozzle_part": 0.7,
+        "direction": 1,
+        "min_bg_pixels_on_edges": 5,
+    }
+
+    integer = find_the_sphere_on_mask(mask, **kwargs)
+    subpixel = find_the_sphere_on_mask(mask, image_gray=image, **kwargs)
+
+    assert integer is not None
+    assert subpixel is not None
+    binary_error = abs(integer[2] - radius)
+    subpixel_error = abs(subpixel[2] - radius)
+    assert integer[2] - radius > 0.4 * sigma
+    assert subpixel_error < binary_error - 5.0
+    assert subpixel_error < 0.2 * radius
+    assert abs(subpixel[0] - center[0]) < 1.0
+    assert abs(subpixel[1] - center[1]) < 1.0
+
+
+def test_subpixel_edges_retry_with_wider_search(monkeypatch) -> None:
+    center = (500.0, 450.0)
+    radius = 140.0
+    image = _blurred_disk_image(30.0, radius=radius, center=center)
+    mask = image > 30.0
+    kwargs = {
+        "n_mov_aver": 11,
+        "sphere_center_to_nozzle_part": 0.7,
+        "direction": 1,
+        "min_bg_pixels_on_edges": 5,
+    }
+    searches: list[int | None] = []
+
+    def fake_subpixel_points(
+        _image: np.ndarray,
+        x_c: float,
+        y_c: float,
+        _radius: float,
+        _direction: int,
+        _part: float,
+        search_px: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        searches.append(search_px)
+        if search_px is None or search_px < 60:
+            return np.empty(0), np.empty(0)
+        angles = np.linspace(0.0, 2.0 * np.pi, 32, endpoint=False)
+        return (
+            x_c + radius * np.cos(angles),
+            y_c + radius * np.sin(angles),
+        )
+
+    monkeypatch.setattr(
+        detection_module, "_subpixel_radial_points", fake_subpixel_points
+    )
+
+    result = find_the_sphere_on_mask(mask, image_gray=image, **kwargs)
+
+    assert result is not None
+    assert len(searches) == 2
+    assert searches[1] is not None and searches[0] is not None
+    assert searches[1] > searches[0]
+    assert result[2] == pytest.approx(radius, abs=0.01)
+
+
+def test_subpixel_edges_fall_back_when_crossings_are_missing(monkeypatch) -> None:
+    image = _blurred_disk_image(30.0)
+    mask = image > 30.0
+    kwargs = {
+        "n_mov_aver": 11,
+        "sphere_center_to_nozzle_part": 0.7,
+        "direction": 1,
+        "min_bg_pixels_on_edges": 5,
+    }
+    monkeypatch.setattr(
+        detection_module,
+        "_subpixel_radial_points",
+        lambda *args, **kwargs: (np.empty(0), np.empty(0)),
+    )
+
+    integer = find_the_sphere_on_mask(mask, **kwargs)
+    subpixel = find_the_sphere_on_mask(mask, image_gray=image, **kwargs)
+
+    assert integer is not None
+    assert subpixel is not None
+    assert subpixel[2] == pytest.approx(integer[2], abs=1e-9)
+
+
+def test_analyze_image_subpixel_falls_back_when_sigma_fails(monkeypatch) -> None:
+    image_gray, _ = _synthetic_image()
+    calls: list[float] = []
+
+    def fake_sigma(*args, **kwargs) -> float | None:
+        del kwargs
+        calls.append(float(args[3]))
+        if len(calls) == 1:
+            return None
+        return 2.5
+
+    monkeypatch.setattr(image_module, "get_blur_sigma", fake_sigma)
+
+    result = analyze_image(
+        image_gray,
+        subpixel_edges=True,
+        **_analysis_kwargs(),
+    )
+
+    assert result.reason is None
+    assert result.observation is not None
+    assert result.observation.sigma == pytest.approx(2.5)
+    assert len(calls) == 2
 
 
 def test_analyze_image_subpixel_edges_improve_radius() -> None:

@@ -60,6 +60,8 @@ def test_service_analyzes_image_bytes_and_feeds_session(
     assert captured["image_bytes"] == b"encoded-image"
     assert captured["kwargs"]["bg_height_px"] == settings.bg_height_pxs
     assert captured["kwargs"]["bg_color_est_perc"] == settings.bg_color_est_perc
+    assert captured["kwargs"]["bg_threshold_method"] == settings.bg_threshold_method
+    assert captured["kwargs"]["bg_noise_sigma"] == settings.bg_noise_sigma
     assert captured["kwargs"]["image_index"] == 0
     assert captured["kwargs"]["debug_imagefile"] == settings.debug_folder / "ice_0000.png"
     assert captured["kwargs"]["print_debug"] is service.print_debug

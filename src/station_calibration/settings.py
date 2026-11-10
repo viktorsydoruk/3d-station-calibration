@@ -74,6 +74,8 @@ class PossibleOptions(TypedDict, total=False):
 
     bg_height_pxs: int
     bg_color_est_perc: float
+    bg_threshold_method: str
+    bg_noise_sigma: float
     fixed_bg_threshold: float
     n_move_aver: int
     sphere_center_to_nozzle_part: float
@@ -134,6 +136,8 @@ class Settings:
 
     bg_height_pxs: int
     bg_color_est_perc: float
+    bg_threshold_method: str
+    bg_noise_sigma: float
     fixed_bg_threshold: float
     n_move_aver: int
     sphere_center_to_nozzle_part: float
@@ -355,6 +359,16 @@ class Settings:
             self._get(bg, "bg_color_est_perc"),
             "bg_color_est_perc",
         )
+        method = self._get(bg, "bg_threshold_method", "percentile")
+        if not isinstance(method, str):
+            raise TypeError(
+                f"bg_threshold_method must be a string, got {type(method).__name__}"
+            )
+        self.bg_threshold_method = method.strip().lower()
+        self.bg_noise_sigma = _finite_float(
+            self._get(bg, "bg_noise_sigma", 5.0),
+            "bg_noise_sigma",
+        )
 
         if self.fixed_bg_threshold < 0:
             raise ValueError(
@@ -367,6 +381,15 @@ class Settings:
         if not 0 < self.bg_color_est_perc <= 100:
             raise ValueError(
                 f"bg_color_est_perc must be in (0, 100], got {self.bg_color_est_perc}"
+            )
+        if self.bg_threshold_method not in ("mad", "percentile"):
+            raise ValueError(
+                "bg_threshold_method must be 'mad' or 'percentile', "
+                f"got {self.bg_threshold_method!r}"
+            )
+        if self.bg_noise_sigma <= 0:
+            raise ValueError(
+                f"bg_noise_sigma must be positive, got {self.bg_noise_sigma}"
             )
 
     def _init_sphere_projection(self) -> None:

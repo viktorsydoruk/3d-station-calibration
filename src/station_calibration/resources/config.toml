@@ -47,7 +47,17 @@ fit_every_n = 5
 fixed_bg_threshold = 30
 # number of rows (either from bottom or from top) where only background is located
 bg_height_pxs = 200
+# automatic threshold method when fixed_bg_threshold = 0:
+#   "percentile" - bg_color_est_perc percentile of the quietest background rows (default)
+#   "mad"        - max(median + bg_noise_sigma * 1.4826 * MAD,
+#                      bg_color_est_perc percentile) of those rows (opt-in;
+#                  the percentile floor prevents a zero-MAD collapse on
+#                  quantized 8-bit backgrounds)
+bg_threshold_method = "percentile"
+# number of robust standard deviations above the background median for the "mad" method
+bg_noise_sigma = 5.0
 # percentile of intensity values of previously defined image rows to estimate the background color
+#       (only used when bg_threshold_method = "percentile")
 #       example, in case of 200 rows x 2000 pxs: 99.99% - 4000 pxs outliers (that might have too high intensities
 #                                                99.999% - 400 pxs
 #                                                99.9999% - 40 pxs

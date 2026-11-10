@@ -26,8 +26,10 @@ from station_calibration.vision import (
 )
 from station_calibration.vision.debug import debug_images_storing
 from station_calibration.vision.detection import (
+    estimate_direction,
     find_the_sphere_on_mask,
     fit_circle_with_covariance,
+    get_bg_noise_threshold,
     get_bg_value,
     get_forground_mask,
 )
@@ -463,6 +465,119 @@ def test_analyze_image_array_extracts_synthetic_sphere() -> None:
     assert result.observation.radius == pytest.approx(SYNTHETIC_RADIUS, abs=5.0)
 
 
+def _noisy_sphere_scene() -> np.ndarray:
+    """Bright blurred sphere on a noisy gray background with a busy top band."""
+    height, width = 600, 800
+    rng = np.random.default_rng(5)
+    image = np.full((height, width), 100.0)
+    # A dark texture in the top band makes the direction estimator pick +1
+    # without adding pixels that cross the bright-sphere threshold.
+    image[:90] = rng.integers(0, 90, size=(90, width))
+    cv2.circle(image, (400, 300), 100, 220.0, -1, lineType=cv2.LINE_AA)
+    # Optical blur first, then sensor noise: added noise must not be smoothed
+    # away, otherwise the background MAD collapses to zero.
+    image = cv2.GaussianBlur(image, (0, 0), 2.0)
+    image += rng.normal(0.0, 2.0, (height, width))
+    return np.clip(np.rint(image), 0, 255).astype(np.uint8)
+
+
+def _quantized_sphere_scene() -> np.ndarray:
+    """Blurred sphere on a quantized 16/17/18/19 DN background.
+
+    This reproduces the real 8-bit case where most background pixels equal the
+    median, so the raw MAD is zero and the percentile floor is required.
+    """
+    height, width = 600, 800
+    rng = np.random.default_rng(11)
+    background = np.full((height, width), 17.0)
+    pattern = rng.random((height, width))
+    background[pattern < 0.17] = 16.0
+    background[pattern > 0.83] = 18.0
+    background[pattern > 0.995] = 19.0
+    # Busy dark top band sets direction to +1 without crossing the threshold.
+    background[:90] = rng.integers(0, 16, size=(90, width))
+    sphere = np.zeros((height, width), dtype=np.float64)
+    cv2.circle(sphere, (400, 300), 100, 100.0, -1, lineType=cv2.LINE_AA)
+    sphere = cv2.GaussianBlur(sphere, (0, 0), 2.0)
+    image = background + sphere
+    return np.clip(np.rint(image), 0, 255).astype(np.uint8)
+
+
+@pytest.mark.parametrize("method", ["mad", "percentile"])
+def test_analyze_image_auto_background_methods_extract_sphere(method: str) -> None:
+    image = _noisy_sphere_scene()
+    kwargs = _analysis_kwargs()
+    kwargs.update(
+        bg_height_px=200,
+        fixed_bg_threshold=0,
+        bg_threshold_method=method,
+        bg_color_est_perc=99.999,
+        bg_noise_sigma=5.0,
+    )
+
+    result = analyze_image(image, **kwargs)
+
+    assert result.reason is None
+    assert result.direction == 1
+    assert result.observation is not None
+    assert result.observation.x == pytest.approx(400.0, abs=4.0)
+    assert result.observation.y == pytest.approx(300.0, abs=4.0)
+    assert result.observation.radius == pytest.approx(100.0, abs=6.0)
+    assert result.observation.sigma == pytest.approx(2.0, abs=0.6)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"bg_threshold_method": "otsu"}, "bg_threshold_method"),
+        ({"bg_noise_sigma": 0.0}, "bg_noise_sigma"),
+        ({"bg_noise_sigma": float("nan")}, "bg_noise_sigma"),
+    ],
+)
+def test_analyze_image_rejects_invalid_background_options(
+    kwargs: dict,
+    match: str,
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        analyze_image(np.zeros((10, 10), dtype=np.uint8), **kwargs)
+
+
+def test_get_bg_noise_threshold_is_stable_across_band_sizes() -> None:
+    image = _noisy_sphere_scene()
+
+    values = [
+        get_bg_noise_threshold(image, bg_height_px=band, direction=1)
+        for band in (100, 200, 300)
+    ]
+
+    assert max(values) - min(values) <= 1.0
+    assert all(100.0 < value < 150.0 for value in values)
+
+
+def test_analyze_image_mad_mode_floors_quantized_background() -> None:
+    image = _quantized_sphere_scene()
+    kwargs = _analysis_kwargs()
+    kwargs.update(
+        bg_height_px=200,
+        fixed_bg_threshold=0,
+        bg_color_est_perc=99.999,
+        bg_noise_sigma=5.0,
+    )
+
+    kwargs["bg_threshold_method"] = "mad"
+    mad = analyze_image(image, **kwargs)
+    kwargs["bg_threshold_method"] = "percentile"
+    percentile = analyze_image(image, **kwargs)
+
+    assert mad.reason is None
+    assert percentile.reason is None
+    assert mad.observation is not None
+    assert percentile.observation is not None
+    assert mad.observation.x == pytest.approx(percentile.observation.x)
+    assert mad.observation.y == pytest.approx(percentile.observation.y)
+    assert mad.observation.radius == pytest.approx(percentile.observation.radius)
+
+
 def _reference_get_bg_value(
     image: np.ndarray,
     bg_height_px: int,
@@ -534,6 +649,165 @@ def test_get_bg_value_rejects_invalid_arguments() -> None:
         get_bg_value(image, bg_height_px=10, direction=0, start_from=5)
 
 
+@pytest.mark.parametrize(
+    "image",
+    [
+        np.zeros((10,), dtype=np.uint8),
+        np.zeros((0, 10), dtype=np.uint8),
+        np.zeros((10, 0), dtype=np.uint8),
+    ],
+)
+def test_get_bg_value_rejects_invalid_image_shape(image: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="2D"):
+        get_bg_value(image, bg_height_px=10)
+
+
+@pytest.mark.parametrize("perc", [0.0, -1.0, 100.1, float("nan")])
+def test_get_bg_value_rejects_invalid_percentile(perc: float) -> None:
+    image = np.zeros((20, 20), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="perc"):
+        get_bg_value(image, bg_height_px=10, perc=perc)
+
+
+def test_get_bg_value_keeps_constant_background() -> None:
+    image = np.full((50, 60), 77, dtype=np.uint8)
+
+    assert get_bg_value(image, bg_height_px=25, direction=1) == pytest.approx(77.0)
+    assert get_bg_value(image, bg_height_px=25, direction=-1, perc=50) == pytest.approx(77.0)
+
+
+def test_get_bg_value_stops_before_bright_object_inside_band() -> None:
+    image = np.full((400, 100), 10, dtype=np.uint8)
+    # A bright object starts 60 rows into the 300-row background band.  The
+    # prefix search must stop before it; taking the whole band would raise the
+    # percentile to the object intensity.
+    image[300:340] = 200
+
+    value = get_bg_value(image, bg_height_px=300, direction=1, perc=99.9)
+
+    assert value == pytest.approx(10.0)
+
+
+def test_get_bg_noise_threshold_uses_median_and_mad() -> None:
+    image = np.empty((10, 10), dtype=np.uint8)
+    image[:5] = 10
+    image[5:] = 20
+
+    # bg_height_px == start_from makes the whole band the quietest prefix:
+    # median = 15, MAD = 5, sigma = 1.4826 * 5.
+    expected = 15.0 + 5.0 * 1.4826 * 5.0
+
+    assert get_bg_noise_threshold(
+        image,
+        bg_height_px=10,
+        direction=-1,
+        n_sigma=5.0,
+    ) == pytest.approx(expected)
+
+    # The percentile floor must not cap a larger MAD-based estimate.
+    assert get_bg_noise_threshold(
+        image,
+        bg_height_px=10,
+        direction=-1,
+        n_sigma=5.0,
+        percentile_floor=99.999,
+    ) == pytest.approx(expected)
+
+
+def test_get_bg_noise_threshold_zero_mad_returns_median() -> None:
+    image = np.full((20, 30), 77, dtype=np.uint8)
+
+    assert get_bg_noise_threshold(
+        image,
+        bg_height_px=10,
+        direction=1,
+    ) == pytest.approx(77.0)
+
+
+def test_get_bg_noise_threshold_percentile_floor_prevents_zero_mad_collapse() -> None:
+    # A quantized background: 80 % at 17 and 20 % at 19.  MAD is zero, so the
+    # pure estimate would be 17 and would let the 19 DN sensor pattern into
+    # the foreground mask.
+    image = np.full((10, 100), 17, dtype=np.uint8)
+    image[:, :20] = 19
+
+    assert get_bg_noise_threshold(
+        image,
+        bg_height_px=10,
+        direction=-1,
+        n_sigma=5.0,
+        percentile_floor=99.999,
+    ) == pytest.approx(19.0)
+
+
+def test_get_bg_noise_threshold_stops_before_bright_object_inside_band() -> None:
+    image = np.full((400, 100), 10, dtype=np.uint8)
+    image[300:340] = 200
+
+    value = get_bg_noise_threshold(image, bg_height_px=300, direction=1)
+
+    assert value == pytest.approx(10.0)
+
+
+@pytest.mark.parametrize("n_sigma", [0.0, -1.0, float("nan"), float("inf")])
+def test_get_bg_noise_threshold_rejects_invalid_n_sigma(n_sigma: float) -> None:
+    image = np.zeros((20, 20), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="n_sigma"):
+        get_bg_noise_threshold(image, bg_height_px=10, n_sigma=n_sigma)
+
+
+@pytest.mark.parametrize("floor", [0.0, -1.0, 100.1, float("nan")])
+def test_get_bg_noise_threshold_rejects_invalid_percentile_floor(
+    floor: float,
+) -> None:
+    image = np.zeros((20, 20), dtype=np.uint8)
+
+    with pytest.raises(ValueError, match="percentile_floor"):
+        get_bg_noise_threshold(
+            image,
+            bg_height_px=10,
+            percentile_floor=floor,
+        )
+
+
+@pytest.mark.parametrize(
+    ("top_noise", "bottom_noise", "expected"),
+    [(120, 0, 1), (0, 120, -1), (0, 0, 0)],
+)
+def test_estimate_direction_detects_quiet_side(
+    top_noise: int,
+    bottom_noise: int,
+    expected: int,
+) -> None:
+    rng = np.random.default_rng(0)
+    image = np.zeros((200, 120), dtype=np.uint8)
+    if top_noise:
+        image[:100] = rng.integers(0, top_noise, size=(100, 120), dtype=np.uint8)
+    if bottom_noise:
+        image[100:] = rng.integers(0, bottom_noise, size=(100, 120), dtype=np.uint8)
+
+    assert estimate_direction(image, bg_height_px=100) == expected
+
+
+def test_estimate_direction_keeps_short_frame_bands_disjoint() -> None:
+    rng = np.random.default_rng(1)
+    image = np.zeros((40, 80), dtype=np.uint8)
+    image[:20] = rng.integers(0, 120, size=(20, 80), dtype=np.uint8)
+
+    # The requested band is longer than the frame.  Both sides must still get
+    # half of the image instead of the same full-frame slice.
+    assert estimate_direction(image, bg_height_px=300) == 1
+
+
+def test_estimate_direction_rejects_invalid_arguments() -> None:
+    with pytest.raises(ValueError, match="2D"):
+        estimate_direction(np.zeros((10,)), bg_height_px=5)
+    with pytest.raises(ValueError, match="bg_height_px"):
+        estimate_direction(np.zeros((10, 10), dtype=np.uint8), bg_height_px=0)
+
+
 def test_analyze_image_reports_undefined_direction() -> None:
     image_gray = np.zeros((300, 400), dtype=np.uint8)
 
@@ -560,21 +834,62 @@ def test_get_forground_mask_returns_empty_mask_when_no_contour() -> None:
     assert not np.any(mask)
 
 
+def test_get_forground_mask_rejects_invalid_arguments() -> None:
+    with pytest.raises(ValueError, match="2D"):
+        get_forground_mask(np.zeros((20,), dtype=np.uint8), bg_thr=0)
+    with pytest.raises(ValueError, match="finite"):
+        get_forground_mask(
+            np.zeros((20, 20), dtype=np.uint8),
+            bg_thr=float("nan"),
+        )
+    with pytest.raises(ValueError, match="finite"):
+        get_forground_mask(
+            np.zeros((20, 20), dtype=np.uint8),
+            bg_thr=object(),  # type: ignore[arg-type]
+        )
+
+
 def test_analyze_image_reports_missing_sphere_when_mask_is_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(image_module, "estimate_direction", lambda *args, **kwargs: 1)
 
+    image = np.zeros((300, 400), dtype=np.uint8)
+    # The single pixel passes the threshold but is removed by the 3x3 opening,
+    # so the foreground mask stays empty.
+    image[150, 200] = 100
+
     result = analyze_image(
-        np.zeros((300, 400), dtype=np.uint8),
+        image,
         bg_height_px=100,
-        fixed_bg_threshold=300,
+        fixed_bg_threshold=30,
         print_debug=DebugInfo(False),
     )
 
     assert result.observation is None
     assert result.direction == 1
     assert result.reason == "sphere is not found or out of FOV"
+
+
+@pytest.mark.parametrize(
+    ("fill", "threshold"),
+    [(10, 10), (10, 20), (100, 10)],
+)
+def test_analyze_image_reports_unusable_background_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+    fill: int,
+    threshold: int,
+) -> None:
+    monkeypatch.setattr(image_module, "estimate_direction", lambda *args, **kwargs: 1)
+
+    result = analyze_image(
+        np.full((300, 400), fill, dtype=np.uint8),
+        fixed_bg_threshold=threshold,
+        print_debug=DebugInfo(False),
+    )
+
+    assert result.observation is None
+    assert result.reason == "background threshold is outside the usable range"
 
 
 def test_analyze_image_reports_missing_sphere(
@@ -588,8 +903,11 @@ def test_analyze_image_reports_missing_sphere(
         image_module, "find_the_sphere_on_mask", lambda *args, **kwargs: None
     )
 
+    image = np.zeros((300, 400), dtype=np.uint8)
+    image[0, 0] = 255
+
     result = analyze_image(
-        np.zeros((300, 400), dtype=np.uint8),
+        image,
         fixed_bg_threshold=30,
         print_debug=DebugInfo(False),
     )
@@ -613,8 +931,11 @@ def test_analyze_image_reports_missing_sigma(
     )
     monkeypatch.setattr(image_module, "get_blur_sigma", lambda *args, **kwargs: None)
 
+    image = np.zeros((300, 400), dtype=np.uint8)
+    image[0, 0] = 255
+
     result = analyze_image(
-        np.zeros((300, 400), dtype=np.uint8),
+        image,
         fixed_bg_threshold=30,
         print_debug=DebugInfo(False),
     )

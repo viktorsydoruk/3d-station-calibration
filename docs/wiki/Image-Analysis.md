@@ -51,22 +51,40 @@ bands (`bg_height_px // 2` rows each):
 - otherwise → `0`, and the image is rejected.
 
 The rule is `1.5 * quieter_std < noisier_std`. The background band is quieter
-because it contains only the empty conveyor/background.
+because it contains only the empty conveyor/background. The two bands are kept
+disjoint: on a frame shorter than twice the requested band, each side uses
+`image_height // 2` rows so a real asymmetry is not hidden by sampling the same
+pixels twice.
 
 ### 3. Background threshold
 
-If `fixed_bg_threshold != 0`, that value is used directly. Otherwise
-`get_bg_value` estimates it:
+If `fixed_bg_threshold != 0`, that value is used directly. Otherwise the
+threshold is estimated from the quietest background prefix:
 
 1. Take a band of at most `bg_height_px` rows from the background side
    (bottom for `direction = +1`, top for `direction = -1`).
 2. Compute the cumulative standard deviation for prefixes of at least 10 rows.
 3. Choose the prefix length with the smallest standard deviation. This avoids
    rows that contain the sphere or nozzle.
-4. Return the `bg_color_est_perc` percentile of that prefix.
+4. Turn the prefix into a threshold with `bg_threshold_method`:
+   - `"percentile"` (default): the `bg_color_est_perc` percentile of the
+     prefix. 99.999 % tolerates a few bright outlier pixels.
+   - `"mad"` (opt-in): the larger of `median + bg_noise_sigma * 1.4826 *
+     MAD` and the `bg_color_est_perc` percentile. The multiplier is an
+     explicit confidence level in units of robust noise and does not drift
+     with the number of pixels. The percentile is a lower bound, so this mode
+     never goes below the legacy threshold.
 
-The default 99.999 % percentile tolerates a few bright outlier pixels. The
-implementation uses prefix sums rather than a Python loop over pixels.
+The MAD estimate is robust to hot pixels and specular highlights, but on
+quantized 8-bit backgrounds more than half of the pixels can equal the median.
+`MAD` then collapses to zero; without the percentile floor the threshold would
+fall back to the median and turn the sensor pattern into foreground. On the
+available real calibration data the pure MAD estimate rejected most frames for
+this reason, so `"mad"` is not the default and is always floored. Keep
+`bg_threshold_method = "percentile"` unless you have verified the mode on your
+camera. The implementation uses prefix sums rather than a Python loop over
+pixels. A threshold below the darkest pixel or at/above the brightest pixel is
+rejected before the sphere search; see [Rejections](#rejections).
 
 ### 4. Foreground mask
 
@@ -257,6 +275,7 @@ observation is produced it also carries a reason:
 | Reason | Trigger |
 | --- | --- |
 | `direction is undefined` | Top and bottom bands look equally busy |
+| `background threshold is outside the usable range` | Threshold is below the darkest pixel or at/above the brightest pixel |
 | `sphere is not found or out of FOV` | Border margin, gap in the mask, or failed circle fit |
 | `border sigma cannot be estimated` | Edge profile or Gaussian fit failed |
 | `invalid image analysis result` | Non-finite/invalid values after analysis |
@@ -294,7 +313,7 @@ filter for stored data.
 | --- | --- |
 | Sphere merges with the nozzle | Decrease `sphere_center_to_nozzle_part` |
 | Sphere touches the border | Increase `min_bg_pixels_on_edges` or move the sphere |
-| Background threshold too low/high | Set `fixed_bg_threshold`, or tune `bg_height_pxs` / `bg_color_est_perc` |
+| Background threshold too low/high | Set `fixed_bg_threshold`, tune `bg_noise_sigma`, or switch `bg_threshold_method` / tune `bg_color_est_perc` |
 | Rough centre unstable | Increase `n_move_aver` |
 | Noisy sigma | Increase `blur_est_border_thickness` |
 
@@ -302,7 +321,7 @@ filter for stored data.
 
 The hot paths are vectorized:
 
-- background percentile via cumulative sums over the band;
+- background prefix selection via cumulative sums over the band;
 - row extents via `np.minimum.at` / `np.maximum.at`.
 
 The blur estimate only touches the cropped square around the detected sphere;

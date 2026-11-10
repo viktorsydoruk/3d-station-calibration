@@ -5,6 +5,7 @@
 
 __all__ = [
     "get_bg_value",
+    "get_bg_noise_threshold",
     "estimate_direction",
     "get_forground_mask",
     "smooth_1D_array",
@@ -32,23 +33,24 @@ _MAX_SUBPIXEL_SEARCH_FRACTION = 0.5
 _SUBPIXEL_SEARCH_SIGMA_FACTOR = 3.0
 _SUBPIXEL_SEARCH_GROWTH = 1.5
 
+# Scale factor that turns the median absolute deviation into a Gaussian-
+# equivalent standard deviation for normally distributed noise.
+_MAD_TO_SIGMA = 1.4826
 
-def get_bg_value(image_gray: np.ndarray,
-                 bg_height_px: int = 300,
-                 perc: float = 99.9,
-                 direction: int = 1,
-                 start_from: int = 10) -> float:
+
+def _background_prefix(image_gray: np.ndarray,
+                       bg_height_px: int = 300,
+                       direction: int = 1,
+                       start_from: int = 10) -> np.ndarray:
     """
-        Get background intensity from image
-    :param image_gray: gray-scale image
-    :param bg_height_px: background height in pixels from the bottom of the image
-    :param perc: percentile of background intensity
-    :param direction: direction for calculations
-    :param start_from: starting arg for estimation
-    :return:
+        Return the quietest prefix of the background band.
+
+        Rows are ordered from the background side inwards, so the prefix stops
+        before a sphere or nozzle enters the band and its statistics stay
+        representative of the empty background.
     """
     image_gray = np.asarray(image_gray)
-    if image_gray.ndim != 2 or image_gray.shape[1] == 0:
+    if image_gray.ndim != 2 or 0 in image_gray.shape:
         raise ValueError("image_gray must be a non-empty 2D array")
     if direction == 1:
         band = image_gray[::-1, :]
@@ -97,7 +99,95 @@ def get_bg_value(image_gray: np.ndarray,
         sel_arg = int(np.argmin(candidate_stds) + start_from)
 
     values = band[: min(sel_arg, max_rows)]
-    return np.percentile(values.reshape(-1), perc)
+    return values.reshape(-1)
+
+
+def get_bg_value(image_gray: np.ndarray,
+                 bg_height_px: int = 300,
+                 perc: float = 99.9,
+                 direction: int = 1,
+                 start_from: int = 10) -> float:
+    """
+        Get background intensity from image
+    :param image_gray: gray-scale image
+    :param bg_height_px: background height in pixels from the bottom of the image
+    :param perc: percentile of background intensity
+    :param direction: direction for calculations
+    :param start_from: starting arg for estimation
+    :return: percentile of the quietest background prefix
+    """
+    try:
+        perc = float(perc)
+    except (TypeError, ValueError):
+        raise ValueError("perc must be in (0, 100]") from None
+    if not 0.0 < perc <= 100.0:
+        raise ValueError("perc must be in (0, 100]")
+
+    values = _background_prefix(
+        image_gray,
+        bg_height_px=bg_height_px,
+        direction=direction,
+        start_from=start_from,
+    )
+    return float(np.percentile(values, perc))
+
+
+def get_bg_noise_threshold(image_gray: np.ndarray,
+                           bg_height_px: int = 300,
+                           direction: int = 1,
+                           start_from: int = 10,
+                           n_sigma: float = 5.0,
+                           percentile_floor: float | None = None) -> float:
+    """
+        Estimate a background threshold from the robust background noise.
+
+        The threshold is ``median + n_sigma * 1.4826 * MAD`` over the quietest
+        prefix of the background band.  Unlike a high percentile, ``n_sigma``
+        is an explicit confidence level and does not depend on the number of
+        pixels in the band.
+
+        On quantized 8-bit backgrounds more than half of the prefix pixels may
+        equal the median.  ``MAD`` is then zero and the threshold collapses to
+        the median, which can turn the sensor pattern into foreground.  Pass
+        ``percentile_floor`` (for example 99.999) to keep the result at or
+        above the legacy percentile of the same prefix.
+
+    :param image_gray: gray-scale image
+    :param bg_height_px: background height in pixels from the bottom or top
+    :param direction: 1 for a noisy top (nozzle above), -1 for a noisy bottom
+    :param start_from: minimum number of background rows to use
+    :param n_sigma: number of robust standard deviations above the median
+    :param percentile_floor: optional percentile of the prefix used as a lower bound
+    :return: background threshold
+    """
+    try:
+        n_sigma = float(n_sigma)
+    except (TypeError, ValueError):
+        raise ValueError("n_sigma must be positive and finite") from None
+    if not np.isfinite(n_sigma) or n_sigma <= 0.0:
+        raise ValueError("n_sigma must be positive and finite")
+
+    floor: float | None = None
+    if percentile_floor is not None:
+        try:
+            floor = float(percentile_floor)
+        except (TypeError, ValueError):
+            raise ValueError("percentile_floor must be in (0, 100]") from None
+        if not 0.0 < floor <= 100.0:
+            raise ValueError("percentile_floor must be in (0, 100]")
+
+    values = _background_prefix(
+        image_gray,
+        bg_height_px=bg_height_px,
+        direction=direction,
+        start_from=start_from,
+    )
+    median = float(np.median(values))
+    mad = float(np.median(np.abs(values - median)))
+    threshold = median + n_sigma * _MAD_TO_SIGMA * mad
+    if floor is not None:
+        threshold = max(threshold, float(np.percentile(values, floor)))
+    return threshold
 
 
 def estimate_direction(image_gray: np.ndarray,
@@ -111,8 +201,21 @@ def estimate_direction(image_gray: np.ndarray,
     :param bg_height_px: background height in pixels from the bottom or from the top of the image
     :return: either -1, or 0, or 1
     """
-    bot_data = image_gray[-bg_height_px:]
-    top_data = image_gray[:bg_height_px]
+    image_gray = np.asarray(image_gray)
+    if image_gray.ndim != 2 or 0 in image_gray.shape:
+        raise ValueError("image_gray must be a non-empty 2D array")
+    if bg_height_px < 1:
+        raise ValueError("bg_height_px must be positive")
+
+    # Keep the two bands disjoint.  On a frame shorter than twice the requested
+    # band, slicing the whole image for both sides would compare the same
+    # pixels and make a real direction look undefined.
+    band_height = min(int(bg_height_px), int(image_gray.shape[0]) // 2)
+    if band_height < 1:
+        return 0
+
+    bot_data = image_gray[-band_height:]
+    top_data = image_gray[:band_height]
     bot_std = np.std(bot_data)
     top_std = np.std(top_data)
 
@@ -127,6 +230,16 @@ def estimate_direction(image_gray: np.ndarray,
 def get_forground_mask(image_gray: np.ndarray,
                        bg_thr: float) -> np.ndarray:
     """Get forground mask with only one island where a sphere is located"""
+    image_gray = np.asarray(image_gray)
+    if image_gray.ndim != 2 or 0 in image_gray.shape:
+        raise ValueError("image_gray must be a non-empty 2D array")
+    try:
+        bg_thr = float(bg_thr)
+    except (TypeError, ValueError):
+        raise ValueError("bg_thr must be a finite scalar") from None
+    if not np.isfinite(bg_thr):
+        raise ValueError("bg_thr must be finite")
+
     forground_mask = image_gray > bg_thr
 
     open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))

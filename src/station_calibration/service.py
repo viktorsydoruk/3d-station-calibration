@@ -165,6 +165,8 @@ class CalibrationService:
         return {
             "bg_height_px": self.settings.bg_height_pxs,
             "bg_color_est_perc": self.settings.bg_color_est_perc,
+            "bg_threshold_method": self.settings.bg_threshold_method,
+            "bg_noise_sigma": self.settings.bg_noise_sigma,
             "fixed_bg_threshold": self.settings.fixed_bg_threshold,
             "n_mov_aver": self.settings.n_move_aver,
             "sphere_center_to_nozzle_part": self.settings.sphere_center_to_nozzle_part,

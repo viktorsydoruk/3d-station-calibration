@@ -23,6 +23,7 @@ from .debug import _store_debug_image, debug_images_storing
 from .detection import (
     estimate_direction,
     find_the_sphere_on_mask,
+    get_bg_noise_threshold,
     get_bg_value,
     get_blur_sigma,
     get_forground_mask,
@@ -36,6 +37,8 @@ def analyze_image(image_gray: np.ndarray,
                   *,
                   bg_height_px: int = 300,
                   bg_color_est_perc: float = 99.9,
+                  bg_threshold_method: str = "percentile",
+                  bg_noise_sigma: float = 5.0,
                   fixed_bg_threshold: float = 0,
                   n_mov_aver: int = 11,
                   sphere_center_to_nozzle_part: float = 0.3,
@@ -57,7 +60,9 @@ def analyze_image(image_gray: np.ndarray,
     :param image_gray: gray-scale image
     :param image_color: color image used only for optional debug images
     :param bg_height_px: estimated background height at the bottom or at the top of the image
-    :param bg_color_est_perc: percentile to estimate the background color
+    :param bg_color_est_perc: percentile to estimate the background color (percentile method only)
+    :param bg_threshold_method: automatic background method, `"mad"` or `"percentile"`
+    :param bg_noise_sigma: robust noise multiplier for the `"mad"` method
     :param fixed_bg_threshold: fixed background threshold (0 means automatic estimation)
     :param n_mov_aver: number of moving average pixels to smooth intermediate data
     :param sphere_center_to_nozzle_part: part of the sphere between center and nozzle
@@ -71,6 +76,16 @@ def analyze_image(image_gray: np.ndarray,
     :param subpixel_edges: whether to refine the silhouette edges to sub-pixel intensity crossings
     :return: analysis result with an observation or a rejection reason
     """
+    method = str(bg_threshold_method).strip().lower()
+    if method not in ("mad", "percentile"):
+        raise ValueError("bg_threshold_method must be 'mad' or 'percentile'")
+    try:
+        bg_noise_sigma = float(bg_noise_sigma)
+    except (TypeError, ValueError):
+        raise ValueError("bg_noise_sigma must be positive and finite") from None
+    if not np.isfinite(bg_noise_sigma) or bg_noise_sigma <= 0.0:
+        raise ValueError("bg_noise_sigma must be positive and finite")
+
     image_shape = (int(image_gray.shape[0]), int(image_gray.shape[1]))
     starting_time = time.perf_counter()
 
@@ -90,14 +105,37 @@ def analyze_image(image_gray: np.ndarray,
 
     bg_thr = fixed_bg_threshold
     if bg_thr == 0:
-        # getting the highest background value (allowing only a few pixels to be higher)
-        bg_thr = get_bg_value(
-            image_gray,
-            bg_height_px=bg_height_px,
-            perc=bg_color_est_perc,
-            direction=direction,
-        )
-    print_debug(f"BG_thr: {bg_thr:0.1f}, ", end="")
+        threshold_source = method
+        if method == "mad":
+            # median + n_sigma * robust sigma, floored by the legacy
+            # percentile: quantized 8-bit backgrounds can have MAD = 0.
+            bg_thr = get_bg_noise_threshold(
+                image_gray,
+                bg_height_px=bg_height_px,
+                direction=direction,
+                n_sigma=bg_noise_sigma,
+                percentile_floor=bg_color_est_perc,
+            )
+        else:
+            # legacy: highest background value (allowing a few pixels higher)
+            bg_thr = get_bg_value(
+                image_gray,
+                bg_height_px=bg_height_px,
+                perc=bg_color_est_perc,
+                direction=direction,
+            )
+    else:
+        threshold_source = "fixed"
+    print_debug(f"BG_thr ({threshold_source}): {bg_thr:0.1f}, ", end="")
+
+    # A threshold at or above the brightest pixel produces an empty mask, while
+    # one below the darkest pixel marks the whole frame as foreground.  Both
+    # cases are background-estimation failures, not a missing sphere, so report
+    # them separately instead of failing later inside the sphere search.
+    image_min = float(np.min(image_gray))
+    image_max = float(np.max(image_gray))
+    if not np.isfinite(bg_thr) or bg_thr < image_min or bg_thr >= image_max:
+        return rejected("background threshold is outside the usable range")
 
     # getting foreground mask for the nozzle with a ball only (removing the other islands)
     forground_mask = get_forground_mask(image_gray, bg_thr)
@@ -299,6 +337,8 @@ def filtering_data_by_radius(image_filenames: list[Path],
 def analyze_images(image_filenames: list[Path],
                    bg_height_px: int = 300,
                    bg_color_est_perc: float = 99.9,
+                   bg_threshold_method: str = "percentile",
+                   bg_noise_sigma: float = 5.0,
                    fixed_bg_threshold: float = 0,
                    n_mov_aver: int = 11,
                    sphere_center_to_nozzle_part: float = 0.3,
@@ -328,6 +368,8 @@ def analyze_images(image_filenames: list[Path],
                 image_color,
                 bg_height_px=bg_height_px,
                 bg_color_est_perc=bg_color_est_perc,
+                bg_threshold_method=bg_threshold_method,
+                bg_noise_sigma=bg_noise_sigma,
                 fixed_bg_threshold=fixed_bg_threshold,
                 n_mov_aver=n_mov_aver,
                 sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
@@ -364,6 +406,8 @@ def analyze_images(image_filenames: list[Path],
 def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
                                        bg_height_px: int = 300,
                                        bg_color_est_perc: float = 99.9,
+                                       bg_threshold_method: str = "percentile",
+                                       bg_noise_sigma: float = 5.0,
                                        fixed_bg_threshold: float = 0,
                                        n_mov_aver: int = 11,
                                        sphere_center_to_nozzle_part: float = 0.3,
@@ -378,7 +422,9 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
         Getting found sphere parameters and bluring sigma at the border of the sphere
     :param image_filenames: list of the paths to images
     :param bg_height_px: estimated background height at the bottom or at the top of each image
-    :param bg_color_est_perc: percentile to estimate the background color
+    :param bg_color_est_perc: percentile to estimate the background color (percentile method only)
+    :param bg_threshold_method: automatic background method, `"mad"` or `"percentile"`
+    :param bg_noise_sigma: robust noise multiplier for the `"mad"` method
     :param fixed_bg_threshold: fixed background threshold (if 0 the threshold will be automatically calculated)
     :param n_mov_aver: number of moving average pixels to smooth the intermediate data
     :param sphere_center_to_nozzle_part: part of the sphere between its center and the nozzle that should be taken into account
@@ -394,6 +440,8 @@ def get_sphere_centers_and_blur_sigmas(image_filenames: list[Path],
         image_filenames,
         bg_height_px=bg_height_px,
         bg_color_est_perc=bg_color_est_perc,
+        bg_threshold_method=bg_threshold_method,
+        bg_noise_sigma=bg_noise_sigma,
         fixed_bg_threshold=fixed_bg_threshold,
         n_mov_aver=n_mov_aver,
         sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,

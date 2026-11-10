@@ -167,14 +167,23 @@ def test_fresh_source_feeds_raw_observations_and_session_filters(
         "search_images",
         lambda *args, **kwargs: image_filenames,
     )
+    captured_kwargs: dict = {}
+
+    def fake_analyze_images(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        return analyses
+
     monkeypatch.setattr(
         folder_module,
         "analyze_images",
-        lambda *args, **kwargs: analyses,
+        fake_analyze_images,
     )
 
     source = FolderCalibrationSource(settings, DebugInfo(False))
     dataset = source.load()
+
+    assert captured_kwargs["bg_threshold_method"] == settings.bg_threshold_method
+    assert captured_kwargs["bg_noise_sigma"] == settings.bg_noise_sigma
 
     assert dataset.from_stored_data is False
     assert dataset.apply_radius_filter is True

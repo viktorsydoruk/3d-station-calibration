@@ -132,14 +132,23 @@ folder workflow and the Ice server both read this setting.
 | --- | --- | --- |
 | `fixed_bg_threshold` | `30` | Fixed intensity threshold; `0` enables automatic estimation |
 | `bg_height_pxs` | `200` | Height of the background band at the top/bottom |
-| `bg_color_est_perc` | `99.999` | Percentile of the band used as the threshold |
+| `bg_threshold_method` | `"percentile"` | Automatic method: `"percentile"` or `"mad"` |
+| `bg_noise_sigma` | `5.0` | Robust noise multiplier for the opt-in `"mad"` method |
+| `bg_color_est_perc` | `99.999` | Percentile of the band for the `"percentile"` method |
 
 `bg_height_pxs` must be at least 10 because the background estimator starts at
 row 10. Numeric settings must be finite; `NaN` and infinity are rejected during
 configuration loading.
 
-`bg_color_est_perc` must be in `(0, 100]`. Raise the percentile when the
-background contains bright reflections; lower it when the sphere is dim.
+`bg_threshold_method = "mad"` takes the larger of `median + bg_noise_sigma *
+1.4826 * MAD` and the `bg_color_est_perc` percentile over the quietest
+background rows. `bg_noise_sigma` must be positive; larger values reject more
+background noise but require a brighter sphere. It is opt-in because quantized
+8-bit backgrounds often have `MAD = 0`; the percentile floor keeps the result
+at or above the legacy threshold in that case. The default `"percentile"` uses
+`bg_color_est_perc` directly (must be in `(0, 100]`). Raise the percentile when
+the background contains bright reflections; lower it when the sphere is dim.
+Configurations written before this key existed fall back to `"percentile"`.
 
 ## `[analysis.sphere_projection]`
 
@@ -318,6 +327,7 @@ outlier_cluster_guard = true
 [analysis.background]
 fixed_bg_threshold = 0
 bg_height_pxs = 250
+bg_threshold_method = "percentile"
 bg_color_est_perc = 99.99
 
 [analysis.sphere_projection]

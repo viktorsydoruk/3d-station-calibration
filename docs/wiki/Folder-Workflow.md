@@ -136,6 +136,9 @@ Typical rejection reasons:
 
 - `direction is undefined` — neither the top nor the bottom band looks like
   background.
+- `background threshold is outside the usable range` — the threshold is below
+  the darkest pixel or at/above the brightest pixel, so the mask would be
+  entirely empty or entirely foreground.
 - `sphere is not found or out of FOV` — the sphere touches an image edge, the
   mask has a gap, or the circle fit failed.
 - `border sigma cannot be estimated` — the edge profile or Gaussian fit failed.

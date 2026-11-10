@@ -43,6 +43,8 @@ BASE_CONFIG: dict[str, dict[str, Any]] = {
         "fixed_bg_threshold": 30,
         "bg_height_pxs": 200,
         "bg_color_est_perc": 99.999,
+        "bg_threshold_method": "percentile",
+        "bg_noise_sigma": 4.5,
     },
     "analysis.sphere_projection": {
         "n_move_aver": 11,
@@ -155,6 +157,8 @@ def test_loads_values_from_config(context: ConfigContext) -> None:
     assert settings.fixed_bg_threshold == 30.0
     assert settings.bg_height_pxs == 200
     assert settings.bg_color_est_perc == 99.999
+    assert settings.bg_threshold_method == "percentile"
+    assert settings.bg_noise_sigma == 4.5
     assert settings.n_move_aver == 11
     assert settings.sphere_center_to_nozzle_part == 0.7
     assert settings.min_bg_pixels_on_edges == 5
@@ -203,6 +207,31 @@ def test_subpixel_max_n_sigma_falls_back_to_packaged_default(
     assert settings.subpixel_max_n_sigma == 0.25
 
 
+def test_bg_threshold_options_fall_back_to_defaults(
+    context: ConfigContext,
+) -> None:
+    del context.config["analysis.background"]["bg_threshold_method"]
+    del context.config["analysis.background"]["bg_noise_sigma"]
+    context.write()
+
+    settings = context.make()
+
+    # Configs that predate the new key keep the legacy percentile behavior.
+    assert settings.bg_threshold_method == "percentile"
+    assert settings.bg_noise_sigma == 5.0
+
+
+def test_bg_threshold_method_is_case_insensitive(
+    context: ConfigContext,
+) -> None:
+    context.config["analysis.background"]["bg_threshold_method"] = "  MAD  "
+    context.write()
+
+    settings = context.make()
+
+    assert settings.bg_threshold_method == "mad"
+
+
 def test_default_config_file_is_absolute_and_exists() -> None:
     assert Settings.DEFAULT_CONFIG_FILE.is_absolute()
     assert Settings.DEFAULT_CONFIG_FILE.is_file()
@@ -224,6 +253,8 @@ def test_loads_default_config_without_explicit_file(context: ConfigContext) -> N
     assert settings.center_weighting is True
     assert settings.subpixel_edges is False
     assert settings.subpixel_max_n_sigma == 0.25
+    assert settings.bg_threshold_method == "percentile"
+    assert settings.bg_noise_sigma == 5.0
     assert settings.target_observations == 100
     assert settings.readiness_enabled is True
     assert settings.readiness_checkpoint_interval == 10
@@ -676,6 +707,11 @@ def test_n_distortion_coefs_rejects_unsupported_values(
         ("analysis.background", "bg_color_est_perc", 0, "bg_color_est_perc"),
         ("analysis.background", "bg_color_est_perc", 100.1, "bg_color_est_perc"),
         ("analysis.background", "bg_color_est_perc", float("nan"), "bg_color_est_perc"),
+        ("analysis.background", "bg_threshold_method", "otsu", "bg_threshold_method"),
+        ("analysis.background", "bg_threshold_method", "", "bg_threshold_method"),
+        ("analysis.background", "bg_noise_sigma", 0, "bg_noise_sigma"),
+        ("analysis.background", "bg_noise_sigma", -1, "bg_noise_sigma"),
+        ("analysis.background", "bg_noise_sigma", float("nan"), "bg_noise_sigma"),
         ("analysis.sphere_projection", "n_move_aver", 0, "n_move_aver"),
         (
             "analysis.sphere_projection",

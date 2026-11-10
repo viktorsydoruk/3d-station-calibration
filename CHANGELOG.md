@@ -6,6 +6,40 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in noise-aware automatic background threshold. With
+  `fixed_bg_threshold = 0`, `bg_threshold_method = "mad"` uses the larger of
+  `median + bg_noise_sigma * 1.4826 * MAD` and the `bg_color_est_perc`
+  percentile over the quietest background rows. `bg_noise_sigma` defaults to
+  `5.0`; its confidence level does not drift with the number of background
+  pixels. The percentile floor prevents a zero-MAD collapse on quantized 8-bit
+  backgrounds. The packaged default remains `"percentile"`;
+  `fixed_bg_threshold != 0` is unchanged.
+- Direct tests for the MAD threshold, both automatic methods on a noisy
+  synthetic scene, and `bg_threshold_method` / `bg_noise_sigma` validation.
+- Direct `estimate_direction` tests for top/bottom scenes, flat frames, short
+  frames, and invalid arguments, plus background-estimation regression tests
+  for a bright object inside the background band.
+
+### Fixed
+
+- `estimate_direction` keeps the top and bottom bands disjoint on frames
+  shorter than twice the requested band height. Previously both sides could
+  sample the whole image and report an undefined direction.
+- `get_bg_value` rejects percentiles outside `(0, 100]`, and
+  `get_forground_mask` validates the image shape and threshold instead of
+  failing inside OpenCV.
+- `analyze_image` reports a threshold that is below the darkest pixel or at or
+  above the brightest pixel as `background threshold is outside the usable
+  range` instead of a misleading missing-sphere rejection.
+
+### Changed
+
+- The background prefix selection is shared by `get_bg_value` (percentile) and
+  the new `get_bg_noise_threshold` (robust MAD), so both methods use exactly
+  the same rows.
+
 ## [2026.11.10.0] - 2026-11-10
 
 ### Added

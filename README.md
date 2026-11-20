@@ -9,65 +9,94 @@ Full documentation: [`docs/wiki/Home.md`](docs/wiki/Home.md).
 
 ## Install
 
-The project uses a `src` layout. Install it in editable mode for development:
+Requires **Python 3.13 or newer**. The project uses a `src` layout and derives
+its version from the Git tags, so install from a clone.
 
-```powershell
-python -m pip install -e .
-```
-
-or, with uv:
+The supported development setup uses [uv](https://docs.astral.sh/uv/):
 
 ```powershell
 uv sync
+uv run 3dsc --version
 ```
 
-The package version is generated from Git tags, so there is no version string to
-edit by hand. Check it with:
+`uv sync` creates `.venv`, installs the package in editable mode, and adds the
+`dev` tools (pytest, Ruff, mypy). A uv-managed `.venv` contains **no pip**, so
+`python -m pip` fails there with `No module named pip`; use `uv run` or
+`uv pip` in that environment instead.
+
+To use pip instead, start from a clean clone and create the environment with an
+interpreter that ships pip:
 
 ```powershell
-3dsc --version
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+python -m pip install pytest
 ```
 
-Create releases with `python scripts/release.py`; see
+If your default `python` is older than 3.13, select a newer interpreter, for
+example `py -3.14 -m venv .venv`.
+
+There is no version string to edit by hand. Check the installed version with
+`uv run 3dsc --version`, or `3dsc --version` in an activated environment.
+
+Create releases with `uv run python scripts/release.py`; see
 [Testing and Build](docs/wiki/Testing-and-Build.md#create-a-release). Release
 notes are in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Run the folder workflow
 
+A calibration folder contains the images and a `Calibration3DPositions.csv` with
+one row per image; see
+[Folder Workflow](docs/wiki/Folder-Workflow.md#input-layout) for the required
+layout.
+
 ```powershell
-3dsc "P:\3Dcalibration\3D_example"
+uv run 3dsc path\to\calibration-folder
+```
+
+or, with the environment activated:
+
+```powershell
+3dsc path\to\calibration-folder
 ```
 
 The equivalent module entry point is:
 
 ```powershell
-python -m station_calibration "P:\3Dcalibration\3D_example"
+python -m station_calibration path\to\calibration-folder
 ```
 
 Useful options:
 
 ```text
---config PATH                 TOML configuration file
---debug                       print detailed progress
---store-debug-images          write analysis/debug images
+--config PATH                    TOML configuration file
+--debug                          print detailed progress
+--store-debug-images             write analysis/debug images
 --load-stored-data / --no-load-stored-data
+--subpixel-edges / --no-subpixel-edges
+--subpixel-max-n-sigma SIGMA     cap the sub-pixel radius blur correction
 --target-observations N
 --max-observations N
+--bootstrap / --no-bootstrap     nozzle-home uncertainty report
 ```
 
-The default configuration ships with the package at
-`src/station_calibration/resources/config.toml`. Command-line options override
+The default configuration is packaged as
+`station_calibration/resources/config.toml` (in a source checkout:
+`src/station_calibration/resources/config.toml`). Command-line options override
 individual values from that file.
 
 ## Output
 
-The folder workflow writes its results below the analysis folder:
+The folder workflow writes its results inside the analysis folder:
 
 ```text
 <analysis folder>/output/CalibrationAllPoints.dat
 <analysis folder>/output/calibration_data.yaml
-<analysis folder>/debug/
+<analysis folder>/debug/                     (failure images; full sets with --store-debug-images)
 ```
+
+The folder names come from `[general.files]` in the configuration.
 
 `CalibrationAllPoints.dat` is the reusable per-image point cache. If it exists
 and `load_stored_data` is enabled, the folder workflow can skip image analysis
@@ -83,8 +112,10 @@ src/station_calibration/
 ├─ models.py              observations, rejections, fit results
 ├─ session.py             source-agnostic incremental calibration session
 ├─ service.py             image-bytes/raw arrays -> analysis -> session service
+├─ debug.py               debug printout helper
 ├─ stop.py                count-based stop policy
 ├─ readiness.py           saturation-based readiness policy
+├─ uncertainty.py         residual-bootstrap nozzle uncertainty
 ├─ vision/
 │  ├─ models.py           image observation value objects
 │  ├─ io.py               image loading/decoding
@@ -96,6 +127,8 @@ src/station_calibration/
 │  ├─ initialization.py   initial rotation and parameter packing
 │  ├─ model.py            camera model, projection, and unwrapping
 │  ├─ fit.py              least-squares camera fit
+│  ├─ outliers.py         residual outlier diagnostics
+│  ├─ weights.py          whitening for per-observation covariances
 │  └─ metrics.py          diagnostics, uncertainty, and reporting
 ├─ storage/
 │  ├─ inputs.py           robot CSV and image discovery
@@ -153,6 +186,12 @@ stubs with `scripts/generate_ice_stubs.py` after changing any `.ice` file.
 Ice is an optional dependency:
 
 ```powershell
+uv sync --extra ice
+```
+
+or, in a pip-enabled environment:
+
+```powershell
 python -m pip install -e ".[ice]"
 ```
 
@@ -172,7 +211,7 @@ procedures_root = "C:/ProgramData/3DSC/procedures"
 Use forward slashes or single-quoted TOML strings for Windows paths. A
 double-quoted path with single backslashes fails with
 `Unescaped '\' in a string`; see
-[Configuration](docs/wiki/Configuration#windows-paths-in-toml).
+[Configuration](docs/wiki/Configuration.md#windows-paths-in-toml).
 
 If a procedure does not exist yet, `init` creates its folder and copies the
 packaged default config, merging any optional override into that new procedure
@@ -223,8 +262,11 @@ Apache-2.0 package. See `THIRD_PARTY_NOTICES.md` for details.
 ## Tests
 
 ```powershell
-python -m pytest -q
+uv run pytest -q
 ```
+
+If you installed with pip, add pytest first (`python -m pip install pytest`) and
+run `python -m pytest -q` in the activated environment.
 
 The suite covers settings, stop policy, the fitting pipeline, the stored-point
 regression fixture, single-image analysis, the session, the folder source, and

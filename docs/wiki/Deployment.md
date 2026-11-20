@@ -97,7 +97,7 @@ to a UNC path in the **server** config:
 
 ```toml
 [general]
-procedures_root = '\\ibg2fs6\phenoseed$\3DSC\procedures'
+procedures_root = '\\fileserver\share\3DSC\procedures'
 ```
 
 Use single quotes so the backslashes stay literal. Do not use a mapped drive
@@ -106,7 +106,7 @@ missing or inaccessible root at startup.
 
 > **TOML escaping.** In a double-quoted TOML string, every backslash must be
 > doubled. A path such as
-> `procedures_root = "\\ibg2fs6\phenoseed$\3DSC\procedures"` fails with
+> `procedures_root = "\\fileserver\share\3DSC\procedures"` fails with
 > `tomllib.TOMLDecodeError: Unescaped '\' in a string`. Use a single-quoted
 > literal string or forward slashes. See
 > [Windows paths in TOML](Configuration#windows-paths-in-toml).
@@ -137,7 +137,7 @@ failure images even when `debug` and `store_debug_images` are false.
 The network session remains self-contained for replay:
 
 ```text
-\\ibg2fs6\phenoseed$\3DSC\procedures\1\20261105_1234\
+\\fileserver\share\3DSC\procedures\1\20261105_1234\
 ├─ config.toml
 └─ data\
    ├─ Calibration3DPositions.csv
@@ -148,8 +148,8 @@ The network session remains self-contained for replay:
 ```
 
 ```powershell
-3dsc "\\ibg2fs6\phenoseed$\3DSC\procedures\1\20261105_1234\data" `
-  --config "\\ibg2fs6\phenoseed$\3DSC\procedures\1\20261105_1234\config.toml"
+3dsc "\\fileserver\share\3DSC\procedures\1\20261105_1234\data" `
+  --config "\\fileserver\share\3DSC\procedures\1\20261105_1234\config.toml"
 ```
 
 > **Per-date isolation.** Absolute `output_folder` and `debug_folder` values are
@@ -299,7 +299,7 @@ root:
 procedures_root = "C:/ProgramData/3DSC/procedures"
 
 # Network archive alternative. Single quotes keep the backslashes literal.
-# procedures_root = '\\ibg2fs6\phenoseed$\3DSC\procedures'
+# procedures_root = '\\fileserver\share\3DSC\procedures'
 ```
 
 The server only reads `procedures_root` from this file. The same file can also
@@ -448,7 +448,7 @@ Edit `C:\3DSC\config.toml` as described in
 [Common preparation](#common-preparation). Set
 `procedures_root = "C:/ProgramData/3DSC/procedures"` for a local archive, or a
 UNC path such as
-`procedures_root = '\\ibg2fs6\phenoseed$\3DSC\procedures'` when the session
+`procedures_root = '\\fileserver\share\3DSC\procedures'` when the session
 archive must live on a file server. For a network root, create the folder on the
 share instead of locally and give the service account write access to it. Keep
 `C:\ProgramData\3DSC\output` and `debug` local and set them as
@@ -900,7 +900,7 @@ Direct connection, restricted to the plant network:
 
 ```bash
 sudo apt install -y ufw
-sudo ufw allow from 192.168.1.0/24 to any port 10000 proto tcp
+sudo ufw allow from 192.0.2.0/24 to any port 10000 proto tcp
 sudo ufw enable
 ```
 
@@ -1396,7 +1396,7 @@ Test with the one-image CLI:
 
 ```powershell
 3dsc-ice-client `
-  --proxy "CalibrationPhenoseederIcing:tcp -h 192.168.1.50 -p 10000" `
+  --proxy "CalibrationPhenoseederIcing:tcp -h 192.0.2.10 -p 10000" `
   --procedure-id 1 `
   --x 12.5 --y -40.0 --z 81.2 `
   image_0001.tif
@@ -1409,7 +1409,7 @@ Test with the one-image CLI:
 ```python
 from station_calibration.ice import CalibrationIceClient
 
-proxy = "CalibrationPhenoseederIcing:tcp -h 192.168.1.50 -p 10000"
+proxy = "CalibrationPhenoseederIcing:tcp -h 192.0.2.10 -p 10000"
 with CalibrationIceClient.connect(proxy) as client:
     session_folder = client.init(1)  # once per calibration run
 

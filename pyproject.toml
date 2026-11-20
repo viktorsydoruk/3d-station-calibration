@@ -9,12 +9,14 @@ description = "Camera and robot calibration for phenoSeeder 3D stations"
 readme = "README.md"
 requires-python = ">=3.13"
 license = "Apache-2.0"
-license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 authors = [
     { name = "Viktor Sydoruk", email = "v.sydoruk@fz-juelich.de" },
+    { name = "Andreas Fischbach", email = "a.fischbach@fz-juelich.de" },
 ]
 maintainers = [
     { name = "Viktor Sydoruk", email = "v.sydoruk@fz-juelich.de" },
+    { name = "Andreas Fischbach", email = "a.fischbach@fz-juelich.de" },
 ]
 keywords = [
     "calibration",
@@ -56,11 +58,11 @@ notebooks = [
 3dsc-ice-client = "station_calibration.ice.client:run_cli"
 
 [project.urls]
-Homepage = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration"
-Repository = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration"
-Documentation = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/blob/main/docs/wiki/Home.md"
-Changelog = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/blob/main/CHANGELOG.md"
-Issues = "https://gitlab.fz-juelich.de/ibg-2/phenoseeder/3d-station-calibration/-/issues"
+Homepage = "https://github.com/viktorsydoruk/3d-station-calibration"
+Repository = "https://github.com/viktorsydoruk/3d-station-calibration"
+Documentation = "https://github.com/viktorsydoruk/3d-station-calibration/blob/main/docs/wiki/Home.md"
+Changelog = "https://github.com/viktorsydoruk/3d-station-calibration/blob/main/CHANGELOG.md"
+Issues = "https://github.com/viktorsydoruk/3d-station-calibration/issues"
 
 [dependency-groups]
 dev = [
@@ -150,6 +152,7 @@ include = [
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
+    "NOTICE",
     "THIRD_PARTY_NOTICES.md",
     "pyproject.toml",
 ]

@@ -6,6 +6,23 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 ## [Unreleased]
 
+## [2026.11.20.1] - 2026-11-20
+
+### Changed
+
+- Recorded the copyright holder in `LICENSE` and added a `NOTICE` file.
+- Package metadata lists both authors and points at the public GitHub
+  repository instead of the institutional GitLab mirror.
+- Deployment documentation uses generic file-server, network, and drive
+  placeholders instead of laboratory-specific values.
+- Test descriptions no longer refer to the laboratory data path.
+
+### Fixed
+
+- `scripts/background_regression.py` reads its data root from
+  `THREEDSC_DATA_ROOT` (default `data/calibration`) instead of a hard-coded
+  Windows path, so its default and help text work outside the laboratory.
+
 ## [2026.11.20.0] - 2026-11-20
 
 ### Added

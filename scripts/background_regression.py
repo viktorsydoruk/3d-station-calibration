@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass
@@ -37,7 +38,7 @@ from station_calibration.vision.detection import (
     get_bg_value,
 )
 
-DEFAULT_DATA_ROOT = Path(r"P:\3Dcalibration")
+DEFAULT_DATA_ROOT = Path(os.environ.get("THREEDSC_DATA_ROOT", "data/calibration"))
 METHODS = ("percentile", "mad", "fixed30")
 FIXED_THRESHOLD = 30.0
 
@@ -87,7 +88,10 @@ def _parse_args() -> argparse.Namespace:
         "--data-root",
         type=Path,
         default=DEFAULT_DATA_ROOT,
-        help=f"folder containing the calibration datasets (default: {DEFAULT_DATA_ROOT})",
+        help=(
+            "folder containing the calibration datasets "
+            f"(default: $THREEDSC_DATA_ROOT or {DEFAULT_DATA_ROOT})"
+        ),
     )
     parser.add_argument(
         "--dataset",

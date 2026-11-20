@@ -3,12 +3,11 @@
 
 """Regression test for the production pinhole fit on the ceramic-ball folder.
 
-The fixture is the stored point cache of
-``P:\\3Dcalibration\\3D_small_20260929_ceramic`` (500 rows, 489 valid) including
-the per-centre covariance columns. The expected values are the stored
-``output/calibration_data.yaml`` of that folder. The convergence-aware loop
-changes them by less than 2e-8 relative, so the same tolerances as the other
-real-data regression tests apply.
+The fixture is the stored point cache of the ceramic-ball calibration folder
+(500 rows, 489 valid), including the per-centre covariance columns. The
+expected values are the stored ``output/calibration_data.yaml`` of that folder.
+The convergence-aware loop changes them by less than 2e-8 relative, so the same
+tolerances as the other real-data regression tests apply.
 """
 
 from __future__ import annotations

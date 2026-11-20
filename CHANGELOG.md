@@ -6,6 +6,8 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 ## [Unreleased]
 
+## [2026.11.20.0] - 2026-11-20
+
 ### Added
 
 - Four-panel `sphere_analysis.pdf` / `.png` debug output when `debug = true`
@@ -66,6 +68,9 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 - `analyze_image` reports a threshold that is below the darkest pixel or at or
   above the brightest pixel as `background threshold is outside the usable
   range` instead of a misleading missing-sphere rejection.
+- The README and installation guide state the Python 3.13 requirement, explain
+  why `python -m pip` fails inside a uv-managed `.venv`, run tests through
+  `uv run`, and no longer point at a non-existent example folder.
 
 ### Changed
 

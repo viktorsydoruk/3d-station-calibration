@@ -293,6 +293,7 @@ With `debug = true` the folder workflow calls `visualize_results` and writes:
 
 | File | Content |
 | --- | --- |
+| `sphere_analysis.pdf/.png` | Four-panel raw/mask/circle/profile check; written when `debug = true` and `subpixel_edges = true` |
 | `center_points_{n:02d}.png` | Image centres, `n` = effective distortion count |
 | `radii_in_depth.png` | Apparent radius vs depth |
 | `sigmas_in_depth.png` | Blur sigma vs depth |

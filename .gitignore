@@ -27,6 +27,9 @@ htmlcov/
 output/
 debug/
 
+# Local manuscript draft (keep out of the published repository)
+paper/
+
 # Notebook checkpoints
 .ipynb_checkpoints/
 

@@ -125,14 +125,17 @@ Passing `subpixel_edges=True` to `analyze_image`, `analyze_images`, or
 `[analysis.sphere_projection]`, refines the sphere silhouette to the
 **50 % intensity crossing** between the local background and the sphere
 interior. The binary mask still supplies the rough circle and the radius scale
-for the blur-aware search window. The refinement then samples 360 radial
-profiles and locates the crossing on each ray by linear interpolation. Because every ray crosses the
-edge normally, the noisy, nearly horizontal top and bottom rows of a row-wise
-scan no longer contribute. Each ray estimates its own background and interior
-level, which handles a smooth illumination gradient; rays on the nozzle side
-are skipped with the same `sphere_center_to_nozzle_part` rule as the binary
-fit, and a MAD-based trim drops inconsistent crossings before the final circle
-fit.
+for the blur-aware search window. The refinement starts from a uniform grid of
+up to 360 ray angles, drops the nozzle-side sector and any ray whose search
+window leaves the image, and locates the crossing on each remaining ray by
+linear interpolation. Because every ray crosses the edge normally, the noisy,
+nearly horizontal top and bottom rows of a row-wise scan no longer contribute.
+Each ray estimates its own background and interior level, which handles a smooth
+illumination gradient; rays on the nozzle side are skipped with the same
+`sphere_center_to_nozzle_part` rule as the binary fit, and a MAD-based trim drops
+inconsistent crossings before the final circle fit. On a representative 2 mm
+frame, 269 of the 360 angles survive the nozzle sector and the per-ray quality
+checks.
 
 The reason is the radius bias: the mask threshold sits near the background
 level, so the integer contour lies roughly `~1 sigma` outside the true
@@ -141,10 +144,11 @@ check. On synthetic blurred spheres the sub-pixel path removes it (for example,
 a radius error of `+5.7 px` at `sigma = 5 px` becomes about `-0.1 px`) without
 changing the centre accuracy. On a real 2 mm sphere set (124 poses, 8 mm depth
 range) the empirical blur correction `n_sigma_est` drops from `0.69 sigma` to
-`0`, and the radius consistency at zero correction improves from `0.027 mm` to
-`0.008 mm`. On two independent 6 mm sphere scans the adaptive diameter becomes
-more repeatable (`5.972` / `5.966 mm` versus `5.969` / `5.982 mm`), while the
-calibration RMSE changes by `+0.12` and `+0.01 px`.
+`0`; zero correction is not the criterion, and the sub-pixel diameter trend
+with blur is flatter than the binary trend. On two independent 6 mm sphere
+scans the adaptive diameter becomes more repeatable (`5.972` / `5.966 mm`
+versus `5.969` / `5.982 mm`), while the calibration RMSE changes by `+0.12`
+and `+0.01 px`.
 
 #### Broad validation (black backgrounds)
 
@@ -163,7 +167,7 @@ detections; 3,373 frames were detected by both, with one sub-pixel-only frame
 (`3D_oldsmallseeds`) and no binary-only frames. On the 3,373 common frames the
 adaptive radius moved inward by `7.05 px` on average, or `0.75 sigma` per
 frame; this is the expected binary-threshold bias. The shift reached about
-`-11 px` on the strongly defocused old-small set and `-3` to `-5 px` on the
+`-11 px` on the strongly defocused 1 mm POM set and `-3` to `-5 px` on the
 well-focused 2 mm and 6 mm sets.
 
 In the table, `sigma` is the folder-mean binary blur, the binary diameter uses
@@ -177,23 +181,23 @@ identical.
 | 6 mm A | 2.9 | 5.9691 | 5.9720 | 1.052 | 1.174 | 0.000 |
 | 6 mm B | 3.4 | 5.9822 | 5.9661 | 1.247 | 1.259 | 0.000 |
 | 2 mm | 5.0 | 1.9849 | 1.9573 | 1.428 | 1.469 | 0.000 |
-| 2.3 mm A | 5.7 | 2.3660 | 2.3543 | 1.201 | 1.415 | 0.000 |
-| 2.3 mm B | 5.1 | 2.3677 | 2.3564 | 1.203 | 1.283 | 0.000 |
-| small random A | 10.2 | 0.9527 | 0.9575 | 4.752 | 4.714 | 0.000 |
-| small random B | 10.4 | 0.9832 | 0.9845 | 4.473 | 4.254 | 0.081 |
-| old small A | 30.5 | 1.0331 | 0.9922 | 2.693 | 2.522 | 0.121 |
-| old small B | 10.7 | 0.9851 | 0.9906 | 2.728 | 2.665 | 0.162 |
+| 2.381 mm POM A | 5.7 | 2.3660 | 2.3543 | 1.201 | 1.415 | 0.000 |
+| 2.381 mm POM B | 5.1 | 2.3677 | 2.3564 | 1.203 | 1.283 | 0.000 |
+| 1 mm POM random A | 10.2 | 0.9527 | 0.9575 | 4.752 | 4.714 | 0.000 |
+| 1 mm POM random B | 10.4 | 0.9832 | 0.9845 | 4.473 | 4.254 | 0.081 |
+| 1 mm POM rough A | 30.5 | 1.0331 | 0.9922 | 2.693 | 2.522 | 0.121 |
+| 1 mm POM rough B | 10.7 | 0.9851 | 0.9906 | 2.728 | 2.665 | 0.162 |
 | ceramic | 10.0 | 0.9949 | 0.9962 | 4.555 | 4.538 | 0.040 |
 
 Adaptive RMSE was lower on 5 of 10 folders, with a median change of
 `-0.002 px` and a range from `-0.219` to `+0.214 px`. It was worse on the
-2 mm and both 2.3 mm scans by `0.04-0.21 px`, and better on both small-random,
-both old-small, and ceramic sets. The 6 mm A/B RMSE asymmetry remains: the
+2 mm and both 2.381 mm POM scans by `0.04-0.21 px`, and better on both
+1 mm POM random, both 1 mm POM rough, and ceramic sets. The 6 mm A/B RMSE asymmetry remains: the
 adaptive path does not remove the `+0.12 px` change on 6 mm A or the
 `5.966/5.972 mm` absolute offset from the 6 mm nominal. The same-sphere
-scan-to-scan spread improves for the 6 mm pair (`0.0130 -> 0.0059 mm`), small
-random pair (`0.0305 -> 0.0270 mm`), and old small pair
-(`0.0480 -> 0.0017 mm`); the 2.3 mm pair was already consistent
+scan-to-scan spread improves for the 6 mm pair (`0.0130 -> 0.0059 mm`), the
+1 mm POM random pair (`0.0305 -> 0.0270 mm`), and the 1 mm POM rough pair
+(`0.0480 -> 0.0017 mm`); the 2.381 mm POM pair was already consistent
 (`0.0017 -> 0.0021 mm`). The 6 mm asymmetry is therefore not explained by the
 search window alone.
 
@@ -202,11 +206,19 @@ radius-vs-sigma trend. On the same 489 ceramic frames and the same 479 fit
 observations, the old window gave `n_sigma_opt = 0.485`, a capped diameter of
 `0.9921 mm`, and `RMSE = 4.2729 px`; the blur-aware window gave
 `n_sigma_opt = 0.040`, `0.9960 mm`, and `4.2562 px`. At zero empirical
-correction the adaptive diameter is `0.9983 mm`. The current window starts at
-`max(0.2 * radius, 3 * sigma, 1.5 * 0.2 * radius)`, is capped at half the binary
-radius, retries once at the cap, and honours an explicit `edge_search_px`
-override. If too few rays pass, or the fitted circle is biased enough to make
-the border-sigma fit fail, the binary circle is retained.
+correction the adaptive diameter is `0.9983 mm`. Let
+`b = max(4 px, 0.2 * radius)`. The current half-width, centred on the binary
+contour, is
+`min(max(1.5 * b, 3 * sigma), max(4 px, 0.5 * radius))`; if no blur estimate
+is available it is `min(2 * b, max(4 px, 0.5 * radius))`. These factors are
+empirical safeguards rather than fitted parameters: `0.2 * radius` scales the
+window with the projected sphere, the 4 px floor leaves samples for
+interpolation, `1.5 * b` preserves a plateau, `3 * sigma` spans the Gaussian
+edge transition, and `0.5 * radius` keeps the inward end away from the centre.
+The search retries once at the cap and honours an explicit `edge_search_px`
+override. If too few rays pass, or the
+fitted circle is biased enough to make the border-sigma fit fail, the binary
+circle is retained.
 
 The raw 50 % crossing is not the only bias: the residual `n_sigma` correction
 is still dataset-dependent, although it is now small on the well-focused sets.
@@ -243,12 +255,12 @@ is not a statistical estimate of the observed optimum and should be revisited
 only with a larger traceable reference set.
 
 The evidence for the sub-pixel path is the reduced blur-dependent radius
-spread, the improved repeatability of the 6 mm, small-random, and old-small
-pairs, and the removal of the search-window artefact. It is not a universal
-RMSE improvement: the 2 mm and 2.3 mm fits became slightly worse. The packaged
-default therefore remains `false`; enable it per station after checking a
-black-background calibration run, a reference-sphere diameter, the radius-vs-
-sigma trend, and the bootstrap interval.
+spread, the improved repeatability of the 6 mm, 1 mm POM random, and
+1 mm POM rough pairs, and the removal of the search-window artefact. It is not
+a universal RMSE improvement: the 2 mm and 2.381 mm POM fits became slightly
+worse. The packaged default therefore remains `false`; enable it per station
+after checking a black-background calibration run, a reference-sphere diameter,
+the radius-vs-sigma trend, and the bootstrap interval.
 
 ### 6. Edge blur (`sigma`)
 

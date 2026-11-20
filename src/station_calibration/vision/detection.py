@@ -490,6 +490,31 @@ def _subpixel_radial_points(image_gray: np.ndarray,
     return np.asarray(xs, dtype=np.float64), np.asarray(ys, dtype=np.float64)
 
 
+def _subpixel_search_window(radius: float,
+                            sigma: float | None = None,
+                            ) -> tuple[int, int]:
+    """Return the sub-pixel search half-width and its upper bound.
+
+    The baseline window is one fifth of the rough radius, with a four-pixel
+    floor.  It is expanded by a factor 1.5 for a visible plateau and by
+    ``3 sigma`` for a defocused edge, then capped at half the radius.  If no
+    usable blur estimate is available, twice the baseline is used.
+    """
+    default_search = max(4, int(0.2 * radius))
+    max_search = max(
+        default_search,
+        int(_MAX_SUBPIXEL_SEARCH_FRACTION * radius),
+    )
+    if sigma is not None and np.isfinite(sigma) and sigma > 0:
+        search = max(
+            int(np.ceil(_SUBPIXEL_SEARCH_SIGMA_FACTOR * sigma)),
+            int(np.ceil(_SUBPIXEL_SEARCH_GROWTH * default_search)),
+        )
+    else:
+        search = 2 * default_search
+    return min(search, max_search), max_search
+
+
 def find_the_sphere_on_mask(forground_mask: np.ndarray,
                             n_mov_aver: int = 11,
                             sphere_center_to_nozzle_part: float = 0.3,
@@ -602,14 +627,10 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
 
         if image_gray is not None:
             x_c_int, y_c_int, radius_int = fit_circle(all_sel_x, all_sel_y)
-            default_search = max(4, int(0.2 * radius_int))
-            max_search = max(
-                default_search,
-                int(_MAX_SUBPIXEL_SEARCH_FRACTION * radius_int),
-            )
 
             if edge_search_px is not None:
                 search = int(edge_search_px)
+                _, max_search = _subpixel_search_window(radius_int)
             else:
                 # A 20 % window can be narrower than the blurred edge
                 # transition.  That truncates the inner plateau and biases the
@@ -624,25 +645,9 @@ def find_the_sphere_on_mask(forground_mask: np.ndarray,
                     sphere_center_to_nozzle_part=sphere_center_to_nozzle_part,
                     direction=direction,
                 )
-                search = default_search
-                if (
-                    sigma_guess is not None
-                    and np.isfinite(sigma_guess)
-                    and sigma_guess > 0
-                ):
-                    search = max(
-                        search,
-                        int(np.ceil(_SUBPIXEL_SEARCH_SIGMA_FACTOR * sigma_guess)),
-                    )
-                else:
-                    search = max(search, 2 * default_search)
-                # Keep a visible expansion even for small sigma; at very low
-                # blur the 20 % window is still unnecessarily tight.
-                search = max(
-                    search,
-                    int(np.ceil(_SUBPIXEL_SEARCH_GROWTH * default_search)),
+                search, max_search = _subpixel_search_window(
+                    radius_int, sigma_guess
                 )
-                search = min(search, max_search)
 
             sub_x, sub_y = _subpixel_radial_points(
                 image_gray,

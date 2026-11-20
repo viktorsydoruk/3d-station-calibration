@@ -120,6 +120,41 @@ def test_visualize_results_writes_all_reporting_plots(tmp_path: Path) -> None:
     assert (tmp_path / "RMSE vs number of points.png").is_file()
 
 
+def test_visualize_validation_writes_pdf_and_png(tmp_path: Path) -> None:
+    rng = np.random.default_rng(0)
+    binary_blur = np.linspace(2.0, 20.0, 24)
+    binary_diameter = 1.0 + 0.006 * binary_blur + rng.normal(0.0, 0.002, 24)
+    subpixel_blur = np.linspace(2.0, 20.0, 24)
+    subpixel_diameter = 0.999 + rng.normal(0.0, 0.001, 24)
+    residual_components = rng.normal(0.0, 1.0, (60, 2)).reshape(-1)
+    radial_radius = np.linspace(0.0, 0.1, 50)
+    radial_scale = 1.0 - 0.0002 * radial_radius**2
+    observed_radius = np.array([0.0, 0.05, 0.1])
+    observed_scale = 1.0 - 0.0002 * observed_radius**2
+
+    output = plots.visualize_validation(
+        binary_blur=binary_blur,
+        binary_diameter=binary_diameter,
+        subpixel_blur=subpixel_blur,
+        subpixel_diameter=subpixel_diameter,
+        pair_labels=("6 mm POM", "1 mm POM, rough"),
+        pair_binary_spread_um=np.array([13.0, 48.0]),
+        pair_subpixel_spread_um=np.array([5.9, 1.7]),
+        residual_components=residual_components,
+        residual_rmse=1.47,
+        radial_radius=radial_radius,
+        radial_scale=radial_scale,
+        radial_observed_radius=observed_radius,
+        radial_observed_scale=observed_scale,
+        debug_folder=tmp_path,
+        reference_diameter=0.999,
+        reference_tolerance=0.001,
+    )
+
+    assert output.is_file()
+    assert output.with_suffix(".png").is_file()
+
+
 def test_visualize_image_center_points_without_optional_overlays(
     tmp_path: Path,
 ) -> None:

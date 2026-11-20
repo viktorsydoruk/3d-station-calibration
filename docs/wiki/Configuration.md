@@ -171,12 +171,15 @@ crossing between the local background and the sphere interior. The binary mask
 supplies the rough circle; the refinement samples radial profiles around the
 sphere, estimates a local background and interior level on each ray, and trims
 inconsistent crossings before the final circle fit. The radial search window is
-blur-aware from the first attempt: it is the largest of `0.2 * radius`,
-`3 * sigma`, and `1.5 * 0.2 * radius`, capped at half the binary radius. A fixed
-20 % window can truncate the inner edge plateau and bias the crossing outward on
-defocused spheres. If the profiles still do not resolve the edge transition, or
-the outer/inner plateaus are not flat, the search retries once at the half-radius
-cap; if the crossings remain unreliable, the binary circle is retained.
+centred on the rough binary contour and is blur-aware from the first attempt.
+With `b = max(4 px, 0.2 * radius)`, the half-width is
+`min(max(1.5 * b, 3 * sigma), max(4 px, 0.5 * radius))`; without a
+usable blur estimate it is `min(2 * b, max(4 px, 0.5 * radius))`. A fixed 20 %
+window can truncate the inner edge plateau and bias the crossing
+outward on defocused spheres. If the profiles still do not resolve the edge
+transition, or the outer/inner plateaus are not flat, the search retries once at
+the half-radius cap; if the crossings remain unreliable, the binary circle is
+retained.
 `edge_search_px` on `find_the_sphere_on_mask` is an explicit override and
 disables both the blur-aware choice and the retry.
 

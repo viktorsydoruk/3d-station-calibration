@@ -27,7 +27,7 @@ from pathlib import Path
 
 from station_calibration import Settings, create_folder_session
 
-folder = Path(r"P:\3Dcalibration\3D_example")
+folder = Path(r"path\to\calibration-folder")
 settings = Settings(folder)
 
 session = create_folder_session(settings)   # fit_every_n=None by default
@@ -59,7 +59,7 @@ import numpy as np
 
 from station_calibration import CalibrationService, Settings
 
-settings = Settings(r"P:\3Dcalibration\3D_example", load_stored_data=False)
+settings = Settings(r"path\to\calibration-folder", load_stored_data=False)
 service = CalibrationService(settings, fit_every_n=10)
 
 frame = cv2.imread("frame_0001.tif", cv2.IMREAD_UNCHANGED)

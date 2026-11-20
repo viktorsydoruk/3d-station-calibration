@@ -14,6 +14,7 @@ __all__ = [
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -28,6 +29,8 @@ from ..storage import (
     store_all_points,
 )
 from ..vision import (
+    ImageAnalysisResult,
+    SphereObservation,
     analyze_images,
     filtering_data_by_radius,
     get_radius_outlier_mask,
@@ -334,6 +337,71 @@ class FolderCalibrationSource:
             from_stored_data=True,
         )
 
+    def _store_sphere_analysis_figure(
+        self,
+        image_filenames: Sequence[Path],
+        analyses: Sequence[ImageAnalysisResult],
+    ) -> None:
+        """Write a four-panel sphere-analysis figure when debug output is on."""
+        valid: list[tuple[int, ImageAnalysisResult, SphereObservation]] = []
+        for index, analysis in enumerate(analyses):
+            observation = analysis.observation
+            if observation is not None and observation.binary_radius is not None:
+                valid.append((index, analysis, observation))
+        if not valid:
+            return
+
+        sigmas = np.asarray(
+            [observation.sigma for _, _, observation in valid],
+            dtype=np.float64,
+        )
+        median_sigma = float(np.median(sigmas))
+        index, analysis, observation = min(
+            valid,
+            key=lambda item: abs(float(item[2].sigma) - median_sigma),
+        )
+
+        try:
+            from ..plots import visualize_sphere_analysis
+            from ..vision import load_image
+            from ..vision.detection import get_bg_noise_threshold, get_bg_value
+
+            image_gray, image_color = load_image(image_filenames[index])
+            threshold = float(self.settings.fixed_bg_threshold)
+            if threshold == 0.0:
+                method = str(self.settings.bg_threshold_method).strip().lower()
+                if method == "mad":
+                    threshold = get_bg_noise_threshold(
+                        image_gray,
+                        bg_height_px=self.settings.bg_height_pxs,
+                        direction=analysis.direction,
+                        n_sigma=self.settings.bg_noise_sigma,
+                        percentile_floor=self.settings.bg_color_est_perc,
+                    )
+                else:
+                    threshold = get_bg_value(
+                        image_gray,
+                        bg_height_px=self.settings.bg_height_pxs,
+                        perc=self.settings.bg_color_est_perc,
+                        direction=analysis.direction,
+                    )
+            visualize_sphere_analysis(
+                image_gray,
+                image_color,
+                observation=observation,
+                direction=analysis.direction,
+                bg_threshold=threshold,
+                debug_folder=self.settings.debug_folder,
+                sphere_center_to_nozzle_part=(
+                    self.settings.sphere_center_to_nozzle_part
+                ),
+                n_mov_aver=self.settings.n_move_aver,
+                min_bg_pixels_on_edges=self.settings.min_bg_pixels_on_edges,
+                filename="sphere_analysis",
+            )
+        except Exception as error:  # noqa: BLE001 - debug output must not abort a run
+            self.print_debug(f"sphere-analysis figure failed: {error}")
+
     def _analyze_images(self) -> FolderDataset:
         robot_positions, image_names = load_robot_positions(
             self.settings.robot_pos_file
@@ -372,6 +440,8 @@ class FolderCalibrationSource:
             debug_folder=self.settings.debug_folder,
             store_debug_images=self.settings.store_debug_images,
         )
+        if self.settings.debug and self.settings.subpixel_edges:
+            self._store_sphere_analysis_figure(image_filenames, analyses)
 
         n_images = len(analyses)
         center_points = np.full((n_images, 2), np.nan, dtype=np.float64)

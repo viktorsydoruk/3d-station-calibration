@@ -123,7 +123,7 @@ If results do not change after editing the analysis settings, the cache is being
 reused:
 
 ```powershell
-3dsc "P:\3Dcalibration\3D_example" --no-load-stored-data
+3dsc path\to\calibration-folder --no-load-stored-data
 ```
 
 The cache stores rejected/outlier rows as `NaN`; a cache copied from another run
@@ -195,7 +195,7 @@ No fit has succeeded yet. Send enough observations to reach
 ## Windows notes
 
 - Quote paths with spaces or commas:
-  `"P:\3Dcalibration\3D_20260824_2,3mm"`.
+  `"C:\data\my session, run 1"`.
 - Use `.\\.venv\\Scripts\\python.exe` when the environment is not activated.
 - The debug folder is always created, even when debug images are disabled,
   because failure images are written there.

@@ -8,6 +8,15 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 ### Added
 
+- Four-panel `sphere_analysis.pdf` / `.png` debug output when `debug = true`
+  and `subpixel_edges = true`: raw frame, foreground mask, binary and
+  sub-pixel circle fits with the detected 50 % crossings, and a radial edge
+  profile. The folder workflow renders the frame closest to the median blur;
+  the same renderer produced the manuscript figure from a real 2 mm frame.
+- `visualize_validation`, a four-panel publication helper for the real-data
+  validation figure: apparent diameter versus edge blur, repeated-scan
+  diameter range, reprojection-residual Q--Q plot, and radial-scale profile.
+  The manuscript generator is `paper/figures/make_fig4.py`.
 - Opt-in noise-aware automatic background threshold. With
   `fixed_bg_threshold = 0`, `bg_threshold_method = "mad"` uses the larger of
   `median + bg_noise_sigma * 1.4826 * MAD` and the `bg_color_est_perc`
@@ -60,6 +69,16 @@ calendar versioning in the form `YYYY.MM.DD.N`.
 
 ### Changed
 
+- `visualize_validation` now extrapolates the diameter fits to zero edge
+  blur, labels repeated-scan pairs with the actual sphere and scan
+  description, defines the plotted diameter range as max minus min, and titles
+  the radial-scale panel with the 2.381 mm POM sphere.
+- The sub-pixel search window is built by a single
+  `_subpixel_search_window` helper: baseline `1.5 d` with
+  `d = max(4 px, 0.2 r)`, expanded to `3 sigma` for defocus, capped at
+  `max(4 px, 0.5 r)`, and `2 d` when no blur estimate exists. Behaviour is
+  unchanged; the helper removes duplicated logic and keeps the documentation
+  formula aligned with the code.
 - The background prefix selection is shared by `get_bg_value` (percentile) and
   the new `get_bg_noise_threshold` (robust MAD), so both methods use exactly
   the same rows.

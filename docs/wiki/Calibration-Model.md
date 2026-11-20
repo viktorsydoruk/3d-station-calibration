@@ -50,8 +50,9 @@ returns the exact names for the current configuration.
 
    and takes the correlation matrix between those points and the robot
    positions. The 3×3 block is projected onto the nearest proper rotation with
-   an SVD polar decomposition (reflections removed). Degenerate or non-finite
-   inputs fall back to the identity.
+   a polar decomposition computed using the singular value decomposition (SVD),
+   which removes reflections. Degenerate or non-finite inputs fall back to the
+   identity.
 2. **Initial parameters.** `fx = fy = focal_length_initial`, `cx/cy` at the
    image centre when free, distortion zeros, `rvec` from the rotation, and
    `t = (0, 0, camera_distance_initial)`.
@@ -137,9 +138,13 @@ radius stay positive and `r · scale` increases monotonically over that domain.
 Checking the scale alone is insufficient because a positive but decreasing scale
 can still fold the radial mapping.
 
-If the check fails, `get_calibration_data` refits with
-`n_distortion_coefs = 0`. The `CalibrationResult.n_distortion_coefs` and the YAML
-output then reflect the fallback value, even if the configured value was larger.
+A real lens may distort strongly, but its radial mapping remains monotonic over
+the sensor. When distortion is weak or the field is narrow, poorly constrained
+terms can fold or reverse the radius; this is a model artefact. Exporting it
+would make projection non-invertible and extrapolation unreliable. If the check fails, `get_calibration_data` therefore
+refits with `n_distortion_coefs = 0` rather than clipping the coefficients. The
+`CalibrationResult.n_distortion_coefs` and the YAML output then reflect the
+fallback value, even if the configured value was larger.
 
 ## Radial-scale diagnostic
 

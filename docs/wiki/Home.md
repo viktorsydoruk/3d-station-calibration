@@ -35,7 +35,7 @@ and an optional ZeroC Ice server/client.
 uv sync
 
 # calibrate a folder
-3dsc "P:\3Dcalibration\3D_example"
+3dsc path\to\calibration-folder
 
 # run the optional Ice server (set [general] procedures_root in the config)
 uv sync --extra ice

@@ -29,7 +29,13 @@ the `dev` dependency group (`pytest`, `scipy-stubs`).
 
 ## Install with pip
 
+Use a Python 3.13+ interpreter that ships pip. A `.venv` created by `uv sync`
+contains no pip, so `python -m pip` fails there with `No module named pip`; use
+`uv pip install -e .` in that environment, or create a separate one:
+
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install -e .
 ```
 
@@ -46,7 +52,7 @@ not vendor Ice; see `THIRD_PARTY_NOTICES.md`.
 On Linux, PyPI does not publish a `zeroc-ice` wheel for 3.8.3. Install
 `python3-zeroc-ice` from the official ZeroC APT repository and create the venv
 with `--system-site-packages`; do not install the `ice` extra there. See
-[Deployment and Autostart](Deployment) for the exact Raspberry Pi commands.
+[Deployment and Autostart](Deployment.md) for the exact Raspberry Pi commands.
 
 ## Entry points
 
@@ -61,16 +67,19 @@ Three console scripts are installed:
 The folder workflow is also reachable as a module:
 
 ```powershell
-python -m station_calibration "P:\3Dcalibration\3D_example"
+python -m station_calibration path\to\calibration-folder
 ```
 
 ## Verify the installation
 
 ```powershell
-.\.venv\Scripts\python.exe -m pytest -q
+uv run pytest -q
 ```
 
-If ZeroC Ice is not installed, `tests/test_ice_adapter.py` is skipped entirely.
+`uv sync` installs pytest with the `dev` group; with a pip-only environment,
+install it first (`python -m pip install pytest`) and run
+`python -m pytest -q`. If ZeroC Ice is not installed,
+`tests/test_ice_adapter.py` is skipped entirely.
 
 ## Updating
 
@@ -92,4 +101,4 @@ python -c "import station_calibration; print(station_calibration.__version__)"
 ```
 
 Manual and automatic service updates are covered in
-[Deployment and Autostart](Deployment).
+[Deployment and Autostart](Deployment.md).

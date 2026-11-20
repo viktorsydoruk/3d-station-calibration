@@ -51,13 +51,13 @@ Images are loaded with `cv2.IMREAD_UNCHANGED` and interpreted as follows:
 ## Run
 
 ```powershell
-3dsc "P:\3Dcalibration\3D_example"
+3dsc path\to\calibration-folder
 ```
 
 Equivalent module entry point:
 
 ```powershell
-python -m station_calibration "P:\3Dcalibration\3D_example"
+python -m station_calibration path\to\calibration-folder
 ```
 
 ### Options
